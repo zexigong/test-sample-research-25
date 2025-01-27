@@ -49,16 +49,23 @@ def organize_files(project_name, file_info):
 if __name__ == "__main__":
     # Example input: Replace with your filenames and GitHub raw URLs
     project_files = {
-        "twisted": {
+        "requests": {
             "test_to_source": {
-                "https://raw.githubusercontent.com/twisted/twisted/refs/heads/trunk/src/twisted/test/test_formmethod.py": [
-                    "https://raw.githubusercontent.com/twisted/twisted/refs/heads/trunk/src/twisted/python/formmethod.py",
+                "https://raw.githubusercontent.com/psf/requests/refs/heads/main/tests/test_utils.py": [
+                    "https://raw.githubusercontent.com/psf/requests/refs/heads/main/src/requests/utils.py",
 
 
     
                 ],
             },
             "dependent_files": [
+                "https://raw.githubusercontent.com/psf/requests/refs/heads/main/src/requests/compat.py",
+                "https://raw.githubusercontent.com/psf/requests/refs/heads/main/src/requests/certs.py",
+                "https://raw.githubusercontent.com/psf/requests/refs/heads/main/src/requests/__version__.py",
+                "https://raw.githubusercontent.com/psf/requests/refs/heads/main/src/requests/_internal_utils.py",
+                "https://raw.githubusercontent.com/psf/requests/refs/heads/main/src/requests/cookies.py",
+                "https://raw.githubusercontent.com/psf/requests/refs/heads/main/src/requests/exceptions.py",
+                "https://raw.githubusercontent.com/psf/requests/refs/heads/main/src/requests/structures.py",
 
 
 
