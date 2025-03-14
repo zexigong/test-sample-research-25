@@ -39,3 +39,5 @@ To run a specific test file inside http-prompt's test suite, use the following c
 ```bash
 python -m pytest tests/test_<filename>.py
 ```
+
+5. Used for training

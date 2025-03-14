@@ -34,3 +34,5 @@ To run a specific test file inside Requests’s test suite, use the following co
 ```bash
 python -m pytest tests/test_<filename>.py
 ```
+
+5. Used for training

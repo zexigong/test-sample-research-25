@@ -32,3 +32,5 @@ To run a specific test file inside pytest's own test suite, use the following co
 python -m pytest testing/test_<filename>.py
 ```
 
+
+5. Used for training

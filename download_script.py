@@ -36,36 +36,38 @@ def organize_files(project_name, file_info):
             source_save_path = os.path.join(source_dir, source_file_name)
             download_file(source_url, source_save_path)
 
-        # Organize dependent files in a separate directory
-        dependent_dir = os.path.join(test_dir, "dependent_files")
-        os.makedirs(dependent_dir, exist_ok=True)
-
         dependent_files = file_info.get('dependent_files', [])
-        for dependent_url in dependent_files:
-            dependent_file_name = os.path.basename(dependent_url)
-            dependent_save_path = os.path.join(dependent_dir, dependent_file_name)
-            download_file(dependent_url, dependent_save_path)
+        if dependent_files:
+            print(1111)
+            # Organize dependent files in a separate directory
+            dependent_dir = os.path.join(test_dir, "dependent_files")
+            os.makedirs(dependent_dir, exist_ok=True)
+            for dependent_url in dependent_files:
+                dependent_file_name = os.path.basename(dependent_url)
+                dependent_save_path = os.path.join(dependent_dir, dependent_file_name)
+                download_file(dependent_url, dependent_save_path)
 
 if __name__ == "__main__":
     # Example input: Replace with your filenames and GitHub raw URLs
     project_files = {
-        "requests": {
+        "pynguin": {
             "test_to_source": {
-                "https://raw.githubusercontent.com/psf/requests/refs/heads/main/tests/test_utils.py": [
-                    "https://raw.githubusercontent.com/psf/requests/refs/heads/main/src/requests/utils.py",
+                "https://raw.githubusercontent.com/se2p/pynguin/refs/heads/main/tests/assertion/mutation_analysis/operators/test_loop.py": [
+                    "https://raw.githubusercontent.com/se2p/pynguin/refs/heads/main/src/pynguin/assertion/mutation_analysis/operators/loop.py",
+                    # "https://raw.githubusercontent.com/se2p/pynguin/refs/heads/main/tests/fixtures/programgraph/whileloop.py",
+
 
 
     
                 ],
             },
             "dependent_files": [
-                "https://raw.githubusercontent.com/psf/requests/refs/heads/main/src/requests/compat.py",
-                "https://raw.githubusercontent.com/psf/requests/refs/heads/main/src/requests/certs.py",
-                "https://raw.githubusercontent.com/psf/requests/refs/heads/main/src/requests/__version__.py",
-                "https://raw.githubusercontent.com/psf/requests/refs/heads/main/src/requests/_internal_utils.py",
-                "https://raw.githubusercontent.com/psf/requests/refs/heads/main/src/requests/cookies.py",
-                "https://raw.githubusercontent.com/psf/requests/refs/heads/main/src/requests/exceptions.py",
-                "https://raw.githubusercontent.com/psf/requests/refs/heads/main/src/requests/structures.py",
+                "https://raw.githubusercontent.com/se2p/pynguin/refs/heads/main/src/pynguin/assertion/mutation_analysis/operators/base.py",
+                # "https://raw.githubusercontent.com/se2p/pynguin/refs/heads/main/src/pynguin/ga/chromosomevisitor.py",
+                # "https://raw.githubusercontent.com/se2p/pynguin/refs/heads/main/src/pynguin/testcase/statement.py",
+                # "https://raw.githubusercontent.com/pyinstaller/pyinstaller/refs/heads/develop/PyInstaller/exceptions.py",
+                # "https://raw.githubusercontent.com/pyinstaller/pyinstaller/refs/heads/develop/PyInstaller/config.py",
+                # "https://raw.githubusercontent.com/psf/requests/refs/heads/main/src/requests/structures.py",
 
 
 

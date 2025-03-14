@@ -40,3 +40,5 @@ To run a specific test file inside Distributed’s test suite, use the following
 ```bash
 python -m pytest distributed/tests/test_<filename>.py
 ```
+
+5. Used for training
