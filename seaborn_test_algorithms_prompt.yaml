@@ -1,0 +1,66 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: seaborn\nTest File Path: seaborn\\test_algorithms\\\
+    test_algorithms.py\nProject Programming Language: Python\nTesting Framework: pytest\n\
+    ### Source File Content\n### Source File Content:\n\"\"\"Algorithms to support\
+    \ fitting routines in seaborn plotting functions.\"\"\"\nimport numpy as np\n\
+    import warnings\n\n\ndef bootstrap(*args, **kwargs):\n    \"\"\"Resample one or\
+    \ more arrays with replacement and store aggregate values.\n\n    Positional arguments\
+    \ are a sequence of arrays to bootstrap along the first\n    axis and pass to\
+    \ a summary function.\n\n    Keyword arguments:\n        n_boot : int, default=10000\n\
+    \            Number of iterations\n        axis : int, default=None\n        \
+    \    Will pass axis to ``func`` as a keyword argument.\n        units : array,\
+    \ default=None\n            Array of sampling unit IDs. When used the bootstrap\
+    \ resamples units\n            and then observations within units instead of individual\n\
+    \            datapoints.\n        func : string or callable, default=\"mean\"\n\
+    \            Function to call on the args that are passed in. If string, uses\
+    \ as\n            name of function in the numpy namespace. If nans are present\
+    \ in the\n            data, will try to use nan-aware version of named function.\n\
+    \        seed : Generator | SeedSequence | RandomState | int | None\n        \
+    \    Seed for the random number generator; useful if you want\n            reproducible\
+    \ resamples.\n\n    Returns\n    -------\n    boot_dist: array\n        array\
+    \ of bootstrapped statistic values\n\n    \"\"\"\n    # Ensure list of arrays\
+    \ are same length\n    if len(np.unique(list(map(len, args)))) > 1:\n        raise\
+    \ ValueError(\"All input arrays must have the same length\")\n    n = len(args[0])\n\
+    \n    # Default keyword arguments\n    n_boot = kwargs.get(\"n_boot\", 10000)\n\
+    \    func = kwargs.get(\"func\", \"mean\")\n    axis = kwargs.get(\"axis\", None)\n\
+    \    units = kwargs.get(\"units\", None)\n    random_seed = kwargs.get(\"random_seed\"\
+    , None)\n    if random_seed is not None:\n        msg = \"`random_seed` has been\
+    \ renamed to `seed` and will be removed\"\n        warnings.warn(msg)\n    seed\
+    \ = kwargs.get(\"seed\", random_seed)\n    if axis is None:\n        func_kwargs\
+    \ = dict()\n    else:\n        func_kwargs = dict(axis=axis)\n\n    # Initialize\
+    \ the resampler\n    if isinstance(seed, np.random.RandomState):\n        rng\
+    \ = seed\n    else:\n        rng = np.random.default_rng(seed)\n\n    # Coerce\
+    \ to arrays\n    args = list(map(np.asarray, args))\n    if units is not None:\n\
+    \        units = np.asarray(units)\n\n    if isinstance(func, str):\n\n      \
+    \  # Allow named numpy functions\n        f = getattr(np, func)\n\n        # Try\
+    \ to use nan-aware version of function if necessary\n        missing_data = np.isnan(np.sum(np.column_stack(args)))\n\
+    \n        if missing_data and not func.startswith(\"nan\"):\n            nanf\
+    \ = getattr(np, f\"nan{func}\", None)\n            if nanf is None:\n        \
+    \        msg = f\"Data contain nans but no nan-aware version of `{func}` found\"\
+    \n                warnings.warn(msg, UserWarning)\n            else:\n       \
+    \         f = nanf\n\n    else:\n        f = func\n\n    # Handle numpy changes\n\
+    \    try:\n        integers = rng.integers\n    except AttributeError:\n     \
+    \   integers = rng.randint\n\n    # Do the bootstrap\n    if units is not None:\n\
+    \        return _structured_bootstrap(args, n_boot, units, f,\n              \
+    \                       func_kwargs, integers)\n\n    boot_dist = []\n    for\
+    \ i in range(int(n_boot)):\n        resampler = integers(0, n, n, dtype=np.intp)\
+    \  # intp is indexing dtype\n        sample = [a.take(resampler, axis=0) for a\
+    \ in args]\n        boot_dist.append(f(*sample, **func_kwargs))\n    return np.array(boot_dist)\n\
+    \n\ndef _structured_bootstrap(args, n_boot, units, func, func_kwargs, integers):\n\
+    \    \"\"\"Resample units instead of datapoints.\"\"\"\n    unique_units = np.unique(units)\n\
+    \    n_units = len(unique_units)\n\n    args = [[a[units == unit] for unit in\
+    \ unique_units] for a in args]\n\n    boot_dist = []\n    for i in range(int(n_boot)):\n\
+    \        resampler = integers(0, n_units, n_units, dtype=np.intp)\n        sample\
+    \ = [[a[i] for i in resampler] for a in args]\n        lengths = map(len, sample[0])\n\
+    \        resampler = [integers(0, n, n, dtype=np.intp) for n in lengths]\n   \
+    \     sample = [[c.take(r, axis=0) for c, r in zip(a, resampler)] for a in sample]\n\
+    \        sample = list(map(np.concatenate, sample))\n        boot_dist.append(func(*sample,\
+    \ **func_kwargs))\n    return np.array(boot_dist)\n\n### Source File Dependency\
+    \ Files Content\n### Dependency File: empty.txt\n\nOutput the complete test file,\
+    \ code only, no explanations.\n### Time\nCurrent time: 2025-03-14 17:13:01\n"
+  role: user

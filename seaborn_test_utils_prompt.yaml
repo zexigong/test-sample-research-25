@@ -1,0 +1,695 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: seaborn\nTest File Path: seaborn\\test_utils\\\
+    test_utils.py\nProject Programming Language: Python\nTesting Framework: pytest\n\
+    ### Source File Content\n### Source File Content:\n\"\"\"Utility functions, mostly\
+    \ for internal use.\"\"\"\nimport os\nimport inspect\nimport warnings\nimport\
+    \ colorsys\nfrom contextlib import contextmanager\nfrom urllib.request import\
+    \ urlopen, urlretrieve\nfrom types import ModuleType\n\nimport numpy as np\nimport\
+    \ pandas as pd\nimport matplotlib as mpl\nfrom matplotlib.colors import to_rgb\n\
+    import matplotlib.pyplot as plt\nfrom matplotlib.cbook import normalize_kwargs\n\
+    \nfrom seaborn._core.typing import deprecated\nfrom seaborn.external.version import\
+    \ Version\nfrom seaborn.external.appdirs import user_cache_dir\n\n__all__ = [\"\
+    desaturate\", \"saturate\", \"set_hls_values\", \"move_legend\",\n           \"\
+    despine\", \"get_dataset_names\", \"get_data_home\", \"load_dataset\"]\n\nDATASET_SOURCE\
+    \ = \"https://raw.githubusercontent.com/mwaskom/seaborn-data/master\"\nDATASET_NAMES_URL\
+    \ = f\"{DATASET_SOURCE}/dataset_names.txt\"\n\n\ndef ci_to_errsize(cis, heights):\n\
+    \    \"\"\"Convert intervals to error arguments relative to plot heights.\n\n\
+    \    Parameters\n    ----------\n    cis : 2 x n sequence\n        sequence of\
+    \ confidence interval limits\n    heights : n sequence\n        sequence of plot\
+    \ heights\n\n    Returns\n    -------\n    errsize : 2 x n array\n        sequence\
+    \ of error size relative to height values in correct\n        format as argument\
+    \ for plt.bar\n\n    \"\"\"\n    cis = np.atleast_2d(cis).reshape(2, -1)\n   \
+    \ heights = np.atleast_1d(heights)\n    errsize = []\n    for i, (low, high) in\
+    \ enumerate(np.transpose(cis)):\n        h = heights[i]\n        elow = h - low\n\
+    \        ehigh = high - h\n        errsize.append([elow, ehigh])\n\n    errsize\
+    \ = np.asarray(errsize).T\n    return errsize\n\n\ndef _draw_figure(fig):\n  \
+    \  \"\"\"Force draw of a matplotlib figure, accounting for back-compat.\"\"\"\n\
+    \    # See https://github.com/matplotlib/matplotlib/issues/19197 for context\n\
+    \    fig.canvas.draw()\n    if fig.stale:\n        try:\n            fig.draw(fig.canvas.get_renderer())\n\
+    \        except AttributeError:\n            pass\n\n\ndef _default_color(method,\
+    \ hue, color, kws, saturation=1):\n    \"\"\"If needed, get a default color by\
+    \ using the matplotlib property cycle.\"\"\"\n\n    if hue is not None:\n    \
+    \    # This warning is probably user-friendly, but it's currently triggered\n\
+    \        # in a FacetGrid context and I don't want to mess with that logic right\
+    \ now\n        #  if color is not None:\n        #      msg = \"`color` is ignored\
+    \ when `hue` is assigned.\"\n        #      warnings.warn(msg)\n        return\
+    \ None\n\n    kws = kws.copy()\n    kws.pop(\"label\", None)\n\n    if color is\
+    \ not None:\n        if saturation < 1:\n            color = desaturate(color,\
+    \ saturation)\n        return color\n\n    elif method.__name__ == \"plot\":\n\
+    \n        color = normalize_kwargs(kws, mpl.lines.Line2D).get(\"color\")\n   \
+    \     scout, = method([], [], scalex=False, scaley=False, color=color)\n     \
+    \   color = scout.get_color()\n        scout.remove()\n\n    elif method.__name__\
+    \ == \"scatter\":\n\n        # Matplotlib will raise if the size of x/y don't\
+    \ match s/c,\n        # and the latter might be in the kws dict\n        scout_size\
+    \ = max(\n            np.atleast_1d(kws.get(key, [])).shape[0]\n            for\
+    \ key in [\"s\", \"c\", \"fc\", \"facecolor\", \"facecolors\"]\n        )\n  \
+    \      scout_x = scout_y = np.full(scout_size, np.nan)\n\n        scout = method(scout_x,\
+    \ scout_y, **kws)\n        facecolors = scout.get_facecolors()\n\n        if not\
+    \ len(facecolors):\n            # Handle bug in matplotlib <= 3.2 (I think)\n\
+    \            # This will limit the ability to use non color= kwargs to specify\n\
+    \            # a color in versions of matplotlib with the bug, but trying to\n\
+    \            # work out what the user wanted by re-implementing the broken logic\n\
+    \            # of inspecting the kwargs is probably too brittle.\n           \
+    \ single_color = False\n        else:\n            single_color = np.unique(facecolors,\
+    \ axis=0).shape[0] == 1\n\n        # Allow the user to specify an array of colors\
+    \ through various kwargs\n        if \"c\" not in kws and single_color:\n    \
+    \        color = to_rgb(facecolors[0])\n\n        scout.remove()\n\n    elif method.__name__\
+    \ == \"bar\":\n\n        # bar() needs masked, not empty data, to generate a patch\n\
+    \        scout, = method([np.nan], [np.nan], **kws)\n        color = to_rgb(scout.get_facecolor())\n\
+    \        scout.remove()\n        # Axes.bar adds both a patch and a container\n\
+    \        method.__self__.containers.pop(-1)\n\n    elif method.__name__ == \"\
+    fill_between\":\n\n        kws = normalize_kwargs(kws, mpl.collections.PolyCollection)\n\
+    \        scout = method([], [], **kws)\n        facecolor = scout.get_facecolor()\n\
+    \        color = to_rgb(facecolor[0])\n        scout.remove()\n\n    if saturation\
+    \ < 1:\n        color = desaturate(color, saturation)\n\n    return color\n\n\n\
+    def desaturate(color, prop):\n    \"\"\"Decrease the saturation channel of a color\
+    \ by some percent.\n\n    Parameters\n    ----------\n    color : matplotlib color\n\
+    \        hex, rgb-tuple, or html color name\n    prop : float\n        saturation\
+    \ channel of color will be multiplied by this value\n\n    Returns\n    -------\n\
+    \    new_color : rgb tuple\n        desaturated color code in RGB tuple representation\n\
+    \n    \"\"\"\n    # Check inputs\n    if not 0 <= prop <= 1:\n        raise ValueError(\"\
+    prop must be between 0 and 1\")\n\n    # Get rgb tuple rep\n    rgb = to_rgb(color)\n\
+    \n    # Short circuit to avoid floating point issues\n    if prop == 1:\n    \
+    \    return rgb\n\n    # Convert to hls\n    h, l, s = colorsys.rgb_to_hls(*rgb)\n\
+    \n    # Desaturate the saturation channel\n    s *= prop\n\n    # Convert back\
+    \ to rgb\n    new_color = colorsys.hls_to_rgb(h, l, s)\n\n    return new_color\n\
+    \n\ndef saturate(color):\n    \"\"\"Return a fully saturated color with the same\
+    \ hue.\n\n    Parameters\n    ----------\n    color : matplotlib color\n     \
+    \   hex, rgb-tuple, or html color name\n\n    Returns\n    -------\n    new_color\
+    \ : rgb tuple\n        saturated color code in RGB tuple representation\n\n  \
+    \  \"\"\"\n    return set_hls_values(color, s=1)\n\n\ndef set_hls_values(color,\
+    \ h=None, l=None, s=None):  # noqa\n    \"\"\"Independently manipulate the h,\
+    \ l, or s channels of a color.\n\n    Parameters\n    ----------\n    color :\
+    \ matplotlib color\n        hex, rgb-tuple, or html color name\n    h, l, s :\
+    \ floats between 0 and 1, or None\n        new values for each channel in hls\
+    \ space\n\n    Returns\n    -------\n    new_color : rgb tuple\n        new color\
+    \ code in RGB tuple representation\n\n    \"\"\"\n    # Get an RGB tuple representation\n\
+    \    rgb = to_rgb(color)\n    vals = list(colorsys.rgb_to_hls(*rgb))\n    for\
+    \ i, val in enumerate([h, l, s]):\n        if val is not None:\n            vals[i]\
+    \ = val\n\n    rgb = colorsys.hls_to_rgb(*vals)\n    return rgb\n\n\ndef axlabel(xlabel,\
+    \ ylabel, **kwargs):\n    \"\"\"Grab current axis and label it.\n\n    DEPRECATED:\
+    \ will be removed in a future version.\n\n    \"\"\"\n    msg = \"This function\
+    \ is deprecated and will be removed in a future version\"\n    warnings.warn(msg,\
+    \ FutureWarning)\n    ax = plt.gca()\n    ax.set_xlabel(xlabel, **kwargs)\n  \
+    \  ax.set_ylabel(ylabel, **kwargs)\n\n\ndef remove_na(vector):\n    \"\"\"Helper\
+    \ method for removing null values from data vectors.\n\n    Parameters\n    ----------\n\
+    \    vector : vector object\n        Must implement boolean masking with [] subscript\
+    \ syntax.\n\n    Returns\n    -------\n    clean_clean : same type as ``vector``\n\
+    \        Vector of data with null values removed. May be a copy or a view.\n\n\
+    \    \"\"\"\n    return vector[pd.notnull(vector)]\n\n\ndef get_color_cycle():\n\
+    \    \"\"\"Return the list of colors in the current matplotlib color cycle\n\n\
+    \    Parameters\n    ----------\n    None\n\n    Returns\n    -------\n    colors\
+    \ : list\n        List of matplotlib colors in the current cycle, or dark gray\
+    \ if\n        the current color cycle is empty.\n    \"\"\"\n    cycler = mpl.rcParams['axes.prop_cycle']\n\
+    \    return cycler.by_key()['color'] if 'color' in cycler.keys else [\".15\"]\n\
+    \n\ndef despine(fig=None, ax=None, top=True, right=True, left=False,\n       \
+    \     bottom=False, offset=None, trim=False):\n    \"\"\"Remove the top and right\
+    \ spines from plot(s).\n\n    fig : matplotlib figure, optional\n        Figure\
+    \ to despine all axes of, defaults to the current figure.\n    ax : matplotlib\
+    \ axes, optional\n        Specific axes object to despine. Ignored if fig is provided.\n\
+    \    top, right, left, bottom : boolean, optional\n        If True, remove that\
+    \ spine.\n    offset : int or dict, optional\n        Absolute distance, in points,\
+    \ spines should be moved away\n        from the axes (negative values move spines\
+    \ inward). A single value\n        applies to all spines; a dict can be used to\
+    \ set offset values per\n        side.\n    trim : bool, optional\n        If\
+    \ True, limit spines to the smallest and largest major tick\n        on each non-despined\
+    \ axis.\n\n    Returns\n    -------\n    None\n\n    \"\"\"\n    # Get references\
+    \ to the axes we want\n    if fig is None and ax is None:\n        axes = plt.gcf().axes\n\
+    \    elif fig is not None:\n        axes = fig.axes\n    elif ax is not None:\n\
+    \        axes = [ax]\n\n    for ax_i in axes:\n        for side in [\"top\", \"\
+    right\", \"left\", \"bottom\"]:\n            # Toggle the spine objects\n    \
+    \        is_visible = not locals()[side]\n            ax_i.spines[side].set_visible(is_visible)\n\
+    \            if offset is not None and is_visible:\n                try:\n   \
+    \                 val = offset.get(side, 0)\n                except AttributeError:\n\
+    \                    val = offset\n                ax_i.spines[side].set_position(('outward',\
+    \ val))\n\n        # Potentially move the ticks\n        if left and not right:\n\
+    \            maj_on = any(\n                t.tick1line.get_visible()\n      \
+    \          for t in ax_i.yaxis.majorTicks\n            )\n            min_on =\
+    \ any(\n                t.tick1line.get_visible()\n                for t in ax_i.yaxis.minorTicks\n\
+    \            )\n            ax_i.yaxis.set_ticks_position(\"right\")\n       \
+    \     for t in ax_i.yaxis.majorTicks:\n                t.tick2line.set_visible(maj_on)\n\
+    \            for t in ax_i.yaxis.minorTicks:\n                t.tick2line.set_visible(min_on)\n\
+    \n        if bottom and not top:\n            maj_on = any(\n                t.tick1line.get_visible()\n\
+    \                for t in ax_i.xaxis.majorTicks\n            )\n            min_on\
+    \ = any(\n                t.tick1line.get_visible()\n                for t in\
+    \ ax_i.xaxis.minorTicks\n            )\n            ax_i.xaxis.set_ticks_position(\"\
+    top\")\n            for t in ax_i.xaxis.majorTicks:\n                t.tick2line.set_visible(maj_on)\n\
+    \            for t in ax_i.xaxis.minorTicks:\n                t.tick2line.set_visible(min_on)\n\
+    \n        if trim:\n            # clip off the parts of the spines that extend\
+    \ past major ticks\n            xticks = np.asarray(ax_i.get_xticks())\n     \
+    \       if xticks.size:\n                firsttick = np.compress(xticks >= min(ax_i.get_xlim()),\n\
+    \                                        xticks)[0]\n                lasttick\
+    \ = np.compress(xticks <= max(ax_i.get_xlim()),\n                            \
+    \           xticks)[-1]\n                ax_i.spines['bottom'].set_bounds(firsttick,\
+    \ lasttick)\n                ax_i.spines['top'].set_bounds(firsttick, lasttick)\n\
+    \                newticks = xticks.compress(xticks <= lasttick)\n            \
+    \    newticks = newticks.compress(newticks >= firsttick)\n                ax_i.set_xticks(newticks)\n\
+    \n            yticks = np.asarray(ax_i.get_yticks())\n            if yticks.size:\n\
+    \                firsttick = np.compress(yticks >= min(ax_i.get_ylim()),\n   \
+    \                                     yticks)[0]\n                lasttick = np.compress(yticks\
+    \ <= max(ax_i.get_ylim()),\n                                       yticks)[-1]\n\
+    \                ax_i.spines['left'].set_bounds(firsttick, lasttick)\n       \
+    \         ax_i.spines['right'].set_bounds(firsttick, lasttick)\n             \
+    \   newticks = yticks.compress(yticks <= lasttick)\n                newticks =\
+    \ newticks.compress(newticks >= firsttick)\n                ax_i.set_yticks(newticks)\n\
+    \n\ndef move_legend(obj, loc, **kwargs):\n    \"\"\"\n    Recreate a plot's legend\
+    \ at a new location.\n\n    The name is a slight misnomer. Matplotlib legends\
+    \ do not expose public\n    control over their position parameters. So this function\
+    \ creates a new legend,\n    copying over the data from the original object, which\
+    \ is then removed.\n\n    Parameters\n    ----------\n    obj : the object with\
+    \ the plot\n        This argument can be either a seaborn or matplotlib object:\n\
+    \n        - :class:`seaborn.FacetGrid` or :class:`seaborn.PairGrid`\n        -\
+    \ :class:`matplotlib.axes.Axes` or :class:`matplotlib.figure.Figure`\n\n    loc\
+    \ : str or int\n        Location argument, as in :meth:`matplotlib.axes.Axes.legend`.\n\
+    \n    kwargs\n        Other keyword arguments are passed to :meth:`matplotlib.axes.Axes.legend`.\n\
+    \n    Examples\n    --------\n\n    .. include:: ../docstrings/move_legend.rst\n\
+    \n    \"\"\"\n    # This is a somewhat hackish solution that will hopefully be\
+    \ obviated by\n    # upstream improvements to matplotlib legends that make them\
+    \ easier to\n    # modify after creation.\n\n    from seaborn.axisgrid import\
+    \ Grid  # Avoid circular import\n\n    # Locate the legend object and a method\
+    \ to recreate the legend\n    if isinstance(obj, Grid):\n        old_legend =\
+    \ obj.legend\n        legend_func = obj.figure.legend\n    elif isinstance(obj,\
+    \ mpl.axes.Axes):\n        old_legend = obj.legend_\n        legend_func = obj.legend\n\
+    \    elif isinstance(obj, mpl.figure.Figure):\n        if obj.legends:\n     \
+    \       old_legend = obj.legends[-1]\n        else:\n            old_legend =\
+    \ None\n        legend_func = obj.legend\n    else:\n        err = \"`obj` must\
+    \ be a seaborn Grid or matplotlib Axes or Figure instance.\"\n        raise TypeError(err)\n\
+    \n    if old_legend is None:\n        err = f\"{obj} has no legend attached.\"\
+    \n        raise ValueError(err)\n\n    # Extract the components of the legend\
+    \ we need to reuse\n    # Import here to avoid a circular import\n    from seaborn._compat\
+    \ import get_legend_handles\n    handles = get_legend_handles(old_legend)\n  \
+    \  labels = [t.get_text() for t in old_legend.get_texts()]\n\n    # Handle the\
+    \ case where the user is trying to override the labels\n    if (new_labels :=\
+    \ kwargs.pop(\"labels\", None)) is not None:\n        if len(new_labels) != len(labels):\n\
+    \            err = \"Length of new labels does not match existing legend.\"\n\
+    \            raise ValueError(err)\n        labels = new_labels\n\n    # Extract\
+    \ legend properties that can be passed to the recreation method\n    # (Vexingly,\
+    \ these don't all round-trip)\n    legend_kws = inspect.signature(mpl.legend.Legend).parameters\n\
+    \    props = {k: v for k, v in old_legend.properties().items() if k in legend_kws}\n\
+    \n    # Delegate default bbox_to_anchor rules to matplotlib\n    props.pop(\"\
+    bbox_to_anchor\")\n\n    # Try to propagate the existing title and font properties;\
+    \ respect new ones too\n    title = props.pop(\"title\")\n    if \"title\" in\
+    \ kwargs:\n        title.set_text(kwargs.pop(\"title\"))\n    title_kwargs = {k:\
+    \ v for k, v in kwargs.items() if k.startswith(\"title_\")}\n    for key, val\
+    \ in title_kwargs.items():\n        title.set(**{key[6:]: val})\n        kwargs.pop(key)\n\
+    \n    # Try to respect the frame visibility\n    kwargs.setdefault(\"frameon\"\
+    , old_legend.legendPatch.get_visible())\n\n    # Remove the old legend and create\
+    \ the new one\n    props.update(kwargs)\n    old_legend.remove()\n    new_legend\
+    \ = legend_func(handles, labels, loc=loc, **props)\n    new_legend.set_title(title.get_text(),\
+    \ title.get_fontproperties())\n\n    # Let the Grid object continue to track the\
+    \ correct legend object\n    if isinstance(obj, Grid):\n        obj._legend =\
+    \ new_legend\n\n\ndef _kde_support(data, bw, gridsize, cut, clip):\n    \"\"\"\
+    Establish support for a kernel density estimate.\"\"\"\n    support_min = max(data.min()\
+    \ - bw * cut, clip[0])\n    support_max = min(data.max() + bw * cut, clip[1])\n\
+    \    support = np.linspace(support_min, support_max, gridsize)\n\n    return support\n\
+    \n\ndef ci(a, which=95, axis=None):\n    \"\"\"Return a percentile range from\
+    \ an array of values.\"\"\"\n    p = 50 - which / 2, 50 + which / 2\n    return\
+    \ np.nanpercentile(a, p, axis)\n\n\ndef get_dataset_names():\n    \"\"\"Report\
+    \ available example datasets, useful for reporting issues.\n\n    Requires an\
+    \ internet connection.\n\n    \"\"\"\n    with urlopen(DATASET_NAMES_URL) as resp:\n\
+    \        txt = resp.read()\n\n    dataset_names = [name.strip() for name in txt.decode().split(\"\
+    \\n\")]\n    return list(filter(None, dataset_names))\n\n\ndef get_data_home(data_home=None):\n\
+    \    \"\"\"Return a path to the cache directory for example datasets.\n\n    This\
+    \ directory is used by :func:`load_dataset`.\n\n    If the ``data_home`` argument\
+    \ is not provided, it will use a directory\n    specified by the `SEABORN_DATA`\
+    \ environment variable (if it exists)\n    or otherwise default to an OS-appropriate\
+    \ user cache location.\n\n    \"\"\"\n    if data_home is None:\n        data_home\
+    \ = os.environ.get(\"SEABORN_DATA\", user_cache_dir(\"seaborn\"))\n    data_home\
+    \ = os.path.expanduser(data_home)\n    if not os.path.exists(data_home):\n   \
+    \     os.makedirs(data_home)\n    return data_home\n\n\ndef load_dataset(name,\
+    \ cache=True, data_home=None, **kws):\n    \"\"\"Load an example dataset from\
+    \ the online repository (requires internet).\n\n    This function provides quick\
+    \ access to a small number of example datasets\n    that are useful for documenting\
+    \ seaborn or generating reproducible examples\n    for bug reports. It is not\
+    \ necessary for normal usage.\n\n    Note that some of the datasets have a small\
+    \ amount of preprocessing applied\n    to define a proper ordering for categorical\
+    \ variables.\n\n    Use :func:`get_dataset_names` to see a list of available datasets.\n\
+    \n    Parameters\n    ----------\n    name : str\n        Name of the dataset\
+    \ (``{name}.csv`` on\n        https://github.com/mwaskom/seaborn-data).\n    cache\
+    \ : boolean, optional\n        If True, try to load from the local cache first,\
+    \ and save to the cache\n        if a download is required.\n    data_home : string,\
+    \ optional\n        The directory in which to cache data; see :func:`get_data_home`.\n\
+    \    kws : keys and values, optional\n        Additional keyword arguments are\
+    \ passed to passed through to\n        :func:`pandas.read_csv`.\n\n    Returns\n\
+    \    -------\n    df : :class:`pandas.DataFrame`\n        Tabular data, possibly\
+    \ with some preprocessing applied.\n\n    \"\"\"\n    # A common beginner mistake\
+    \ is to assume that one's personal data needs\n    # to be passed through this\
+    \ function to be usable with seaborn.\n    # Let's provide a more helpful error\
+    \ than you would otherwise get.\n    if isinstance(name, pd.DataFrame):\n    \
+    \    err = (\n            \"This function accepts only strings (the name of an\
+    \ example dataset). \"\n            \"You passed a pandas DataFrame. If you have\
+    \ your own dataset, \"\n            \"it is not necessary to use this function\
+    \ before plotting.\"\n        )\n        raise TypeError(err)\n\n    url = f\"\
+    {DATASET_SOURCE}/{name}.csv\"\n\n    if cache:\n        cache_path = os.path.join(get_data_home(data_home),\
+    \ os.path.basename(url))\n        if not os.path.exists(cache_path):\n       \
+    \     if name not in get_dataset_names():\n                raise ValueError(f\"\
+    '{name}' is not one of the example datasets.\")\n            urlretrieve(url,\
+    \ cache_path)\n        full_path = cache_path\n    else:\n        full_path =\
+    \ url\n\n    df = pd.read_csv(full_path, **kws)\n\n    if df.iloc[-1].isnull().all():\n\
+    \        df = df.iloc[:-1]\n\n    # Set some columns as a categorical type with\
+    \ ordered levels\n\n    if name == \"tips\":\n        df[\"day\"] = pd.Categorical(df[\"\
+    day\"], [\"Thur\", \"Fri\", \"Sat\", \"Sun\"])\n        df[\"sex\"] = pd.Categorical(df[\"\
+    sex\"], [\"Male\", \"Female\"])\n        df[\"time\"] = pd.Categorical(df[\"time\"\
+    ], [\"Lunch\", \"Dinner\"])\n        df[\"smoker\"] = pd.Categorical(df[\"smoker\"\
+    ], [\"Yes\", \"No\"])\n\n    elif name == \"flights\":\n        months = df[\"\
+    month\"].str[:3]\n        df[\"month\"] = pd.Categorical(months, months.unique())\n\
+    \n    elif name == \"exercise\":\n        df[\"time\"] = pd.Categorical(df[\"\
+    time\"], [\"1 min\", \"15 min\", \"30 min\"])\n        df[\"kind\"] = pd.Categorical(df[\"\
+    kind\"], [\"rest\", \"walking\", \"running\"])\n        df[\"diet\"] = pd.Categorical(df[\"\
+    diet\"], [\"no fat\", \"low fat\"])\n\n    elif name == \"titanic\":\n       \
+    \ df[\"class\"] = pd.Categorical(df[\"class\"], [\"First\", \"Second\", \"Third\"\
+    ])\n        df[\"deck\"] = pd.Categorical(df[\"deck\"], list(\"ABCDEFG\"))\n\n\
+    \    elif name == \"penguins\":\n        df[\"sex\"] = df[\"sex\"].str.title()\n\
+    \n    elif name == \"diamonds\":\n        df[\"color\"] = pd.Categorical(\n  \
+    \          df[\"color\"], [\"D\", \"E\", \"F\", \"G\", \"H\", \"I\", \"J\"],\n\
+    \        )\n        df[\"clarity\"] = pd.Categorical(\n            df[\"clarity\"\
+    ], [\"IF\", \"VVS1\", \"VVS2\", \"VS1\", \"VS2\", \"SI1\", \"SI2\", \"I1\"],\n\
+    \        )\n        df[\"cut\"] = pd.Categorical(\n            df[\"cut\"], [\"\
+    Ideal\", \"Premium\", \"Very Good\", \"Good\", \"Fair\"],\n        )\n\n    elif\
+    \ name == \"taxis\":\n        df[\"pickup\"] = pd.to_datetime(df[\"pickup\"])\n\
+    \        df[\"dropoff\"] = pd.to_datetime(df[\"dropoff\"])\n\n    elif name ==\
+    \ \"seaice\":\n        df[\"Date\"] = pd.to_datetime(df[\"Date\"])\n\n    elif\
+    \ name == \"dowjones\":\n        df[\"Date\"] = pd.to_datetime(df[\"Date\"])\n\
+    \n    return df\n\n\ndef axis_ticklabels_overlap(labels):\n    \"\"\"Return a\
+    \ boolean for whether the list of ticklabels have overlaps.\n\n    Parameters\n\
+    \    ----------\n    labels : list of matplotlib ticklabels\n\n    Returns\n \
+    \   -------\n    overlap : boolean\n        True if any of the labels overlap.\n\
+    \n    \"\"\"\n    if not labels:\n        return False\n    try:\n        bboxes\
+    \ = [l.get_window_extent() for l in labels]\n        overlaps = [b.count_overlaps(bboxes)\
+    \ for b in bboxes]\n        return max(overlaps) > 1\n    except RuntimeError:\n\
+    \        # Issue on macos backend raises an error in the above code\n        return\
+    \ False\n\n\ndef axes_ticklabels_overlap(ax):\n    \"\"\"Return booleans for whether\
+    \ the x and y ticklabels on an Axes overlap.\n\n    Parameters\n    ----------\n\
+    \    ax : matplotlib Axes\n\n    Returns\n    -------\n    x_overlap, y_overlap\
+    \ : booleans\n        True when the labels on that axis overlap.\n\n    \"\"\"\
+    \n    return (axis_ticklabels_overlap(ax.get_xticklabels()),\n            axis_ticklabels_overlap(ax.get_yticklabels()))\n\
+    \n\ndef locator_to_legend_entries(locator, limits, dtype):\n    \"\"\"Return levels\
+    \ and formatted levels for brief numeric legends.\"\"\"\n    raw_levels = locator.tick_values(*limits).astype(dtype)\n\
+    \n    # The locator can return ticks outside the limits, clip them here\n    raw_levels\
+    \ = [l for l in raw_levels if l >= limits[0] and l <= limits[1]]\n\n    class\
+    \ dummy_axis:\n        def get_view_interval(self):\n            return limits\n\
+    \n    if isinstance(locator, mpl.ticker.LogLocator):\n        formatter = mpl.ticker.LogFormatter()\n\
+    \    else:\n        formatter = mpl.ticker.ScalarFormatter()\n        # Avoid\
+    \ having an offset/scientific notation which we don't currently\n        # have\
+    \ any way of representing in the legend\n        formatter.set_useOffset(False)\n\
+    \        formatter.set_scientific(False)\n    formatter.axis = dummy_axis()\n\n\
+    \    formatted_levels = formatter.format_ticks(raw_levels)\n\n    return raw_levels,\
+    \ formatted_levels\n\n\ndef relative_luminance(color):\n    \"\"\"Calculate the\
+    \ relative luminance of a color according to W3C standards\n\n    Parameters\n\
+    \    ----------\n    color : matplotlib color or sequence of matplotlib colors\n\
+    \        Hex code, rgb-tuple, or html color name.\n\n    Returns\n    -------\n\
+    \    luminance : float(s) between 0 and 1\n\n    \"\"\"\n    rgb = mpl.colors.colorConverter.to_rgba_array(color)[:,\
+    \ :3]\n    rgb = np.where(rgb <= .03928, rgb / 12.92, ((rgb + .055) / 1.055) **\
+    \ 2.4)\n    lum = rgb.dot([.2126, .7152, .0722])\n    try:\n        return lum.item()\n\
+    \    except ValueError:\n        return lum\n\n\ndef to_utf8(obj):\n    \"\"\"\
+    Return a string representing a Python object.\n\n    Strings (i.e. type ``str``)\
+    \ are returned unchanged.\n\n    Byte strings (i.e. type ``bytes``) are returned\
+    \ as UTF-8-decoded strings.\n\n    For other objects, the method ``__str__()``\
+    \ is called, and the result is\n    returned as a string.\n\n    Parameters\n\
+    \    ----------\n    obj : object\n        Any Python object\n\n    Returns\n\
+    \    -------\n    s : str\n        UTF-8-decoded string representation of ``obj``\n\
+    \n    \"\"\"\n    if isinstance(obj, str):\n        return obj\n    try:\n   \
+    \     return obj.decode(encoding=\"utf-8\")\n    except AttributeError:  # obj\
+    \ is not bytes-like\n        return str(obj)\n\n\ndef _check_argument(param, options,\
+    \ value, prefix=False):\n    \"\"\"Raise if value for param is not in options.\"\
+    \"\"\n    if prefix and value is not None:\n        failure = not any(value.startswith(p)\
+    \ for p in options if isinstance(p, str))\n    else:\n        failure = value\
+    \ not in options\n    if failure:\n        raise ValueError(\n            f\"\
+    The value for `{param}` must be one of {options}, \"\n            f\"but {repr(value)}\
+    \ was passed.\"\n        )\n    return value\n\n\ndef _assign_default_kwargs(kws,\
+    \ call_func, source_func):\n    \"\"\"Assign default kwargs for call_func using\
+    \ values from source_func.\"\"\"\n    # This exists so that axes-level functions\
+    \ and figure-level functions can\n    # both call a Plotter method while having\
+    \ the default kwargs be defined in\n    # the signature of the axes-level function.\n\
+    \    # An alternative would be to have a decorator on the method that sets its\n\
+    \    # defaults based on those defined in the axes-level function.\n    # Then\
+    \ the figure-level function would not need to worry about defaults.\n    # I am\
+    \ not sure which is better.\n    needed = inspect.signature(call_func).parameters\n\
+    \    defaults = inspect.signature(source_func).parameters\n\n    for param in\
+    \ needed:\n        if param in defaults and param not in kws:\n            kws[param]\
+    \ = defaults[param].default\n\n    return kws\n\n\ndef adjust_legend_subtitles(legend):\n\
+    \    \"\"\"\n    Make invisible-handle \"subtitles\" entries look more like titles.\n\
+    \n    Note: This function is not part of the public API and may be changed or\
+    \ removed.\n\n    \"\"\"\n    # Legend title not in rcParams until 3.0\n    font_size\
+    \ = plt.rcParams.get(\"legend.title_fontsize\", None)\n    hpackers = legend.findobj(mpl.offsetbox.VPacker)[0].get_children()\n\
+    \    for hpack in hpackers:\n        draw_area, text_area = hpack.get_children()\n\
+    \        handles = draw_area.get_children()\n        if not all(artist.get_visible()\
+    \ for artist in handles):\n            draw_area.set_width(0)\n            for\
+    \ text in text_area.get_children():\n                if font_size is not None:\n\
+    \                    text.set_size(font_size)\n\n\ndef _deprecate_ci(errorbar,\
+    \ ci):\n    \"\"\"\n    Warn on usage of ci= and convert to appropriate errorbar=\
+    \ arg.\n\n    ci was deprecated when errorbar was added in 0.12. It should not\
+    \ be removed\n    completely for some time, but it can be moved out of function\
+    \ definitions\n    (and extracted from kwargs) after one cycle.\n\n    \"\"\"\n\
+    \    if ci is not deprecated and ci != \"deprecated\":\n        if ci is None:\n\
+    \            errorbar = None\n        elif ci == \"sd\":\n            errorbar\
+    \ = \"sd\"\n        else:\n            errorbar = (\"ci\", ci)\n        msg =\
+    \ (\n            \"\\n\\nThe `ci` parameter is deprecated. \"\n            f\"\
+    Use `errorbar={repr(errorbar)}` for the same effect.\\n\"\n        )\n       \
+    \ warnings.warn(msg, FutureWarning, stacklevel=3)\n\n    return errorbar\n\n\n\
+    def _get_transform_functions(ax, axis):\n    \"\"\"Return the forward and inverse\
+    \ transforms for a given axis.\"\"\"\n    axis_obj = getattr(ax, f\"{axis}axis\"\
+    )\n    transform = axis_obj.get_transform()\n    return transform.transform, transform.inverted().transform\n\
+    \n\n@contextmanager\ndef _disable_autolayout():\n    \"\"\"Context manager for\
+    \ preventing rc-controlled auto-layout behavior.\"\"\"\n    # This is a workaround\
+    \ for an issue in matplotlib, for details see\n    # https://github.com/mwaskom/seaborn/issues/2914\n\
+    \    # The only affect of this rcParam is to set the default value for\n    #\
+    \ layout= in plt.figure, so we could just do that instead.\n    # But then we\
+    \ would need to own the complexity of the transition\n    # from tight_layout=True\
+    \ -> layout=\"tight\". This seems easier,\n    # but can be removed when (if)\
+    \ that is simpler on the matplotlib side,\n    # or if the layout algorithms are\
+    \ improved to handle figure legends.\n    orig_val = mpl.rcParams[\"figure.autolayout\"\
+    ]\n    try:\n        mpl.rcParams[\"figure.autolayout\"] = False\n        yield\n\
+    \    finally:\n        mpl.rcParams[\"figure.autolayout\"] = orig_val\n\n\ndef\
+    \ _version_predates(lib: ModuleType, version: str) -> bool:\n    \"\"\"Helper\
+    \ function for checking version compatibility.\"\"\"\n    return Version(lib.__version__)\
+    \ < Version(version)\n\n\ndef _scatter_legend_artist(**kws):\n\n    kws = normalize_kwargs(kws,\
+    \ mpl.collections.PathCollection)\n\n    edgecolor = kws.pop(\"edgecolor\", None)\n\
+    \    rc = mpl.rcParams\n    line_kws = {\n        \"linestyle\": \"\",\n     \
+    \   \"marker\": kws.pop(\"marker\", \"o\"),\n        \"markersize\": np.sqrt(kws.pop(\"\
+    s\", rc[\"lines.markersize\"] ** 2)),\n        \"markerfacecolor\": kws.pop(\"\
+    facecolor\", kws.get(\"color\")),\n        \"markeredgewidth\": kws.pop(\"linewidth\"\
+    , 0),\n        **kws,\n    }\n\n    if edgecolor is not None:\n        if edgecolor\
+    \ == \"face\":\n            line_kws[\"markeredgecolor\"] = line_kws[\"markerfacecolor\"\
+    ]\n        else:\n            line_kws[\"markeredgecolor\"] = edgecolor\n\n  \
+    \  return mpl.lines.Line2D([], [], **line_kws)\n\n\ndef _get_patch_legend_artist(fill):\n\
+    \n    def legend_artist(**kws):\n\n        color = kws.pop(\"color\", None)\n\
+    \        if color is not None:\n            if fill:\n                kws[\"facecolor\"\
+    ] = color\n            else:\n                kws[\"edgecolor\"] = color\n   \
+    \             kws[\"facecolor\"] = \"none\"\n\n        return mpl.patches.Rectangle((0,\
+    \ 0), 0, 0, **kws)\n\n    return legend_artist\n\n### Source File Dependency Files\
+    \ Content\n### Dependency File: appdirs.py\n#!/usr/bin/env python3\n# Copyright\
+    \ (c) 2005-2010 ActiveState Software Inc.\n# Copyright (c) 2013 Eddy Petrișor\n\
+    \n# flake8: noqa\n\n\"\"\"\nThis file is directly from\nhttps://github.com/ActiveState/appdirs/blob/3fe6a83776843a46f20c2e5587afcffe05e03b39/appdirs.py\n\
+    \nThe license of https://github.com/ActiveState/appdirs copied below:\n\n\n# This\
+    \ is the MIT license\n\nCopyright (c) 2010 ActiveState Software Inc.\n\nPermission\
+    \ is hereby granted, free of charge, to any person obtaining a\ncopy of this software\
+    \ and associated documentation files (the\n\"Software\"), to deal in the Software\
+    \ without restriction, including\nwithout limitation the rights to use, copy,\
+    \ modify, merge, publish,\ndistribute, sublicense, and/or sell copies of the Software,\
+    \ and to\npermit persons to whom the Software is furnished to do so, subject to\n\
+    the following conditions:\n\nThe above copyright notice and this permission notice\
+    \ shall be included\nin all copies or substantial portions of the Software.\n\n\
+    THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS\nOR\
+    \ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\nMERCHANTABILITY, FITNESS\
+    \ FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.\nIN NO EVENT SHALL THE AUTHORS\
+    \ OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER\
+    \ IN AN ACTION OF CONTRACT,\nTORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION\
+    \ WITH THE\nSOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n\"\"\"\n\n\
+    \"\"\"Utilities for determining application-specific dirs.\n\nSee <https://github.com/ActiveState/appdirs>\
+    \ for details and usage.\n\"\"\"\n# Dev Notes:\n# - MSDN on where to store app\
+    \ data files:\n#   http://support.microsoft.com/default.aspx?scid=kb;en-us;310294#XSLTH3194121123120121120120\n\
+    # - Mac OS X: http://developer.apple.com/documentation/MacOSX/Conceptual/BPFileSystem/index.html\n\
+    # - XDG spec for Un*x: https://standards.freedesktop.org/basedir-spec/basedir-spec-latest.html\n\
+    \n__version__ = \"1.4.4\"\n__version_info__ = tuple(int(segment) for segment in\
+    \ __version__.split(\".\"))\n\n\nimport sys\nimport os\n\nunicode = str\n\nif\
+    \ sys.platform.startswith('java'):\n    import platform\n    os_name = platform.java_ver()[3][0]\n\
+    \    if os_name.startswith('Windows'): # \"Windows XP\", \"Windows 7\", etc.\n\
+    \        system = 'win32'\n    elif os_name.startswith('Mac'): # \"Mac OS X\"\
+    , etc.\n        system = 'darwin'\n    else: # \"Linux\", \"SunOS\", \"FreeBSD\"\
+    , etc.\n        # Setting this to \"linux2\" is not ideal, but only Windows or\
+    \ Mac\n        # are actually checked for and the rest of the module expects\n\
+    \        # *sys.platform* style strings.\n        system = 'linux2'\nelse:\n \
+    \   system = sys.platform\n\n\ndef user_cache_dir(appname=None, appauthor=None,\
+    \ version=None, opinion=True):\n    r\"\"\"Return full path to the user-specific\
+    \ cache dir for this application.\n\n        \"appname\" is the name of application.\n\
+    \            If None, just the system directory is returned.\n        \"appauthor\"\
+    \ (only used on Windows) is the name of the\n            appauthor or distributing\
+    \ body for this application. Typically\n            it is the owning company name.\
+    \ This falls back to appname. You may\n            pass False to disable it.\n\
+    \        \"version\" is an optional version path element to append to the\n  \
+    \          path. You might want to use this if you want multiple versions\n  \
+    \          of your app to be able to run independently. If used, this\n      \
+    \      would typically be \"<major>.<minor>\".\n            Only applied when\
+    \ appname is present.\n        \"opinion\" (boolean) can be False to disable the\
+    \ appending of\n            \"Cache\" to the base app data dir for Windows. See\n\
+    \            discussion below.\n\n    Typical user cache directories are:\n  \
+    \      Mac OS X:   ~/Library/Caches/<AppName>\n        Unix:       ~/.cache/<AppName>\
+    \ (XDG default)\n        Win XP:     C:\\Documents and Settings\\<username>\\\
+    Local Settings\\Application Data\\<AppAuthor>\\<AppName>\\Cache\n        Vista:\
+    \      C:\\Users\\<username>\\AppData\\Local\\<AppAuthor>\\<AppName>\\Cache\n\n\
+    \    On Windows the only suggestion in the MSDN docs is that local settings go\
+    \ in\n    the `CSIDL_LOCAL_APPDATA` directory. This is identical to the non-roaming\n\
+    \    app data dir (the default returned by `user_data_dir` above). Apps typically\n\
+    \    put cache data somewhere *under* the given dir here. Some examples:\n   \
+    \     ...\\Mozilla\\Firefox\\Profiles\\<ProfileName>\\Cache\n        ...\\Acme\\\
+    SuperApp\\Cache\\1.0\n    OPINION: This function appends \"Cache\" to the `CSIDL_LOCAL_APPDATA`\
+    \ value.\n    This can be disabled with the `opinion=False` option.\n    \"\"\"\
+    \n    if system == \"win32\":\n        if appauthor is None:\n            appauthor\
+    \ = appname\n        path = os.path.normpath(_get_win_folder(\"CSIDL_LOCAL_APPDATA\"\
+    ))\n        if appname:\n            if appauthor is not False:\n            \
+    \    path = os.path.join(path, appauthor, appname)\n            else:\n      \
+    \          path = os.path.join(path, appname)\n            if opinion:\n     \
+    \           path = os.path.join(path, \"Cache\")\n    elif system == 'darwin':\n\
+    \        path = os.path.expanduser('~/Library/Caches')\n        if appname:\n\
+    \            path = os.path.join(path, appname)\n    else:\n        path = os.getenv('XDG_CACHE_HOME',\
+    \ os.path.expanduser('~/.cache'))\n        if appname:\n            path = os.path.join(path,\
+    \ appname)\n    if appname and version:\n        path = os.path.join(path, version)\n\
+    \    return path\n\n\n#---- internal support stuff\n\ndef _get_win_folder_from_registry(csidl_name):\n\
+    \    \"\"\"This is a fallback technique at best. I'm not sure if using the\n \
+    \   registry for this guarantees us the correct answer for all CSIDL_*\n    names.\n\
+    \    \"\"\"\n    import winreg as _winreg\n\n    shell_folder_name = {\n     \
+    \   \"CSIDL_APPDATA\": \"AppData\",\n        \"CSIDL_COMMON_APPDATA\": \"Common\
+    \ AppData\",\n        \"CSIDL_LOCAL_APPDATA\": \"Local AppData\",\n    }[csidl_name]\n\
+    \n    key = _winreg.OpenKey(\n        _winreg.HKEY_CURRENT_USER,\n        r\"\
+    Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Shell Folders\"\n    )\n\
+    \    dir, type = _winreg.QueryValueEx(key, shell_folder_name)\n    return dir\n\
+    \n\ndef _get_win_folder_with_pywin32(csidl_name):\n    from win32com.shell import\
+    \ shellcon, shell\n    dir = shell.SHGetFolderPath(0, getattr(shellcon, csidl_name),\
+    \ 0, 0)\n    # Try to make this a unicode path because SHGetFolderPath does\n\
+    \    # not return unicode strings when there is unicode data in the\n    # path.\n\
+    \    try:\n        dir = unicode(dir)\n\n        # Downgrade to short path name\
+    \ if have highbit chars. See\n        # <http://bugs.activestate.com/show_bug.cgi?id=85099>.\n\
+    \        has_high_char = False\n        for c in dir:\n            if ord(c) >\
+    \ 255:\n                has_high_char = True\n                break\n        if\
+    \ has_high_char:\n            try:\n                import win32api\n        \
+    \        dir = win32api.GetShortPathName(dir)\n            except ImportError:\n\
+    \                pass\n    except UnicodeError:\n        pass\n    return dir\n\
+    \n\ndef _get_win_folder_with_ctypes(csidl_name):\n    import ctypes\n\n    csidl_const\
+    \ = {\n        \"CSIDL_APPDATA\": 26,\n        \"CSIDL_COMMON_APPDATA\": 35,\n\
+    \        \"CSIDL_LOCAL_APPDATA\": 28,\n    }[csidl_name]\n\n    buf = ctypes.create_unicode_buffer(1024)\n\
+    \    ctypes.windll.shell32.SHGetFolderPathW(None, csidl_const, None, 0, buf)\n\
+    \n    # Downgrade to short path name if have highbit chars. See\n    # <http://bugs.activestate.com/show_bug.cgi?id=85099>.\n\
+    \    has_high_char = False\n    for c in buf:\n        if ord(c) > 255:\n    \
+    \        has_high_char = True\n            break\n    if has_high_char:\n    \
+    \    buf2 = ctypes.create_unicode_buffer(1024)\n        if ctypes.windll.kernel32.GetShortPathNameW(buf.value,\
+    \ buf2, 1024):\n            buf = buf2\n\n    return buf.value\n\ndef _get_win_folder_with_jna(csidl_name):\n\
+    \    import array\n    from com.sun import jna\n    from com.sun.jna.platform\
+    \ import win32\n\n    buf_size = win32.WinDef.MAX_PATH * 2\n    buf = array.zeros('c',\
+    \ buf_size)\n    shell = win32.Shell32.INSTANCE\n    shell.SHGetFolderPath(None,\
+    \ getattr(win32.ShlObj, csidl_name), None, win32.ShlObj.SHGFP_TYPE_CURRENT, buf)\n\
+    \    dir = jna.Native.toString(buf.tostring()).rstrip(\"\\0\")\n\n    # Downgrade\
+    \ to short path name if have highbit chars. See\n    # <http://bugs.activestate.com/show_bug.cgi?id=85099>.\n\
+    \    has_high_char = False\n    for c in dir:\n        if ord(c) > 255:\n    \
+    \        has_high_char = True\n            break\n    if has_high_char:\n    \
+    \    buf = array.zeros('c', buf_size)\n        kernel = win32.Kernel32.INSTANCE\n\
+    \        if kernel.GetShortPathName(dir, buf, buf_size):\n            dir = jna.Native.toString(buf.tostring()).rstrip(\"\
+    \\0\")\n\n    return dir\n\nif system == \"win32\":\n    try:\n        import\
+    \ win32com.shell\n        _get_win_folder = _get_win_folder_with_pywin32\n   \
+    \ except ImportError:\n        try:\n            from ctypes import windll\n \
+    \           _get_win_folder = _get_win_folder_with_ctypes\n        except ImportError:\n\
+    \            try:\n                import com.sun.jna\n                _get_win_folder\
+    \ = _get_win_folder_with_jna\n            except ImportError:\n              \
+    \  _get_win_folder = _get_win_folder_from_registry\n\n\n### Dependency File: typing.py\n\
+    from __future__ import annotations\n\nfrom collections.abc import Iterable, Mapping\n\
+    from datetime import date, datetime, timedelta\nfrom typing import Any, Optional,\
+    \ Union, Tuple, List, Dict\n\nfrom numpy import ndarray  # TODO use ArrayLike?\n\
+    from pandas import Series, Index, Timestamp, Timedelta\nfrom matplotlib.colors\
+    \ import Colormap, Normalize\n\n\nColumnName = Union[\n    str, bytes, date, datetime,\
+    \ timedelta, bool, complex, Timestamp, Timedelta\n]\nVector = Union[Series, Index,\
+    \ ndarray]\n\nVariableSpec = Union[ColumnName, Vector, None]\nVariableSpecList\
+    \ = Union[List[VariableSpec], Index, None]\n\n# A DataSource can be an object\
+    \ implementing __dataframe__, or a Mapping\n# (and is optional in all contexts\
+    \ where it is used).\n# I don't think there's an abc for \"has __dataframe__\"\
+    , so we type as object\n# but keep the (slightly odd) Union alias for better user-facing\
+    \ annotations.\nDataSource = Union[object, Mapping, None]\n\nOrderSpec = Union[Iterable,\
+    \ None]  # TODO technically str is iterable\nNormSpec = Union[Tuple[Optional[float],\
+    \ Optional[float]], Normalize, None]\n\n# TODO for discrete mappings, it would\
+    \ be ideal to use a parameterized type\n# as the dict values / list entries should\
+    \ be of specific type(s) for each method\nPaletteSpec = Union[str, list, dict,\
+    \ Colormap, None]\nDiscreteValueSpec = Union[dict, list, None]\nContinuousValueSpec\
+    \ = Union[\n    Tuple[float, float], List[float], Dict[Any, float], None,\n]\n\
+    \n\nclass Default:\n    def __repr__(self):\n        return \"<default>\"\n\n\n\
+    class Deprecated:\n    def __repr__(self):\n        return \"<deprecated>\"\n\n\
+    \ndefault = Default()\ndeprecated = Deprecated()\n\n\n### Dependency File: version.py\n\
+    \"\"\"Extract reference documentation from the pypa/packaging source tree.\n\n\
+    In the process of copying, some unused methods / classes were removed.\nThese\
+    \ include:\n\n- parse()\n- anything involving LegacyVersion\n\nThis software is\
+    \ made available under the terms of *either* of the licenses\nfound in LICENSE.APACHE\
+    \ or LICENSE.BSD. Contributions to this software is made\nunder the terms of *both*\
+    \ these licenses.\n\nVendored from:\n- https://github.com/pypa/packaging/\n- commit\
+    \ ba07d8287b4554754ac7178d177033ea3f75d489 (09/09/2021)\n\"\"\"\n\n\n# This file\
+    \ is dual licensed under the terms of the Apache License, Version\n# 2.0, and\
+    \ the BSD License. See the LICENSE file in the root of this repository\n# for\
+    \ complete details.\n\n\nimport collections\nimport itertools\nimport re\nfrom\
+    \ typing import Callable, Optional, SupportsInt, Tuple, Union\n\n__all__ = [\"\
+    Version\", \"InvalidVersion\", \"VERSION_PATTERN\"]\n\n\n# Vendored from https://github.com/pypa/packaging/blob/main/packaging/_structures.py\n\
+    \nclass InfinityType:\n    def __repr__(self) -> str:\n        return \"Infinity\"\
+    \n\n    def __hash__(self) -> int:\n        return hash(repr(self))\n\n    def\
+    \ __lt__(self, other: object) -> bool:\n        return False\n\n    def __le__(self,\
+    \ other: object) -> bool:\n        return False\n\n    def __eq__(self, other:\
+    \ object) -> bool:\n        return isinstance(other, self.__class__)\n\n    def\
+    \ __ne__(self, other: object) -> bool:\n        return not isinstance(other, self.__class__)\n\
+    \n    def __gt__(self, other: object) -> bool:\n        return True\n\n    def\
+    \ __ge__(self, other: object) -> bool:\n        return True\n\n    def __neg__(self:\
+    \ object) -> \"NegativeInfinityType\":\n        return NegativeInfinity\n\n\n\
+    Infinity = InfinityType()\n\n\nclass NegativeInfinityType:\n    def __repr__(self)\
+    \ -> str:\n        return \"-Infinity\"\n\n    def __hash__(self) -> int:\n  \
+    \      return hash(repr(self))\n\n    def __lt__(self, other: object) -> bool:\n\
+    \        return True\n\n    def __le__(self, other: object) -> bool:\n       \
+    \ return True\n\n    def __eq__(self, other: object) -> bool:\n        return\
+    \ isinstance(other, self.__class__)\n\n    def __ne__(self, other: object) ->\
+    \ bool:\n        return not isinstance(other, self.__class__)\n\n    def __gt__(self,\
+    \ other: object) -> bool:\n        return False\n\n    def __ge__(self, other:\
+    \ object) -> bool:\n        return False\n\n    def __neg__(self: object) -> InfinityType:\n\
+    \        return Infinity\n\n\nNegativeInfinity = NegativeInfinityType()\n\n\n\
+    # Vendored from https://github.com/pypa/packaging/blob/main/packaging/version.py\n\
+    \nInfiniteTypes = Union[InfinityType, NegativeInfinityType]\nPrePostDevType =\
+    \ Union[InfiniteTypes, Tuple[str, int]]\nSubLocalType = Union[InfiniteTypes, int,\
+    \ str]\nLocalType = Union[\n    NegativeInfinityType,\n    Tuple[\n        Union[\n\
+    \            SubLocalType,\n            Tuple[SubLocalType, str],\n          \
+    \  Tuple[NegativeInfinityType, SubLocalType],\n        ],\n        ...,\n    ],\n\
+    ]\nCmpKey = Tuple[\n    int, Tuple[int, ...], PrePostDevType, PrePostDevType,\
+    \ PrePostDevType, LocalType\n]\nLegacyCmpKey = Tuple[int, Tuple[str, ...]]\nVersionComparisonMethod\
+    \ = Callable[\n    [Union[CmpKey, LegacyCmpKey], Union[CmpKey, LegacyCmpKey]],\
+    \ bool\n]\n\n_Version = collections.namedtuple(\n    \"_Version\", [\"epoch\"\
+    , \"release\", \"dev\", \"pre\", \"post\", \"local\"]\n)\n\n\n\nclass InvalidVersion(ValueError):\n\
+    \    \"\"\"\n    An invalid version was found, users should refer to PEP 440.\n\
+    \    \"\"\"\n\n\nclass _BaseVersion:\n    _key: Union[CmpKey, LegacyCmpKey]\n\n\
+    \    def __hash__(self) -> int:\n        return hash(self._key)\n\n    # Please\
+    \ keep the duplicated `isinstance` check\n    # in the six comparisons hereunder\n\
+    \    # unless you find a way to avoid adding overhead function calls.\n    def\
+    \ __lt__(self, other: \"_BaseVersion\") -> bool:\n        if not isinstance(other,\
+    \ _BaseVersion):\n            return NotImplemented\n\n        return self._key\
+    \ < other._key\n\n    def __le__(self, other: \"_BaseVersion\") -> bool:\n   \
+    \     if not isinstance(other, _BaseVersion):\n            return NotImplemented\n\
+    \n        return self._key <= other._key\n\n    def __eq__(self, other: object)\
+    \ -> bool:\n        if not isinstance(other, _BaseVersion):\n            return\
+    \ NotImplemented\n\n        return self._key == other._key\n\n    def __ge__(self,\
+    \ other: \"_BaseVersion\") -> bool:\n        if not isinstance(other, _BaseVersion):\n\
+    \            return NotImplemented\n\n        return self._key >= other._key\n\
+    \n    def __gt__(self, other: \"_BaseVersion\") -> bool:\n        if not isinstance(other,\
+    \ _BaseVersion):\n            return NotImplemented\n\n        return self._key\
+    \ > other._key\n\n    def __ne__(self, other: object) -> bool:\n        if not\
+    \ isinstance(other, _BaseVersion):\n            return NotImplemented\n\n    \
+    \    return self._key != other._key\n\n\n# Deliberately not anchored to the start\
+    \ and end of the string, to make it\n# easier for 3rd party code to reuse\nVERSION_PATTERN\
+    \ = r\"\"\"\n    v?\n    (?:\n        (?:(?P<epoch>[0-9]+)!)?                \
+    \           # epoch\n        (?P<release>[0-9]+(?:\\.[0-9]+)*)               \
+    \   # release segment\n        (?P<pre>                                      \
+    \    # pre-release\n            [-_\\.]?\n            (?P<pre_l>(a|b|c|rc|alpha|beta|pre|preview))\n\
+    \            [-_\\.]?\n            (?P<pre_n>[0-9]+)?\n        )?\n        (?P<post>\
+    \                                         # post release\n            (?:-(?P<post_n1>[0-9]+))\n\
+    \            |\n            (?:\n                [-_\\.]?\n                (?P<post_l>post|rev|r)\n\
+    \                [-_\\.]?\n                (?P<post_n2>[0-9]+)?\n            )\n\
+    \        )?\n        (?P<dev>                                          # dev release\n\
+    \            [-_\\.]?\n            (?P<dev_l>dev)\n            [-_\\.]?\n    \
+    \        (?P<dev_n>[0-9]+)?\n        )?\n    )\n    (?:\\+(?P<local>[a-z0-9]+(?:[-_\\\
+    .][a-z0-9]+)*))?       # local version\n\"\"\"\n\n\nclass Version(_BaseVersion):\n\
+    \n    _regex = re.compile(r\"^\\s*\" + VERSION_PATTERN + r\"\\s*$\", re.VERBOSE\
+    \ | re.IGNORECASE)\n\n    def __init__(self, version: str) -> None:\n\n      \
+    \  # Validate the version and parse it into pieces\n        match = self._regex.search(version)\n\
+    \        if not match:\n            raise InvalidVersion(f\"Invalid version: '{version}'\"\
+    )\n\n        # Store the parsed out pieces of the version\n        self._version\
+    \ = _Version(\n            epoch=int(match.group(\"epoch\")) if match.group(\"\
+    epoch\") else 0,\n            release=tuple(int(i) for i in match.group(\"release\"\
+    ).split(\".\")),\n            pre=_parse_letter_version(match.group(\"pre_l\"\
+    ), match.group(\"pre_n\")),\n            post=_parse_letter_version(\n       \
+    \         match.group(\"post_l\"), match.group(\"post_n1\") or match.group(\"\
+    post_n2\")\n            ),\n            dev=_parse_letter_version(match.group(\"\
+    dev_l\"), match.group(\"dev_n\")),\n            local=_parse_local_version(match.group(\"\
+    local\")),\n        )\n\n        # Generate a key which will be used for sorting\n\
+    \        self._key = _cmpkey(\n            self._version.epoch,\n            self._version.release,\n\
+    \            self._version.pre,\n            self._version.post,\n           \
+    \ self._version.dev,\n            self._version.local,\n        )\n\n    def __repr__(self)\
+    \ -> str:\n        return f\"<Version('{self}')>\"\n\n    def __str__(self) ->\
+    \ str:\n        parts = []\n\n        # Epoch\n        if self.epoch != 0:\n \
+    \           parts.append(f\"{self.epoch}!\")\n\n        # Release segment\n  \
+    \      parts.append(\".\".join(str(x) for x in self.release))\n\n        # Pre-release\n\
+    \        if self.pre is not None:\n            parts.append(\"\".join(str(x) for\
+    \ x in self.pre))\n\n        # Post-release\n        if self.post is not None:\n\
+    \            parts.append(f\".post{self.post}\")\n\n        # Development release\n\
+    \        if self.dev is not None:\n            parts.append(f\".dev{self.dev}\"\
+    )\n\n        # Local version segment\n        if self.local is not None:\n   \
+    \         parts.append(f\"+{self.local}\")\n\n        return \"\".join(parts)\n\
+    \n    @property\n    def epoch(self) -> int:\n        _epoch: int = self._version.epoch\n\
+    \        return _epoch\n\n    @property\n    def release(self) -> Tuple[int, ...]:\n\
+    \        _release: Tuple[int, ...] = self._version.release\n        return _release\n\
+    \n    @property\n    def pre(self) -> Optional[Tuple[str, int]]:\n        _pre:\
+    \ Optional[Tuple[str, int]] = self._version.pre\n        return _pre\n\n    @property\n\
+    \    def post(self) -> Optional[int]:\n        return self._version.post[1] if\
+    \ self._version.post else None\n\n    @property\n    def dev(self) -> Optional[int]:\n\
+    \        return self._version.dev[1] if self._version.dev else None\n\n    @property\n\
+    \    def local(self) -> Optional[str]:\n        if self._version.local:\n    \
+    \        return \".\".join(str(x) for x in self._version.local)\n        else:\n\
+    \            return None\n\n    @property\n    def public(self) -> str:\n    \
+    \    return str(self).split(\"+\", 1)[0]\n\n    @property\n    def base_version(self)\
+    \ -> str:\n        parts = []\n\n        # Epoch\n        if self.epoch != 0:\n\
+    \            parts.append(f\"{self.epoch}!\")\n\n        # Release segment\n \
+    \       parts.append(\".\".join(str(x) for x in self.release))\n\n        return\
+    \ \"\".join(parts)\n\n    @property\n    def is_prerelease(self) -> bool:\n  \
+    \      return self.dev is not None or self.pre is not None\n\n    @property\n\
+    \    def is_postrelease(self) -> bool:\n        return self.post is not None\n\
+    \n    @property\n    def is_devrelease(self) -> bool:\n        return self.dev\
+    \ is not None\n\n    @property\n    def major(self) -> int:\n        return self.release[0]\
+    \ if len(self.release) >= 1 else 0\n\n    @property\n    def minor(self) -> int:\n\
+    \        return self.release[1] if len(self.release) >= 2 else 0\n\n    @property\n\
+    \    def micro(self) -> int:\n        return self.release[2] if len(self.release)\
+    \ >= 3 else 0\n\n\ndef _parse_letter_version(\n    letter: str, number: Union[str,\
+    \ bytes, SupportsInt]\n) -> Optional[Tuple[str, int]]:\n\n    if letter:\n   \
+    \     # We consider there to be an implicit 0 in a pre-release if there is\n \
+    \       # not a numeral associated with it.\n        if number is None:\n    \
+    \        number = 0\n\n        # We normalize any letters to their lower case\
+    \ form\n        letter = letter.lower()\n\n        # We consider some words to\
+    \ be alternate spellings of other words and\n        # in those cases we want\
+    \ to normalize the spellings to our preferred\n        # spelling.\n        if\
+    \ letter == \"alpha\":\n            letter = \"a\"\n        elif letter == \"\
+    beta\":\n            letter = \"b\"\n        elif letter in [\"c\", \"pre\", \"\
+    preview\"]:\n            letter = \"rc\"\n        elif letter in [\"rev\", \"\
+    r\"]:\n            letter = \"post\"\n\n        return letter, int(number)\n \
+    \   if not letter and number:\n        # We assume if we are given a number, but\
+    \ we are not given a letter\n        # then this is using the implicit post release\
+    \ syntax (e.g. 1.0-1)\n        letter = \"post\"\n\n        return letter, int(number)\n\
+    \n    return None\n\n\n_local_version_separators = re.compile(r\"[\\._-]\")\n\n\
+    \ndef _parse_local_version(local: str) -> Optional[LocalType]:\n    \"\"\"\n \
+    \   Takes a string like abc.1.twelve and turns it into (\"abc\", 1, \"twelve\"\
+    ).\n    \"\"\"\n    if local is not None:\n        return tuple(\n           \
+    \ part.lower() if not part.isdigit() else int(part)\n            for part in _local_version_separators.split(local)\n\
+    \        )\n    return None\n\n\ndef _cmpkey(\n    epoch: int,\n    release: Tuple[int,\
+    \ ...],\n    pre: Optional[Tuple[str, int]],\n    post: Optional[Tuple[str, int]],\n\
+    \    dev: Optional[Tuple[str, int]],\n    local: Optional[Tuple[SubLocalType]],\n\
+    ) -> CmpKey:\n\n    # When we compare a release version, we want to compare it\
+    \ with all of the\n    # trailing zeros removed. So we'll use a reverse the list,\
+    \ drop all the now\n    # leading zeros until we come to something non zero, then\
+    \ take the rest\n    # re-reverse it back into the correct order and make it a\
+    \ tuple and use\n    # that for our sorting key.\n    _release = tuple(\n    \
+    \    reversed(list(itertools.dropwhile(lambda x: x == 0, reversed(release))))\n\
+    \    )\n\n    # We need to \"trick\" the sorting algorithm to put 1.0.dev0 before\
+    \ 1.0a0.\n    # We'll do this by abusing the pre segment, but we _only_ want to\
+    \ do this\n    # if there is not a pre or a post segment. If we have one of those\
+    \ then\n    # the normal sorting rules will handle this case correctly.\n    if\
+    \ pre is None and post is None and dev is not None:\n        _pre: PrePostDevType\
+    \ = NegativeInfinity\n    # Versions without a pre-release (except as noted above)\
+    \ should sort after\n    # those with one.\n    elif pre is None:\n        _pre\
+    \ = Infinity\n    else:\n        _pre = pre\n\n    # Versions without a post segment\
+    \ should sort before those with one.\n    if post is None:\n        _post: PrePostDevType\
+    \ = NegativeInfinity\n\n    else:\n        _post = post\n\n    # Versions without\
+    \ a development segment should sort after those with one.\n    if dev is None:\n\
+    \        _dev: PrePostDevType = Infinity\n\n    else:\n        _dev = dev\n\n\
+    \    if local is None:\n        # Versions without a local segment should sort\
+    \ before those with one.\n        _local: LocalType = NegativeInfinity\n    else:\n\
+    \        # Versions with a local segment need that segment parsed to implement\n\
+    \        # the sorting rules in PEP440.\n        # - Alpha numeric segments sort\
+    \ before numeric segments\n        # - Alpha numeric segments sort lexicographically\n\
+    \        # - Numeric segments sort numerically\n        # - Shorter versions sort\
+    \ before longer versions when the prefixes\n        #   match exactly\n      \
+    \  _local = tuple(\n            (i, \"\") if isinstance(i, int) else (NegativeInfinity,\
+    \ i) for i in local\n        )\n\n    return epoch, _release, _pre, _post, _dev,\
+    \ _local\n\nOutput the complete test file, code only, no explanations.\n### Time\n\
+    Current time: 2025-03-14 17:29:42\n"
+  role: user

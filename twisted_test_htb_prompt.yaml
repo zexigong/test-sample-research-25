@@ -1,0 +1,224 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: twisted\nTest File Path: twisted\\test_htb\\\
+    test_htb.py\nProject Programming Language: Python\nTesting Framework: pytest\n\
+    ### Source File Content\n### Source File Content:\n# -*- test-case-name: twisted.test.test_htb\
+    \ -*-\n# Copyright (c) Twisted Matrix Laboratories.\n# See LICENSE for details.\n\
+    \n\n\"\"\"\nHierarchical Token Bucket traffic shaping.\n\nPatterned after U{Martin\
+    \ Devera's Hierarchical Token Bucket traffic\nshaper for the Linux kernel<http://luxik.cdi.cz/~devik/qos/htb/>}.\n\
+    \n@seealso: U{HTB Linux queuing discipline manual - user guide\n  <http://luxik.cdi.cz/~devik/qos/htb/manual/userg.htm>}\n\
+    @seealso: U{Token Bucket Filter in Linux Advanced Routing & Traffic Control\n\
+    \    HOWTO<http://lartc.org/howto/lartc.qdisc.classless.html#AEN682>}\n\"\"\"\n\
+    \n\n# TODO: Investigate whether we should be using os.times()[-1] instead of\n\
+    # time.time.  time.time, it has been pointed out, can go backwards.  Is\n# the\
+    \ same true of os.times?\nfrom time import time\nfrom typing import Optional\n\
+    \nfrom zope.interface import Interface, implementer\n\nfrom twisted.protocols\
+    \ import pcp\n\n\nclass Bucket:\n    \"\"\"\n    Implementation of a Token bucket.\n\
+    \n    A bucket can hold a certain number of tokens and it drains over time.\n\n\
+    \    @cvar maxburst: The maximum number of tokens that the bucket can\n      \
+    \  hold at any given time. If this is L{None}, the bucket has\n        an infinite\
+    \ size.\n    @type maxburst: C{int}\n    @cvar rate: The rate at which the bucket\
+    \ drains, in number\n        of tokens per second. If the rate is L{None}, the\
+    \ bucket\n        drains instantaneously.\n    @type rate: C{int}\n    \"\"\"\n\
+    \n    maxburst: Optional[int] = None\n    rate: Optional[int] = None\n\n    _refcount\
+    \ = 0\n\n    def __init__(self, parentBucket=None):\n        \"\"\"\n        Create\
+    \ a L{Bucket} that may have a parent L{Bucket}.\n\n        @param parentBucket:\
+    \ If a parent Bucket is specified,\n            all L{add} and L{drip} operations\
+    \ on this L{Bucket}\n            will be applied on the parent L{Bucket} as well.\n\
+    \        @type parentBucket: L{Bucket}\n        \"\"\"\n        self.content =\
+    \ 0\n        self.parentBucket = parentBucket\n        self.lastDrip = time()\n\
+    \n    def add(self, amount):\n        \"\"\"\n        Adds tokens to the L{Bucket}\
+    \ and its C{parentBucket}.\n\n        This will add as many of the C{amount} tokens\
+    \ as will fit into both\n        this L{Bucket} and its C{parentBucket}.\n\n \
+    \       @param amount: The number of tokens to try to add.\n        @type amount:\
+    \ C{int}\n\n        @returns: The number of tokens that actually fit.\n      \
+    \  @returntype: C{int}\n        \"\"\"\n        self.drip()\n        if self.maxburst\
+    \ is None:\n            allowable = amount\n        else:\n            allowable\
+    \ = min(amount, self.maxburst - self.content)\n\n        if self.parentBucket\
+    \ is not None:\n            allowable = self.parentBucket.add(allowable)\n   \
+    \     self.content += allowable\n        return allowable\n\n    def drip(self):\n\
+    \        \"\"\"\n        Let some of the bucket drain.\n\n        The L{Bucket}\
+    \ drains at the rate specified by the class\n        variable C{rate}.\n\n   \
+    \     @returns: C{True} if the bucket is empty after this drip.\n        @returntype:\
+    \ C{bool}\n        \"\"\"\n        if self.parentBucket is not None:\n       \
+    \     self.parentBucket.drip()\n\n        if self.rate is None:\n            self.content\
+    \ = 0\n        else:\n            now = time()\n            deltaTime = now -\
+    \ self.lastDrip\n            deltaTokens = deltaTime * self.rate\n           \
+    \ self.content = max(0, self.content - deltaTokens)\n            self.lastDrip\
+    \ = now\n        return self.content == 0\n\n\nclass IBucketFilter(Interface):\n\
+    \    def getBucketFor(*somethings, **some_kw):\n        \"\"\"\n        Return\
+    \ a L{Bucket} corresponding to the provided parameters.\n\n        @returntype:\
+    \ L{Bucket}\n        \"\"\"\n\n\n@implementer(IBucketFilter)\nclass HierarchicalBucketFilter:\n\
+    \    \"\"\"\n    Filter things into buckets that can be nested.\n\n    @cvar bucketFactory:\
+    \ Class of buckets to make.\n    @type bucketFactory: L{Bucket}\n    @cvar sweepInterval:\
+    \ Seconds between sweeping out the bucket cache.\n    @type sweepInterval: C{int}\n\
+    \    \"\"\"\n\n    bucketFactory = Bucket\n    sweepInterval: Optional[int] =\
+    \ None\n\n    def __init__(self, parentFilter=None):\n        self.buckets = {}\n\
+    \        self.parentFilter = parentFilter\n        self.lastSweep = time()\n\n\
+    \    def getBucketFor(self, *a, **kw):\n        \"\"\"\n        Find or create\
+    \ a L{Bucket} corresponding to the provided parameters.\n\n        Any parameters\
+    \ are passed on to L{getBucketKey}, from them it\n        decides which bucket\
+    \ you get.\n\n        @returntype: L{Bucket}\n        \"\"\"\n        if (self.sweepInterval\
+    \ is not None) and (\n            (time() - self.lastSweep) > self.sweepInterval\n\
+    \        ):\n            self.sweep()\n\n        if self.parentFilter:\n     \
+    \       parentBucket = self.parentFilter.getBucketFor(self, *a, **kw)\n      \
+    \  else:\n            parentBucket = None\n\n        key = self.getBucketKey(*a,\
+    \ **kw)\n        bucket = self.buckets.get(key)\n        if bucket is None:\n\
+    \            bucket = self.bucketFactory(parentBucket)\n            self.buckets[key]\
+    \ = bucket\n        return bucket\n\n    def getBucketKey(self, *a, **kw):\n \
+    \       \"\"\"\n        Construct a key based on the input parameters to choose\
+    \ a L{Bucket}.\n\n        The default implementation returns the same key for\
+    \ all\n        arguments. Override this method to provide L{Bucket} selection.\n\
+    \n        @returns: Something to be used as a key in the bucket cache.\n     \
+    \   \"\"\"\n        return None\n\n    def sweep(self):\n        \"\"\"\n    \
+    \    Remove empty buckets.\n        \"\"\"\n        for key, bucket in self.buckets.items():\n\
+    \            bucket_is_empty = bucket.drip()\n            if (bucket._refcount\
+    \ == 0) and bucket_is_empty:\n                del self.buckets[key]\n\n      \
+    \  self.lastSweep = time()\n\n\nclass FilterByHost(HierarchicalBucketFilter):\n\
+    \    \"\"\"\n    A Hierarchical Bucket filter with a L{Bucket} for each host.\n\
+    \    \"\"\"\n\n    sweepInterval = 60 * 20\n\n    def getBucketKey(self, transport):\n\
+    \        return transport.getPeer()[1]\n\n\nclass FilterByServer(HierarchicalBucketFilter):\n\
+    \    \"\"\"\n    A Hierarchical Bucket filter with a L{Bucket} for each service.\n\
+    \    \"\"\"\n\n    sweepInterval = None\n\n    def getBucketKey(self, transport):\n\
+    \        return transport.getHost()[2]\n\n\nclass ShapedConsumer(pcp.ProducerConsumerProxy):\n\
+    \    \"\"\"\n    Wraps a C{Consumer} and shapes the rate at which it receives\
+    \ data.\n    \"\"\"\n\n    # Providing a Pull interface means I don't have to\
+    \ try to schedule\n    # traffic with callLaters.\n    iAmStreaming = False\n\n\
+    \    def __init__(self, consumer, bucket):\n        pcp.ProducerConsumerProxy.__init__(self,\
+    \ consumer)\n        self.bucket = bucket\n        self.bucket._refcount += 1\n\
+    \n    def _writeSomeData(self, data):\n        # In practice, this actually results\
+    \ in obscene amounts of\n        # overhead, as a result of generating lots and\
+    \ lots of packets\n        # with twelve-byte payloads.  We may need to do a version\
+    \ of\n        # this with scheduled writes after all.\n        amount = self.bucket.add(len(data))\n\
+    \        return pcp.ProducerConsumerProxy._writeSomeData(self, data[:amount])\n\
+    \n    def stopProducing(self):\n        pcp.ProducerConsumerProxy.stopProducing(self)\n\
+    \        self.bucket._refcount -= 1\n\n\nclass ShapedTransport(ShapedConsumer):\n\
+    \    \"\"\"\n    Wraps a C{Transport} and shapes the rate at which it receives\
+    \ data.\n\n    This is a L{ShapedConsumer} with a little bit of magic to provide\
+    \ for\n    the case where the consumer it wraps is also a C{Transport} and people\n\
+    \    will be attempting to access attributes this does not proxy as a\n    C{Consumer}\
+    \ (e.g. C{loseConnection}).\n    \"\"\"\n\n    # Ugh.  We only wanted to filter\
+    \ IConsumer, not ITransport.\n\n    iAmStreaming = False\n\n    def __getattr__(self,\
+    \ name):\n        # Because people will be doing things like .getPeer and\n  \
+    \      # .loseConnection on me.\n        return getattr(self.consumer, name)\n\
+    \n\nclass ShapedProtocolFactory:\n    \"\"\"\n    Dispense C{Protocols} with traffic\
+    \ shaping on their transports.\n\n    Usage::\n\n        myserver = SomeFactory()\n\
+    \        myserver.protocol = ShapedProtocolFactory(myserver.protocol,\n      \
+    \                                            bucketFilter)\n\n    Where C{SomeServerFactory}\
+    \ is a L{twisted.internet.protocol.Factory}, and\n    C{bucketFilter} is an instance\
+    \ of L{HierarchicalBucketFilter}.\n    \"\"\"\n\n    def __init__(self, protoClass,\
+    \ bucketFilter):\n        \"\"\"\n        Tell me what to wrap and where to get\
+    \ buckets.\n\n        @param protoClass: The class of C{Protocol} this will generate\n\
+    \          wrapped instances of.\n        @type protoClass: L{Protocol<twisted.internet.interfaces.IProtocol>}\n\
+    \          class\n        @param bucketFilter: The filter which will determine\
+    \ how\n          traffic is shaped.\n        @type bucketFilter: L{HierarchicalBucketFilter}.\n\
+    \        \"\"\"\n        # More precisely, protoClass can be any callable that\
+    \ will return\n        # instances of something that implements IProtocol.\n \
+    \       self.protocol = protoClass\n        self.bucketFilter = bucketFilter\n\
+    \n    def __call__(self, *a, **kw):\n        \"\"\"\n        Make a C{Protocol}\
+    \ instance with a shaped transport.\n\n        Any parameters will be passed on\
+    \ to the protocol's initializer.\n\n        @returns: A C{Protocol} instance with\
+    \ a L{ShapedTransport}.\n        \"\"\"\n        proto = self.protocol(*a, **kw)\n\
+    \        origMakeConnection = proto.makeConnection\n\n        def makeConnection(transport):\n\
+    \            bucket = self.bucketFilter.getBucketFor(transport)\n            shapedTransport\
+    \ = ShapedTransport(transport, bucket)\n            return origMakeConnection(shapedTransport)\n\
+    \n        proto.makeConnection = makeConnection\n        return proto\n\n### Source\
+    \ File Dependency Files Content\n### Dependency File: pcp.py\n# -*- test-case-name:\
+    \ twisted.test.test_pcp -*-\n# Copyright (c) Twisted Matrix Laboratories.\n# See\
+    \ LICENSE for details.\n\n\"\"\"\nProducer-Consumer Proxy.\n\"\"\"\n\nfrom zope.interface\
+    \ import implementer\n\nfrom twisted.internet import interfaces\n\n\n@implementer(interfaces.IProducer,\
+    \ interfaces.IConsumer)\nclass BasicProducerConsumerProxy:\n    \"\"\"\n    I\
+    \ can act as a man in the middle between any Producer and Consumer.\n\n    @ivar\
+    \ producer: the Producer I subscribe to.\n    @type producer: L{IProducer<interfaces.IProducer>}\n\
+    \    @ivar consumer: the Consumer I publish to.\n    @type consumer: L{IConsumer<interfaces.IConsumer>}\n\
+    \    @ivar paused: As a Producer, am I paused?\n    @type paused: bool\n    \"\
+    \"\"\n\n    consumer = None\n    producer = None\n    producerIsStreaming = None\n\
+    \    iAmStreaming = True\n    outstandingPull = False\n    paused = False\n  \
+    \  stopped = False\n\n    def __init__(self, consumer):\n        self._buffer\
+    \ = []\n        if consumer is not None:\n            self.consumer = consumer\n\
+    \            consumer.registerProducer(self, self.iAmStreaming)\n\n    # Producer\
+    \ methods:\n\n    def pauseProducing(self):\n        self.paused = True\n    \
+    \    if self.producer:\n            self.producer.pauseProducing()\n\n    def\
+    \ resumeProducing(self):\n        self.paused = False\n        if self._buffer:\n\
+    \            # TODO: Check to see if consumer supports writeSeq.\n           \
+    \ self.consumer.write(\"\".join(self._buffer))\n            self._buffer[:] =\
+    \ []\n        else:\n            if not self.iAmStreaming:\n                self.outstandingPull\
+    \ = True\n\n        if self.producer is not None:\n            self.producer.resumeProducing()\n\
+    \n    def stopProducing(self):\n        if self.producer is not None:\n      \
+    \      self.producer.stopProducing()\n        if self.consumer is not None:\n\
+    \            del self.consumer\n\n    # Consumer methods:\n\n    def write(self,\
+    \ data):\n        if self.paused or (not self.iAmStreaming and not self.outstandingPull):\n\
+    \            # We could use that fifo queue here.\n            self._buffer.append(data)\n\
+    \n        elif self.consumer is not None:\n            self.consumer.write(data)\n\
+    \            self.outstandingPull = False\n\n    def finish(self):\n        if\
+    \ self.consumer is not None:\n            self.consumer.finish()\n        self.unregisterProducer()\n\
+    \n    def registerProducer(self, producer, streaming):\n        self.producer\
+    \ = producer\n        self.producerIsStreaming = streaming\n\n    def unregisterProducer(self):\n\
+    \        if self.producer is not None:\n            del self.producer\n      \
+    \      del self.producerIsStreaming\n        if self.consumer:\n            self.consumer.unregisterProducer()\n\
+    \n    def __repr__(self) -> str:\n        return f\"<{self.__class__}@{id(self):x}\
+    \ around {self.consumer}>\"\n\n\nclass ProducerConsumerProxy(BasicProducerConsumerProxy):\n\
+    \    \"\"\"ProducerConsumerProxy with a finite buffer.\n\n    When my buffer fills\
+    \ up, I have my parent Producer pause until my buffer\n    has room in it again.\n\
+    \    \"\"\"\n\n    # Copies much from abstract.FileDescriptor\n    bufferSize\
+    \ = 2**2**2**2\n\n    producerPaused = False\n    unregistered = False\n\n   \
+    \ def pauseProducing(self):\n        # Does *not* call up to ProducerConsumerProxy\
+    \ to relay the pause\n        # message through to my parent Producer.\n     \
+    \   self.paused = True\n\n    def resumeProducing(self):\n        self.paused\
+    \ = False\n        if self._buffer:\n            data = \"\".join(self._buffer)\n\
+    \            bytesSent = self._writeSomeData(data)\n            if bytesSent <\
+    \ len(data):\n                unsent = data[bytesSent:]\n                assert\
+    \ (\n                    not self.iAmStreaming\n                ), \"Streaming\
+    \ producer did not write all its data.\"\n                self._buffer[:] = [unsent]\n\
+    \            else:\n                self._buffer[:] = []\n        else:\n    \
+    \        bytesSent = 0\n\n        if (\n            self.unregistered\n      \
+    \      and bytesSent\n            and not self._buffer\n            and self.consumer\
+    \ is not None\n        ):\n            self.consumer.unregisterProducer()\n\n\
+    \        if not self.iAmStreaming:\n            self.outstandingPull = not bytesSent\n\
+    \n        if self.producer is not None:\n            bytesBuffered = sum(len(s)\
+    \ for s in self._buffer)\n            # TODO: You can see here the potential for\
+    \ high and low\n            # watermarks, where bufferSize would be the high mark\
+    \ when we\n            # ask the upstream producer to pause, and we wouldn't have\n\
+    \            # it resume again until it hit the low mark.  Or if producer\n  \
+    \          # is Pull, maybe we'd like to pull from it as much as necessary\n \
+    \           # to keep our buffer full to the low mark, so we're never caught\n\
+    \            # without something to send.\n            if self.producerPaused\
+    \ and (bytesBuffered < self.bufferSize):\n                # Now that our buffer\
+    \ is empty,\n                self.producerPaused = False\n                self.producer.resumeProducing()\n\
+    \            elif self.outstandingPull:\n                # I did not have any\
+    \ data to write in response to a pull,\n                # so I'd better pull some\
+    \ myself.\n                self.producer.resumeProducing()\n\n    def write(self,\
+    \ data):\n        if self.paused or (not self.iAmStreaming and not self.outstandingPull):\n\
+    \            # We could use that fifo queue here.\n            self._buffer.append(data)\n\
+    \n        elif self.consumer is not None:\n            assert (\n            \
+    \    not self._buffer\n            ), \"Writing fresh data to consumer before\
+    \ my buffer is empty!\"\n            # I'm going to use _writeSomeData here so\
+    \ that there is only one\n            # path to self.consumer.write.  But it doesn't\
+    \ actually make sense,\n            # if I am streaming, for some data to not\
+    \ be all data.  But maybe I\n            # am not streaming, but I am writing\
+    \ here anyway, because there was\n            # an earlier request for data which\
+    \ was not answered.\n            bytesSent = self._writeSomeData(data)\n     \
+    \       self.outstandingPull = False\n            if not bytesSent == len(data):\n\
+    \                assert (\n                    not self.iAmStreaming\n       \
+    \         ), \"Streaming producer did not write all its data.\"\n            \
+    \    self._buffer.append(data[bytesSent:])\n\n        if (self.producer is not\
+    \ None) and self.producerIsStreaming:\n            bytesBuffered = sum(len(s)\
+    \ for s in self._buffer)\n            if bytesBuffered >= self.bufferSize:\n \
+    \               self.producer.pauseProducing()\n                self.producerPaused\
+    \ = True\n\n    def registerProducer(self, producer, streaming):\n        self.unregistered\
+    \ = False\n        BasicProducerConsumerProxy.registerProducer(self, producer,\
+    \ streaming)\n        if not streaming:\n            producer.resumeProducing()\n\
+    \n    def unregisterProducer(self):\n        if self.producer is not None:\n \
+    \           del self.producer\n            del self.producerIsStreaming\n    \
+    \    self.unregistered = True\n        if self.consumer and not self._buffer:\n\
+    \            self.consumer.unregisterProducer()\n\n    def _writeSomeData(self,\
+    \ data):\n        \"\"\"Write as much of this data as possible.\n\n        @returns:\
+    \ The number of bytes written.\n        \"\"\"\n        if self.consumer is None:\n\
+    \            return 0\n        self.consumer.write(data)\n        return len(data)\n\
+    \nOutput the complete test file, code only, no explanations.\n```Python\n<complete\
+    \ test code>\n```\n### Time\nCurrent time: 2025-03-13 17:53:04\n"
+  role: user

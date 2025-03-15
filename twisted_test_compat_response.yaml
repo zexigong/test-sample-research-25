@@ -1,0 +1,34 @@
+response: "```python\n# Copyright (c) Twisted Matrix Laboratories.\n# See LICENSE\
+  \ for details.\n\n\"\"\"\nTests for L{twisted.python.compat}.\n\"\"\"\n\nfrom twisted.python.compat\
+  \ import comparable, cmp\n\n\nclass ComparableTests:\n    \"\"\"\n    Tests for\
+  \ L{comparable}.\n    \"\"\"\n\n    def test_cmp(self):\n        \"\"\"\n      \
+  \  L{cmp} compares two objects and returns a negative number if the first\n    \
+  \    object is less than the second, zero if they are equal, or a positive\n   \
+  \     number if the first object is greater than the second.\n        \"\"\"\n \
+  \       assert cmp(3, 5) < 0\n        assert cmp(3, 3) == 0\n        assert cmp(3,\
+  \ 1) > 0\n        assert cmp(\"abc\", \"def\") < 0\n        assert cmp(\"abc\",\
+  \ \"abc\") == 0\n        assert cmp(\"abc\", \"aaa\") > 0\n\n    def test_comparable(self):\n\
+  \        \"\"\"\n        L{comparable} is a class decorator which adds C{__eq__},\
+  \ C{__ne__},\n        C{__lt__}, C{__le__}, C{__gt__}, and C{__ge__} methods to\
+  \ the decorated\n        class.\n        \"\"\"\n        @comparable\n        class\
+  \ C:\n            \"\"\"\n            A class with a C{__cmp__} method.\n      \
+  \      \"\"\"\n            def __init__(self, value):\n                self.value\
+  \ = value\n\n            def __cmp__(self, other):\n                return cmp(self.value,\
+  \ other.value)\n\n        assert C(3) < C(5)\n        assert C(3) == C(3)\n    \
+  \    assert C(3) > C(1)\n\n    def test_comparableWithNotImplemented(self):\n  \
+  \      \"\"\"\n        If L{comparable} is applied to a class which has a C{__cmp__}\
+  \ method\n        which returns L{NotImplemented} for a given input, the decorated\
+  \ class\n        will return L{NotImplemented} for that input.\n        \"\"\"\n\
+  \        @comparable\n        class C:\n            \"\"\"\n            A class\
+  \ with a C{__cmp__} method.\n            \"\"\"\n            def __cmp__(self, other):\n\
+  \                return NotImplemented\n\n        # Don't call __cmp__\n       \
+  \ assert not C() == None\n        assert C() != None\n        assert not C() < None\n\
+  \        assert not C() <= None\n        assert not C() > None\n        assert not\
+  \ C() >= None\n\n    def test_oldStyleClass(self):\n        \"\"\"\n        L{comparable}\
+  \ can be applied to old-style classes.\n        \"\"\"\n        @comparable\n  \
+  \      class C:\n            \"\"\"\n            An old-style class with a C{__cmp__}\
+  \ method.\n            \"\"\"\n            def __cmp__(self, other):\n         \
+  \       return NotImplemented\n\n        # Don't call __cmp__\n        assert not\
+  \ C() == None\n        assert C() != None\n        assert not C() < None\n     \
+  \   assert not C() <= None\n        assert not C() > None\n        assert not C()\
+  \ >= None\n```"

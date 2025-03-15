@@ -1,0 +1,585 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: seaborn\nTest File Path: seaborn\\test_rcmod\\\
+    test_rcmod.py\nProject Programming Language: Python\nTesting Framework: pytest\n\
+    ### Source File Content\n### Source File Content:\n\"\"\"Control plot style and\
+    \ scaling using the matplotlib rcParams interface.\"\"\"\nimport functools\nimport\
+    \ matplotlib as mpl\nfrom cycler import cycler\nfrom . import palettes\n\n\n__all__\
+    \ = [\"set_theme\", \"set\", \"reset_defaults\", \"reset_orig\",\n           \"\
+    axes_style\", \"set_style\", \"plotting_context\", \"set_context\",\n        \
+    \   \"set_palette\"]\n\n\n_style_keys = [\n\n    \"axes.facecolor\",\n    \"axes.edgecolor\"\
+    ,\n    \"axes.grid\",\n    \"axes.axisbelow\",\n    \"axes.labelcolor\",\n\n \
+    \   \"figure.facecolor\",\n\n    \"grid.color\",\n    \"grid.linestyle\",\n\n\
+    \    \"text.color\",\n\n    \"xtick.color\",\n    \"ytick.color\",\n    \"xtick.direction\"\
+    ,\n    \"ytick.direction\",\n    \"lines.solid_capstyle\",\n\n    \"patch.edgecolor\"\
+    ,\n    \"patch.force_edgecolor\",\n\n    \"image.cmap\",\n    \"font.family\"\
+    ,\n    \"font.sans-serif\",\n\n    \"xtick.bottom\",\n    \"xtick.top\",\n   \
+    \ \"ytick.left\",\n    \"ytick.right\",\n\n    \"axes.spines.left\",\n    \"axes.spines.bottom\"\
+    ,\n    \"axes.spines.right\",\n    \"axes.spines.top\",\n\n]\n\n_context_keys\
+    \ = [\n\n    \"font.size\",\n    \"axes.labelsize\",\n    \"axes.titlesize\",\n\
+    \    \"xtick.labelsize\",\n    \"ytick.labelsize\",\n    \"legend.fontsize\",\n\
+    \    \"legend.title_fontsize\",\n\n    \"axes.linewidth\",\n    \"grid.linewidth\"\
+    ,\n    \"lines.linewidth\",\n    \"lines.markersize\",\n    \"patch.linewidth\"\
+    ,\n\n    \"xtick.major.width\",\n    \"ytick.major.width\",\n    \"xtick.minor.width\"\
+    ,\n    \"ytick.minor.width\",\n\n    \"xtick.major.size\",\n    \"ytick.major.size\"\
+    ,\n    \"xtick.minor.size\",\n    \"ytick.minor.size\",\n\n]\n\n\ndef set_theme(context=\"\
+    notebook\", style=\"darkgrid\", palette=\"deep\",\n              font=\"sans-serif\"\
+    , font_scale=1, color_codes=True, rc=None):\n    \"\"\"\n    Set aspects of the\
+    \ visual theme for all matplotlib and seaborn plots.\n\n    This function changes\
+    \ the global defaults for all plots using the\n    matplotlib rcParams system.\
+    \ The themeing is decomposed into several distinct\n    sets of parameter values.\n\
+    \n    The options are illustrated in the :doc:`aesthetics <../tutorial/aesthetics>`\n\
+    \    and :doc:`color palette <../tutorial/color_palettes>` tutorials.\n\n    Parameters\n\
+    \    ----------\n    context : string or dict\n        Scaling parameters, see\
+    \ :func:`plotting_context`.\n    style : string or dict\n        Axes style parameters,\
+    \ see :func:`axes_style`.\n    palette : string or sequence\n        Color palette,\
+    \ see :func:`color_palette`.\n    font : string\n        Font family, see matplotlib\
+    \ font manager.\n    font_scale : float, optional\n        Separate scaling factor\
+    \ to independently scale the size of the\n        font elements.\n    color_codes\
+    \ : bool\n        If ``True`` and ``palette`` is a seaborn palette, remap the\
+    \ shorthand\n        color codes (e.g. \"b\", \"g\", \"r\", etc.) to the colors\
+    \ from this palette.\n    rc : dict or None\n        Dictionary of rc parameter\
+    \ mappings to override the above.\n\n    Examples\n    --------\n\n    .. include::\
+    \ ../docstrings/set_theme.rst\n\n    \"\"\"\n    set_context(context, font_scale)\n\
+    \    set_style(style, rc={\"font.family\": font})\n    set_palette(palette, color_codes=color_codes)\n\
+    \    if rc is not None:\n        mpl.rcParams.update(rc)\n\n\ndef set(*args, **kwargs):\n\
+    \    \"\"\"\n    Alias for :func:`set_theme`, which is the preferred interface.\n\
+    \n    This function may be removed in the future.\n    \"\"\"\n    set_theme(*args,\
+    \ **kwargs)\n\n\ndef reset_defaults():\n    \"\"\"Restore all RC params to default\
+    \ settings.\"\"\"\n    mpl.rcParams.update(mpl.rcParamsDefault)\n\n\ndef reset_orig():\n\
+    \    \"\"\"Restore all RC params to original settings (respects custom rc).\"\"\
+    \"\n    from . import _orig_rc_params\n    mpl.rcParams.update(_orig_rc_params)\n\
+    \n\ndef axes_style(style=None, rc=None):\n    \"\"\"\n    Get the parameters that\
+    \ control the general style of the plots.\n\n    The style parameters control\
+    \ properties like the color of the background and\n    whether a grid is enabled\
+    \ by default. This is accomplished using the\n    matplotlib rcParams system.\n\
+    \n    The options are illustrated in the\n    :doc:`aesthetics tutorial <../tutorial/aesthetics>`.\n\
+    \n    This function can also be used as a context manager to temporarily\n   \
+    \ alter the global defaults. See :func:`set_theme` or :func:`set_style`\n    to\
+    \ modify the global defaults for all plots.\n\n    Parameters\n    ----------\n\
+    \    style : None, dict, or one of {darkgrid, whitegrid, dark, white, ticks}\n\
+    \        A dictionary of parameters or the name of a preconfigured style.\n  \
+    \  rc : dict, optional\n        Parameter mappings to override the values in the\
+    \ preset seaborn\n        style dictionaries. This only updates parameters that\
+    \ are\n        considered part of the style definition.\n\n    Examples\n    --------\n\
+    \n    .. include:: ../docstrings/axes_style.rst\n\n    \"\"\"\n    if style is\
+    \ None:\n        style_dict = {k: mpl.rcParams[k] for k in _style_keys}\n\n  \
+    \  elif isinstance(style, dict):\n        style_dict = style\n\n    else:\n  \
+    \      styles = [\"white\", \"dark\", \"whitegrid\", \"darkgrid\", \"ticks\"]\n\
+    \        if style not in styles:\n            raise ValueError(f\"style must be\
+    \ one of {', '.join(styles)}\")\n\n        # Define colors here\n        dark_gray\
+    \ = \".15\"\n        light_gray = \".8\"\n\n        # Common parameters\n    \
+    \    style_dict = {\n\n            \"figure.facecolor\": \"white\",\n        \
+    \    \"axes.labelcolor\": dark_gray,\n\n            \"xtick.direction\": \"out\"\
+    ,\n            \"ytick.direction\": \"out\",\n            \"xtick.color\": dark_gray,\n\
+    \            \"ytick.color\": dark_gray,\n\n            \"axes.axisbelow\": True,\n\
+    \            \"grid.linestyle\": \"-\",\n\n\n            \"text.color\": dark_gray,\n\
+    \            \"font.family\": [\"sans-serif\"],\n            \"font.sans-serif\"\
+    : [\"Arial\", \"DejaVu Sans\", \"Liberation Sans\",\n                        \
+    \        \"Bitstream Vera Sans\", \"sans-serif\"],\n\n\n            \"lines.solid_capstyle\"\
+    : \"round\",\n            \"patch.edgecolor\": \"w\",\n            \"patch.force_edgecolor\"\
+    : True,\n\n            \"image.cmap\": \"rocket\",\n\n            \"xtick.top\"\
+    : False,\n            \"ytick.right\": False,\n\n        }\n\n        # Set grid\
+    \ on or off\n        if \"grid\" in style:\n            style_dict.update({\n\
+    \                \"axes.grid\": True,\n            })\n        else:\n       \
+    \     style_dict.update({\n                \"axes.grid\": False,\n           \
+    \ })\n\n        # Set the color of the background, spines, and grids\n       \
+    \ if style.startswith(\"dark\"):\n            style_dict.update({\n\n        \
+    \        \"axes.facecolor\": \"#EAEAF2\",\n                \"axes.edgecolor\"\
+    : \"white\",\n                \"grid.color\": \"white\",\n\n                \"\
+    axes.spines.left\": True,\n                \"axes.spines.bottom\": True,\n   \
+    \             \"axes.spines.right\": True,\n                \"axes.spines.top\"\
+    : True,\n\n            })\n\n        elif style == \"whitegrid\":\n          \
+    \  style_dict.update({\n\n                \"axes.facecolor\": \"white\",\n   \
+    \             \"axes.edgecolor\": light_gray,\n                \"grid.color\"\
+    : light_gray,\n\n                \"axes.spines.left\": True,\n               \
+    \ \"axes.spines.bottom\": True,\n                \"axes.spines.right\": True,\n\
+    \                \"axes.spines.top\": True,\n\n            })\n\n        elif\
+    \ style in [\"white\", \"ticks\"]:\n            style_dict.update({\n\n      \
+    \          \"axes.facecolor\": \"white\",\n                \"axes.edgecolor\"\
+    : dark_gray,\n                \"grid.color\": light_gray,\n\n                \"\
+    axes.spines.left\": True,\n                \"axes.spines.bottom\": True,\n   \
+    \             \"axes.spines.right\": True,\n                \"axes.spines.top\"\
+    : True,\n\n            })\n\n        # Show or hide the axes ticks\n        if\
+    \ style == \"ticks\":\n            style_dict.update({\n                \"xtick.bottom\"\
+    : True,\n                \"ytick.left\": True,\n            })\n        else:\n\
+    \            style_dict.update({\n                \"xtick.bottom\": False,\n \
+    \               \"ytick.left\": False,\n            })\n\n    # Remove entries\
+    \ that are not defined in the base list of valid keys\n    # This lets us handle\
+    \ matplotlib <=/> 2.0\n    style_dict = {k: v for k, v in style_dict.items() if\
+    \ k in _style_keys}\n\n    # Override these settings with the provided rc dictionary\n\
+    \    if rc is not None:\n        rc = {k: v for k, v in rc.items() if k in _style_keys}\n\
+    \        style_dict.update(rc)\n\n    # Wrap in an _AxesStyle object so this can\
+    \ be used in a with statement\n    style_object = _AxesStyle(style_dict)\n\n \
+    \   return style_object\n\n\ndef set_style(style=None, rc=None):\n    \"\"\"\n\
+    \    Set the parameters that control the general style of the plots.\n\n    The\
+    \ style parameters control properties like the color of the background and\n \
+    \   whether a grid is enabled by default. This is accomplished using the\n   \
+    \ matplotlib rcParams system.\n\n    The options are illustrated in the\n    :doc:`aesthetics\
+    \ tutorial <../tutorial/aesthetics>`.\n\n    See :func:`axes_style` to get the\
+    \ parameter values.\n\n    Parameters\n    ----------\n    style : dict, or one\
+    \ of {darkgrid, whitegrid, dark, white, ticks}\n        A dictionary of parameters\
+    \ or the name of a preconfigured style.\n    rc : dict, optional\n        Parameter\
+    \ mappings to override the values in the preset seaborn\n        style dictionaries.\
+    \ This only updates parameters that are\n        considered part of the style\
+    \ definition.\n\n    Examples\n    --------\n\n    .. include:: ../docstrings/set_style.rst\n\
+    \n    \"\"\"\n    style_object = axes_style(style, rc)\n    mpl.rcParams.update(style_object)\n\
+    \n\ndef plotting_context(context=None, font_scale=1, rc=None):\n    \"\"\"\n \
+    \   Get the parameters that control the scaling of plot elements.\n\n    These\
+    \ parameters correspond to label size, line thickness, etc. For more\n    information,\
+    \ see the :doc:`aesthetics tutorial <../tutorial/aesthetics>`.\n\n    The base\
+    \ context is \"notebook\", and the other contexts are \"paper\", \"talk\",\n \
+    \   and \"poster\", which are version of the notebook parameters scaled by different\n\
+    \    values. Font elements can also be scaled independently of (but relative to)\n\
+    \    the other values.\n\n    This function can also be used as a context manager\
+    \ to temporarily\n    alter the global defaults. See :func:`set_theme` or :func:`set_context`\n\
+    \    to modify the global defaults for all plots.\n\n    Parameters\n    ----------\n\
+    \    context : None, dict, or one of {paper, notebook, talk, poster}\n       \
+    \ A dictionary of parameters or the name of a preconfigured set.\n    font_scale\
+    \ : float, optional\n        Separate scaling factor to independently scale the\
+    \ size of the\n        font elements.\n    rc : dict, optional\n        Parameter\
+    \ mappings to override the values in the preset seaborn\n        context dictionaries.\
+    \ This only updates parameters that are\n        considered part of the context\
+    \ definition.\n\n    Examples\n    --------\n\n    .. include:: ../docstrings/plotting_context.rst\n\
+    \n    \"\"\"\n    if context is None:\n        context_dict = {k: mpl.rcParams[k]\
+    \ for k in _context_keys}\n\n    elif isinstance(context, dict):\n        context_dict\
+    \ = context\n\n    else:\n\n        contexts = [\"paper\", \"notebook\", \"talk\"\
+    , \"poster\"]\n        if context not in contexts:\n            raise ValueError(f\"\
+    context must be in {', '.join(contexts)}\")\n\n        # Set up dictionary of\
+    \ default parameters\n        texts_base_context = {\n\n            \"font.size\"\
+    : 12,\n            \"axes.labelsize\": 12,\n            \"axes.titlesize\": 12,\n\
+    \            \"xtick.labelsize\": 11,\n            \"ytick.labelsize\": 11,\n\
+    \            \"legend.fontsize\": 11,\n            \"legend.title_fontsize\":\
+    \ 12,\n\n        }\n\n        base_context = {\n\n            \"axes.linewidth\"\
+    : 1.25,\n            \"grid.linewidth\": 1,\n            \"lines.linewidth\":\
+    \ 1.5,\n            \"lines.markersize\": 6,\n            \"patch.linewidth\"\
+    : 1,\n\n            \"xtick.major.width\": 1.25,\n            \"ytick.major.width\"\
+    : 1.25,\n            \"xtick.minor.width\": 1,\n            \"ytick.minor.width\"\
+    : 1,\n\n            \"xtick.major.size\": 6,\n            \"ytick.major.size\"\
+    : 6,\n            \"xtick.minor.size\": 4,\n            \"ytick.minor.size\":\
+    \ 4,\n\n        }\n        base_context.update(texts_base_context)\n\n       \
+    \ # Scale all the parameters by the same factor depending on the context\n   \
+    \     scaling = dict(paper=.8, notebook=1, talk=1.5, poster=2)[context]\n    \
+    \    context_dict = {k: v * scaling for k, v in base_context.items()}\n\n    \
+    \    # Now independently scale the fonts\n        font_keys = texts_base_context.keys()\n\
+    \        font_dict = {k: context_dict[k] * font_scale for k in font_keys}\n  \
+    \      context_dict.update(font_dict)\n\n    # Override these settings with the\
+    \ provided rc dictionary\n    if rc is not None:\n        rc = {k: v for k, v\
+    \ in rc.items() if k in _context_keys}\n        context_dict.update(rc)\n\n  \
+    \  # Wrap in a _PlottingContext object so this can be used in a with statement\n\
+    \    context_object = _PlottingContext(context_dict)\n\n    return context_object\n\
+    \n\ndef set_context(context=None, font_scale=1, rc=None):\n    \"\"\"\n    Set\
+    \ the parameters that control the scaling of plot elements.\n\n    These parameters\
+    \ correspond to label size, line thickness, etc.\n    Calling this function modifies\
+    \ the global matplotlib `rcParams`. For more\n    information, see the :doc:`aesthetics\
+    \ tutorial <../tutorial/aesthetics>`.\n\n    The base context is \"notebook\"\
+    , and the other contexts are \"paper\", \"talk\",\n    and \"poster\", which are\
+    \ version of the notebook parameters scaled by different\n    values. Font elements\
+    \ can also be scaled independently of (but relative to)\n    the other values.\n\
+    \n    See :func:`plotting_context` to get the parameter values.\n\n    Parameters\n\
+    \    ----------\n    context : dict, or one of {paper, notebook, talk, poster}\n\
+    \        A dictionary of parameters or the name of a preconfigured set.\n    font_scale\
+    \ : float, optional\n        Separate scaling factor to independently scale the\
+    \ size of the\n        font elements.\n    rc : dict, optional\n        Parameter\
+    \ mappings to override the values in the preset seaborn\n        context dictionaries.\
+    \ This only updates parameters that are\n        considered part of the context\
+    \ definition.\n\n    Examples\n    --------\n\n    .. include:: ../docstrings/set_context.rst\n\
+    \n    \"\"\"\n    context_object = plotting_context(context, font_scale, rc)\n\
+    \    mpl.rcParams.update(context_object)\n\n\nclass _RCAesthetics(dict):\n   \
+    \ def __enter__(self):\n        rc = mpl.rcParams\n        self._orig = {k: rc[k]\
+    \ for k in self._keys}\n        self._set(self)\n\n    def __exit__(self, exc_type,\
+    \ exc_value, exc_tb):\n        self._set(self._orig)\n\n    def __call__(self,\
+    \ func):\n        @functools.wraps(func)\n        def wrapper(*args, **kwargs):\n\
+    \            with self:\n                return func(*args, **kwargs)\n      \
+    \  return wrapper\n\n\nclass _AxesStyle(_RCAesthetics):\n    \"\"\"Light wrapper\
+    \ on a dict to set style temporarily.\"\"\"\n    _keys = _style_keys\n    _set\
+    \ = staticmethod(set_style)\n\n\nclass _PlottingContext(_RCAesthetics):\n    \"\
+    \"\"Light wrapper on a dict to set context temporarily.\"\"\"\n    _keys = _context_keys\n\
+    \    _set = staticmethod(set_context)\n\n\ndef set_palette(palette, n_colors=None,\
+    \ desat=None, color_codes=False):\n    \"\"\"Set the matplotlib color cycle using\
+    \ a seaborn palette.\n\n    Parameters\n    ----------\n    palette : seaborn\
+    \ color palette | matplotlib colormap | hls | husl\n        Palette definition.\
+    \ Should be something :func:`color_palette` can process.\n    n_colors : int\n\
+    \        Number of colors in the cycle. The default number of colors will depend\n\
+    \        on the format of ``palette``, see the :func:`color_palette`\n       \
+    \ documentation for more information.\n    desat : float\n        Proportion to\
+    \ desaturate each color by.\n    color_codes : bool\n        If ``True`` and ``palette``\
+    \ is a seaborn palette, remap the shorthand\n        color codes (e.g. \"b\",\
+    \ \"g\", \"r\", etc.) to the colors from this palette.\n\n    See Also\n    --------\n\
+    \    color_palette : build a color palette or set the color cycle temporarily\n\
+    \                    in a ``with`` statement.\n    set_context : set parameters\
+    \ to scale plot elements\n    set_style : set the default parameters for figure\
+    \ style\n\n    \"\"\"\n    colors = palettes.color_palette(palette, n_colors,\
+    \ desat)\n    cyl = cycler('color', colors)\n    mpl.rcParams['axes.prop_cycle']\
+    \ = cyl\n    if color_codes:\n        try:\n            palettes.set_color_codes(palette)\n\
+    \        except (ValueError, TypeError):\n            pass\n\n### Source File\
+    \ Dependency Files Content\n### Dependency File: palettes.py\nimport colorsys\n\
+    from itertools import cycle\n\nimport numpy as np\nimport matplotlib as mpl\n\n\
+    from .external import husl\n\nfrom .utils import desaturate, get_color_cycle\n\
+    from .colors import xkcd_rgb, crayons\nfrom ._compat import get_colormap\n\n\n\
+    __all__ = [\"color_palette\", \"hls_palette\", \"husl_palette\", \"mpl_palette\"\
+    ,\n           \"dark_palette\", \"light_palette\", \"diverging_palette\",\n  \
+    \         \"blend_palette\", \"xkcd_palette\", \"crayon_palette\",\n         \
+    \  \"cubehelix_palette\", \"set_color_codes\"]\n\n\nSEABORN_PALETTES = dict(\n\
+    \    deep=[\"#4C72B0\", \"#DD8452\", \"#55A868\", \"#C44E52\", \"#8172B3\",\n\
+    \          \"#937860\", \"#DA8BC3\", \"#8C8C8C\", \"#CCB974\", \"#64B5CD\"],\n\
+    \    deep6=[\"#4C72B0\", \"#55A868\", \"#C44E52\",\n           \"#8172B3\", \"\
+    #CCB974\", \"#64B5CD\"],\n    muted=[\"#4878D0\", \"#EE854A\", \"#6ACC64\", \"\
+    #D65F5F\", \"#956CB4\",\n           \"#8C613C\", \"#DC7EC0\", \"#797979\", \"\
+    #D5BB67\", \"#82C6E2\"],\n    muted6=[\"#4878D0\", \"#6ACC64\", \"#D65F5F\",\n\
+    \            \"#956CB4\", \"#D5BB67\", \"#82C6E2\"],\n    pastel=[\"#A1C9F4\"\
+    , \"#FFB482\", \"#8DE5A1\", \"#FF9F9B\", \"#D0BBFF\",\n            \"#DEBB9B\"\
+    , \"#FAB0E4\", \"#CFCFCF\", \"#FFFEA3\", \"#B9F2F0\"],\n    pastel6=[\"#A1C9F4\"\
+    , \"#8DE5A1\", \"#FF9F9B\",\n             \"#D0BBFF\", \"#FFFEA3\", \"#B9F2F0\"\
+    ],\n    bright=[\"#023EFF\", \"#FF7C00\", \"#1AC938\", \"#E8000B\", \"#8B2BE2\"\
+    ,\n            \"#9F4800\", \"#F14CC1\", \"#A3A3A3\", \"#FFC400\", \"#00D7FF\"\
+    ],\n    bright6=[\"#023EFF\", \"#1AC938\", \"#E8000B\",\n             \"#8B2BE2\"\
+    , \"#FFC400\", \"#00D7FF\"],\n    dark=[\"#001C7F\", \"#B1400D\", \"#12711C\"\
+    , \"#8C0800\", \"#591E71\",\n          \"#592F0D\", \"#A23582\", \"#3C3C3C\",\
+    \ \"#B8850A\", \"#006374\"],\n    dark6=[\"#001C7F\", \"#12711C\", \"#8C0800\"\
+    ,\n           \"#591E71\", \"#B8850A\", \"#006374\"],\n    colorblind=[\"#0173B2\"\
+    , \"#DE8F05\", \"#029E73\", \"#D55E00\", \"#CC78BC\",\n                \"#CA9161\"\
+    , \"#FBAFE4\", \"#949494\", \"#ECE133\", \"#56B4E9\"],\n    colorblind6=[\"#0173B2\"\
+    , \"#029E73\", \"#D55E00\",\n                 \"#CC78BC\", \"#ECE133\", \"#56B4E9\"\
+    ]\n)\n\n\nMPL_QUAL_PALS = {\n    \"tab10\": 10, \"tab20\": 20, \"tab20b\": 20,\
+    \ \"tab20c\": 20,\n    \"Set1\": 9, \"Set2\": 8, \"Set3\": 12,\n    \"Accent\"\
+    : 8, \"Paired\": 12,\n    \"Pastel1\": 9, \"Pastel2\": 8, \"Dark2\": 8,\n}\n\n\
+    \nQUAL_PALETTE_SIZES = MPL_QUAL_PALS.copy()\nQUAL_PALETTE_SIZES.update({k: len(v)\
+    \ for k, v in SEABORN_PALETTES.items()})\nQUAL_PALETTES = list(QUAL_PALETTE_SIZES.keys())\n\
+    \n\nclass _ColorPalette(list):\n    \"\"\"Set the color palette in a with statement,\
+    \ otherwise be a list.\"\"\"\n    def __enter__(self):\n        \"\"\"Open the\
+    \ context.\"\"\"\n        from .rcmod import set_palette\n        self._orig_palette\
+    \ = color_palette()\n        set_palette(self)\n        return self\n\n    def\
+    \ __exit__(self, *args):\n        \"\"\"Close the context.\"\"\"\n        from\
+    \ .rcmod import set_palette\n        set_palette(self._orig_palette)\n\n    def\
+    \ as_hex(self):\n        \"\"\"Return a color palette with hex codes instead of\
+    \ RGB values.\"\"\"\n        hex = [mpl.colors.rgb2hex(rgb) for rgb in self]\n\
+    \        return _ColorPalette(hex)\n\n    def _repr_html_(self):\n        \"\"\
+    \"Rich display of the color palette in an HTML frontend.\"\"\"\n        s = 55\n\
+    \        n = len(self)\n        html = f'<svg  width=\"{n * s}\" height=\"{s}\"\
+    >'\n        for i, c in enumerate(self.as_hex()):\n            html += (\n   \
+    \             f'<rect x=\"{i * s}\" y=\"0\" width=\"{s}\" height=\"{s}\" style=\"\
+    fill:{c};'\n                'stroke-width:2;stroke:rgb(255,255,255)\"/>'\n   \
+    \         )\n        html += '</svg>'\n        return html\n\n\ndef _patch_colormap_display():\n\
+    \    \"\"\"Simplify the rich display of matplotlib color maps in a notebook.\"\
+    \"\"\n    def _repr_png_(self):\n        \"\"\"Generate a PNG representation of\
+    \ the Colormap.\"\"\"\n        import io\n        from PIL import Image\n    \
+    \    import numpy as np\n        IMAGE_SIZE = (400, 50)\n        X = np.tile(np.linspace(0,\
+    \ 1, IMAGE_SIZE[0]), (IMAGE_SIZE[1], 1))\n        pixels = self(X, bytes=True)\n\
+    \        png_bytes = io.BytesIO()\n        Image.fromarray(pixels).save(png_bytes,\
+    \ format='png')\n        return png_bytes.getvalue()\n\n    def _repr_html_(self):\n\
+    \        \"\"\"Generate an HTML representation of the Colormap.\"\"\"\n      \
+    \  import base64\n        png_bytes = self._repr_png_()\n        png_base64 =\
+    \ base64.b64encode(png_bytes).decode('ascii')\n        return ('<img '\n     \
+    \           + 'alt=\"' + self.name + ' color map\" '\n                + 'title=\"\
+    ' + self.name + '\"'\n                + 'src=\"data:image/png;base64,' + png_base64\
+    \ + '\">')\n\n    mpl.colors.Colormap._repr_png_ = _repr_png_\n    mpl.colors.Colormap._repr_html_\
+    \ = _repr_html_\n\n\ndef color_palette(palette=None, n_colors=None, desat=None,\
+    \ as_cmap=False):\n    \"\"\"Return a list of colors or continuous colormap defining\
+    \ a palette.\n\n    Possible ``palette`` values include:\n        - Name of a\
+    \ seaborn palette (deep, muted, bright, pastel, dark, colorblind)\n        - Name\
+    \ of matplotlib colormap\n        - 'husl' or 'hls'\n        - 'ch:<cubehelix\
+    \ arguments>'\n        - 'light:<color>', 'dark:<color>', 'blend:<color>,<color>',\n\
+    \        - A sequence of colors in any format matplotlib accepts\n\n    Calling\
+    \ this function with ``palette=None`` will return the current\n    matplotlib\
+    \ color cycle.\n\n    This function can also be used in a ``with`` statement to\
+    \ temporarily\n    set the color cycle for a plot or set of plots.\n\n    See\
+    \ the :ref:`tutorial <palette_tutorial>` for more information.\n\n    Parameters\n\
+    \    ----------\n    palette : None, string, or sequence, optional\n        Name\
+    \ of palette or None to return current palette. If a sequence, input\n       \
+    \ colors are used but possibly cycled and desaturated.\n    n_colors : int, optional\n\
+    \        Number of colors in the palette. If ``None``, the default will depend\n\
+    \        on how ``palette`` is specified. Named palettes default to 6 colors,\n\
+    \        but grabbing the current palette or passing in a list of colors will\n\
+    \        not change the number of colors unless this is specified. Asking for\n\
+    \        more colors than exist in the palette will cause it to cycle. Ignored\n\
+    \        when ``as_cmap`` is True.\n    desat : float, optional\n        Proportion\
+    \ to desaturate each color by.\n    as_cmap : bool\n        If True, return a\
+    \ :class:`matplotlib.colors.ListedColormap`.\n\n    Returns\n    -------\n   \
+    \ list of RGB tuples or :class:`matplotlib.colors.ListedColormap`\n\n    See Also\n\
+    \    --------\n    set_palette : Set the default color cycle for all plots.\n\
+    \    set_color_codes : Reassign color codes like ``\"b\"``, ``\"g\"``, etc. to\n\
+    \                      colors from one of the seaborn palettes.\n\n    Examples\n\
+    \    --------\n\n    .. include:: ../docstrings/color_palette.rst\n\n    \"\"\"\
+    \n    if palette is None:\n        palette = get_color_cycle()\n        if n_colors\
+    \ is None:\n            n_colors = len(palette)\n\n    elif not isinstance(palette,\
+    \ str):\n        palette = palette\n        if n_colors is None:\n           \
+    \ n_colors = len(palette)\n    else:\n\n        if n_colors is None:\n       \
+    \     # Use all colors in a qualitative palette or 6 of another kind\n       \
+    \     n_colors = QUAL_PALETTE_SIZES.get(palette, 6)\n\n        if palette in SEABORN_PALETTES:\n\
+    \            # Named \"seaborn variant\" of matplotlib default color cycle\n \
+    \           palette = SEABORN_PALETTES[palette]\n\n        elif palette == \"\
+    hls\":\n            # Evenly spaced colors in cylindrical RGB space\n        \
+    \    palette = hls_palette(n_colors, as_cmap=as_cmap)\n\n        elif palette\
+    \ == \"husl\":\n            # Evenly spaced colors in cylindrical Lab space\n\
+    \            palette = husl_palette(n_colors, as_cmap=as_cmap)\n\n        elif\
+    \ palette.lower() == \"jet\":\n            # Paternalism\n            raise ValueError(\"\
+    No.\")\n\n        elif palette.startswith(\"ch:\"):\n            # Cubehelix palette\
+    \ with params specified in string\n            args, kwargs = _parse_cubehelix_args(palette)\n\
+    \            palette = cubehelix_palette(n_colors, *args, **kwargs, as_cmap=as_cmap)\n\
+    \n        elif palette.startswith(\"light:\"):\n            # light palette to\
+    \ color specified in string\n            _, color = palette.split(\":\")\n   \
+    \         reverse = color.endswith(\"_r\")\n            if reverse:\n        \
+    \        color = color[:-2]\n            palette = light_palette(color, n_colors,\
+    \ reverse=reverse, as_cmap=as_cmap)\n\n        elif palette.startswith(\"dark:\"\
+    ):\n            # light palette to color specified in string\n            _, color\
+    \ = palette.split(\":\")\n            reverse = color.endswith(\"_r\")\n     \
+    \       if reverse:\n                color = color[:-2]\n            palette =\
+    \ dark_palette(color, n_colors, reverse=reverse, as_cmap=as_cmap)\n\n        elif\
+    \ palette.startswith(\"blend:\"):\n            # blend palette between colors\
+    \ specified in string\n            _, colors = palette.split(\":\")\n        \
+    \    colors = colors.split(\",\")\n            palette = blend_palette(colors,\
+    \ n_colors, as_cmap=as_cmap)\n\n        else:\n            try:\n            \
+    \    # Perhaps a named matplotlib colormap?\n                palette = mpl_palette(palette,\
+    \ n_colors, as_cmap=as_cmap)\n            except (ValueError, KeyError):  # Error\
+    \ class changed in mpl36\n                raise ValueError(f\"{palette!r} is not\
+    \ a valid palette name\")\n\n    if desat is not None:\n        palette = [desaturate(c,\
+    \ desat) for c in palette]\n\n    if not as_cmap:\n\n        # Always return as\
+    \ many colors as we asked for\n        pal_cycle = cycle(palette)\n        palette\
+    \ = [next(pal_cycle) for _ in range(n_colors)]\n\n        # Always return in r,\
+    \ g, b tuple format\n        try:\n            palette = map(mpl.colors.colorConverter.to_rgb,\
+    \ palette)\n            palette = _ColorPalette(palette)\n        except ValueError:\n\
+    \            raise ValueError(f\"Could not generate a palette for {palette}\"\
+    )\n\n    return palette\n\n\ndef hls_palette(n_colors=6, h=.01, l=.6, s=.65, as_cmap=False):\
+    \  # noqa\n    \"\"\"\n    Return hues with constant lightness and saturation\
+    \ in the HLS system.\n\n    The hues are evenly sampled along a circular path.\
+    \ The resulting palette will be\n    appropriate for categorical or cyclical data.\n\
+    \n    The `h`, `l`, and `s` values should be between 0 and 1.\n\n    .. note::\n\
+    \        While the separation of the resulting colors will be mathematically\n\
+    \        constant, the HLS system does not construct a perceptually-uniform space,\n\
+    \        so their apparent intensity will vary.\n\n    Parameters\n    ----------\n\
+    \    n_colors : int\n        Number of colors in the palette.\n    h : float\n\
+    \        The value of the first hue.\n    l : float\n        The lightness value.\n\
+    \    s : float\n        The saturation intensity.\n    as_cmap : bool\n      \
+    \  If True, return a matplotlib colormap object.\n\n    Returns\n    -------\n\
+    \    palette\n        list of RGB tuples or :class:`matplotlib.colors.ListedColormap`\n\
+    \n    See Also\n    --------\n    husl_palette : Make a palette using evenly spaced\
+    \ hues in the HUSL system.\n\n    Examples\n    --------\n    .. include:: ../docstrings/hls_palette.rst\n\
+    \n    \"\"\"\n    if as_cmap:\n        n_colors = 256\n    hues = np.linspace(0,\
+    \ 1, int(n_colors) + 1)[:-1]\n    hues += h\n    hues %= 1\n    hues -= hues.astype(int)\n\
+    \    palette = [colorsys.hls_to_rgb(h_i, l, s) for h_i in hues]\n    if as_cmap:\n\
+    \        return mpl.colors.ListedColormap(palette, \"hls\")\n    else:\n     \
+    \   return _ColorPalette(palette)\n\n\ndef husl_palette(n_colors=6, h=.01, s=.9,\
+    \ l=.65, as_cmap=False):  # noqa\n    \"\"\"\n    Return hues with constant lightness\
+    \ and saturation in the HUSL system.\n\n    The hues are evenly sampled along\
+    \ a circular path. The resulting palette will be\n    appropriate for categorical\
+    \ or cyclical data.\n\n    The `h`, `l`, and `s` values should be between 0 and\
+    \ 1.\n\n    This function is similar to :func:`hls_palette`, but it uses a nonlinear\
+    \ color\n    space that is more perceptually uniform.\n\n    Parameters\n    ----------\n\
+    \    n_colors : int\n        Number of colors in the palette.\n    h : float\n\
+    \        The value of the first hue.\n    l : float\n        The lightness value.\n\
+    \    s : float\n        The saturation intensity.\n    as_cmap : bool\n      \
+    \  If True, return a matplotlib colormap object.\n\n    Returns\n    -------\n\
+    \    palette\n        list of RGB tuples or :class:`matplotlib.colors.ListedColormap`\n\
+    \n    See Also\n    --------\n    hls_palette : Make a palette using evenly spaced\
+    \ hues in the HSL system.\n\n    Examples\n    --------\n    .. include:: ../docstrings/husl_palette.rst\n\
+    \n    \"\"\"\n    if as_cmap:\n        n_colors = 256\n    hues = np.linspace(0,\
+    \ 1, int(n_colors) + 1)[:-1]\n    hues += h\n    hues %= 1\n    hues *= 359\n\
+    \    s *= 99\n    l *= 99  # noqa\n    palette = [_color_to_rgb((h_i, s, l), input=\"\
+    husl\") for h_i in hues]\n    if as_cmap:\n        return mpl.colors.ListedColormap(palette,\
+    \ \"hsl\")\n    else:\n        return _ColorPalette(palette)\n\n\ndef mpl_palette(name,\
+    \ n_colors=6, as_cmap=False):\n    \"\"\"\n    Return a palette or colormap from\
+    \ the matplotlib registry.\n\n    For continuous palettes, evenly-spaced discrete\
+    \ samples are chosen while\n    excluding the minimum and maximum value in the\
+    \ colormap to provide better\n    contrast at the extremes.\n\n    For qualitative\
+    \ palettes (e.g. those from colorbrewer), exact values are\n    indexed (rather\
+    \ than interpolated), but fewer than `n_colors` can be returned\n    if the palette\
+    \ does not define that many.\n\n    Parameters\n    ----------\n    name : string\n\
+    \        Name of the palette. This should be a named matplotlib colormap.\n  \
+    \  n_colors : int\n        Number of discrete colors in the palette.\n\n    Returns\n\
+    \    -------\n    list of RGB tuples or :class:`matplotlib.colors.ListedColormap`\n\
+    \n    Examples\n    --------\n    .. include:: ../docstrings/mpl_palette.rst\n\
+    \n    \"\"\"\n    if name.endswith(\"_d\"):\n        sub_name = name[:-2]\n  \
+    \      if sub_name.endswith(\"_r\"):\n            reverse = True\n           \
+    \ sub_name = sub_name[:-2]\n        else:\n            reverse = False\n     \
+    \   pal = color_palette(sub_name, 2) + [\"#333333\"]\n        if reverse:\n  \
+    \          pal = pal[::-1]\n        cmap = blend_palette(pal, n_colors, as_cmap=True)\n\
+    \    else:\n        cmap = get_colormap(name)\n\n    if name in MPL_QUAL_PALS:\n\
+    \        bins = np.linspace(0, 1, MPL_QUAL_PALS[name])[:n_colors]\n    else:\n\
+    \        bins = np.linspace(0, 1, int(n_colors) + 2)[1:-1]\n    palette = list(map(tuple,\
+    \ cmap(bins)[:, :3]))\n\n    if as_cmap:\n        return cmap\n    else:\n   \
+    \     return _ColorPalette(palette)\n\n\ndef _color_to_rgb(color, input):\n  \
+    \  \"\"\"Add some more flexibility to color choices.\"\"\"\n    if input == \"\
+    hls\":\n        color = colorsys.hls_to_rgb(*color)\n    elif input == \"husl\"\
+    :\n        color = husl.husl_to_rgb(*color)\n        color = tuple(np.clip(color,\
+    \ 0, 1))\n    elif input == \"xkcd\":\n        color = xkcd_rgb[color]\n\n   \
+    \ return mpl.colors.to_rgb(color)\n\n\ndef dark_palette(color, n_colors=6, reverse=False,\
+    \ as_cmap=False, input=\"rgb\"):\n    \"\"\"Make a sequential palette that blends\
+    \ from dark to ``color``.\n\n    This kind of palette is good for data that range\
+    \ between relatively\n    uninteresting low values and interesting high values.\n\
+    \n    The ``color`` parameter can be specified in a number of ways, including\n\
+    \    all options for defining a color in matplotlib and several additional\n \
+    \   color spaces that are handled by seaborn. You can also use the database\n\
+    \    of named colors from the XKCD color survey.\n\n    If you are using the IPython\
+    \ notebook, you can also choose this palette\n    interactively with the :func:`choose_dark_palette`\
+    \ function.\n\n    Parameters\n    ----------\n    color : base color for high\
+    \ values\n        hex, rgb-tuple, or html color name\n    n_colors : int, optional\n\
+    \        number of colors in the palette\n    reverse : bool, optional\n     \
+    \   if True, reverse the direction of the blend\n    as_cmap : bool, optional\n\
+    \        If True, return a :class:`matplotlib.colors.ListedColormap`.\n    input\
+    \ : {'rgb', 'hls', 'husl', xkcd'}\n        Color space to interpret the input\
+    \ color. The first three options\n        apply to tuple inputs and the latter\
+    \ applies to string inputs.\n\n    Returns\n    -------\n    palette\n       \
+    \ list of RGB tuples or :class:`matplotlib.colors.ListedColormap`\n\n    See Also\n\
+    \    --------\n    light_palette : Create a sequential palette with bright low\
+    \ values.\n    diverging_palette : Create a diverging palette with two colors.\n\
+    \n    Examples\n    --------\n    .. include:: ../docstrings/dark_palette.rst\n\
+    \n    \"\"\"\n    rgb = _color_to_rgb(color, input)\n    hue, sat, _ = husl.rgb_to_husl(*rgb)\n\
+    \    gray_s, gray_l = .15 * sat, 15\n    gray = _color_to_rgb((hue, gray_s, gray_l),\
+    \ input=\"husl\")\n    colors = [rgb, gray] if reverse else [gray, rgb]\n    return\
+    \ blend_palette(colors, n_colors, as_cmap)\n\n\ndef light_palette(color, n_colors=6,\
+    \ reverse=False, as_cmap=False, input=\"rgb\"):\n    \"\"\"Make a sequential palette\
+    \ that blends from light to ``color``.\n\n    The ``color`` parameter can be specified\
+    \ in a number of ways, including\n    all options for defining a color in matplotlib\
+    \ and several additional\n    color spaces that are handled by seaborn. You can\
+    \ also use the database\n    of named colors from the XKCD color survey.\n\n \
+    \   If you are using a Jupyter notebook, you can also choose this palette\n  \
+    \  interactively with the :func:`choose_light_palette` function.\n\n    Parameters\n\
+    \    ----------\n    color : base color for high values\n        hex code, html\
+    \ color name, or tuple in `input` space.\n    n_colors : int, optional\n     \
+    \   number of colors in the palette\n    reverse : bool, optional\n        if\
+    \ True, reverse the direction of the blend\n    as_cmap : bool, optional\n   \
+    \     If True, return a :class:`matplotlib.colors.ListedColormap`.\n    input\
+    \ : {'rgb', 'hls', 'husl', xkcd'}\n        Color space to interpret the input\
+    \ color. The first three options\n        apply to tuple inputs and the latter\
+    \ applies to string inputs.\n\n    Returns\n    -------\n    palette\n       \
+    \ list of RGB tuples or :class:`matplotlib.colors.ListedColormap`\n\n    See Also\n\
+    \    --------\n    dark_palette : Create a sequential palette with dark low values.\n\
+    \    diverging_palette : Create a diverging palette with two colors.\n\n    Examples\n\
+    \    --------\n    .. include:: ../docstrings/light_palette.rst\n\n    \"\"\"\n\
+    \    rgb = _color_to_rgb(color, input)\n    hue, sat, _ = husl.rgb_to_husl(*rgb)\n\
+    \    gray_s, gray_l = .15 * sat, 95\n    gray = _color_to_rgb((hue, gray_s, gray_l),\
+    \ input=\"husl\")\n    colors = [rgb, gray] if reverse else [gray, rgb]\n    return\
+    \ blend_palette(colors, n_colors, as_cmap)\n\n\ndef diverging_palette(h_neg, h_pos,\
+    \ s=75, l=50, sep=1, n=6,  # noqa\n                      center=\"light\", as_cmap=False):\n\
+    \    \"\"\"Make a diverging palette between two HUSL colors.\n\n    If you are\
+    \ using the IPython notebook, you can also choose this palette\n    interactively\
+    \ with the :func:`choose_diverging_palette` function.\n\n    Parameters\n    ----------\n\
+    \    h_neg, h_pos : float in [0, 359]\n        Anchor hues for negative and positive\
+    \ extents of the map.\n    s : float in [0, 100], optional\n        Anchor saturation\
+    \ for both extents of the map.\n    l : float in [0, 100], optional\n        Anchor\
+    \ lightness for both extents of the map.\n    sep : int, optional\n        Size\
+    \ of the intermediate region.\n    n : int, optional\n        Number of colors\
+    \ in the palette (if not returning a cmap)\n    center : {\"light\", \"dark\"\
+    }, optional\n        Whether the center of the palette is light or dark\n    as_cmap\
+    \ : bool, optional\n        If True, return a :class:`matplotlib.colors.ListedColormap`.\n\
+    \n    Returns\n    -------\n    palette\n        list of RGB tuples or :class:`matplotlib.colors.ListedColormap`\n\
+    \n    See Also\n    --------\n    dark_palette : Create a sequential palette with\
+    \ dark values.\n    light_palette : Create a sequential palette with light values.\n\
+    \n    Examples\n    --------\n    .. include: ../docstrings/diverging_palette.rst\n\
+    \n    \"\"\"\n    palfunc = dict(dark=dark_palette, light=light_palette)[center]\n\
+    \    n_half = int(128 - (sep // 2))\n    neg = palfunc((h_neg, s, l), n_half,\
+    \ reverse=True, input=\"husl\")\n    pos = palfunc((h_pos, s, l), n_half, input=\"\
+    husl\")\n    midpoint = dict(light=[(.95, .95, .95)], dark=[(.133, .133, .133)])[center]\n\
+    \    mid = midpoint * sep\n    pal = blend_palette(np.concatenate([neg, mid, pos]),\
+    \ n, as_cmap=as_cmap)\n    return pal\n\n\ndef blend_palette(colors, n_colors=6,\
+    \ as_cmap=False, input=\"rgb\"):\n    \"\"\"Make a palette that blends between\
+    \ a list of colors.\n\n    Parameters\n    ----------\n    colors : sequence of\
+    \ colors in various formats interpreted by `input`\n        hex code, html color\
+    \ name, or tuple in `input` space.\n    n_colors : int, optional\n        Number\
+    \ of colors in the palette.\n    as_cmap : bool, optional\n        If True, return\
+    \ a :class:`matplotlib.colors.ListedColormap`.\n\n    Returns\n    -------\n \
+    \   palette\n        list of RGB tuples or :class:`matplotlib.colors.ListedColormap`\n\
+    \n    Examples\n    --------\n    .. include: ../docstrings/blend_palette.rst\n\
+    \n    \"\"\"\n    colors = [_color_to_rgb(color, input) for color in colors]\n\
+    \    name = \"blend\"\n    pal = mpl.colors.LinearSegmentedColormap.from_list(name,\
+    \ colors)\n    if not as_cmap:\n        rgb_array = pal(np.linspace(0, 1, int(n_colors)))[:,\
+    \ :3]  # no alpha\n        pal = _ColorPalette(map(tuple, rgb_array))\n    return\
+    \ pal\n\n\ndef xkcd_palette(colors):\n    \"\"\"Make a palette with color names\
+    \ from the xkcd color survey.\n\n    See xkcd for the full list of colors: https://xkcd.com/color/rgb/\n\
+    \n    This is just a simple wrapper around the `seaborn.xkcd_rgb` dictionary.\n\
+    \n    Parameters\n    ----------\n    colors : list of strings\n        List of\
+    \ keys in the `seaborn.xkcd_rgb` dictionary.\n\n    Returns\n    -------\n   \
+    \ palette\n        A list of colors as RGB tuples.\n\n    See Also\n    --------\n\
+    \    crayon_palette : Make a palette with Crayola crayon colors.\n\n    \"\"\"\
+    \n    palette = [xkcd_rgb[name] for name in colors]\n    return color_palette(palette,\
+    \ len(palette))\n\n\ndef crayon_palette(colors):\n    \"\"\"Make a palette with\
+    \ color names from Crayola crayons.\n\n    Colors are taken from here:\n    https://en.wikipedia.org/wiki/List_of_Crayola_crayon_colors\n\
+    \n    This is just a simple wrapper around the `seaborn.crayons` dictionary.\n\
+    \n    Parameters\n    ----------\n    colors : list of strings\n        List of\
+    \ keys in the `seaborn.crayons` dictionary.\n\n    Returns\n    -------\n    palette\n\
+    \        A list of colors as RGB tuples.\n\n    See Also\n    --------\n    xkcd_palette\
+    \ : Make a palette with named colors from the XKCD color survey.\n\n    \"\"\"\
+    \n    palette = [crayons[name] for name in colors]\n    return color_palette(palette,\
+    \ len(palette))\n\n\ndef cubehelix_palette(n_colors=6, start=0, rot=.4, gamma=1.0,\
+    \ hue=0.8,\n                      light=.85, dark=.15, reverse=False, as_cmap=False):\n\
+    \    \"\"\"Make a sequential palette from the cubehelix system.\n\n    This produces\
+    \ a colormap with linearly-decreasing (or increasing)\n    brightness. That means\
+    \ that information will be preserved if printed to\n    black and white or viewed\
+    \ by someone who is colorblind.  \"cubehelix\" is\n    also available as a matplotlib-based\
+    \ palette, but this function gives the\n    user more control over the look of\
+    \ the palette and has a different set of\n    defaults.\n\n    In addition to\
+    \ using this function, it is also possible to generate a\n    cubehelix palette\
+    \ generally in seaborn using a string starting with\n    `ch:` and containing\
+    \ other parameters (e.g. `\"ch:s=.25,r=-.5\"`).\n\n    Parameters\n    ----------\n\
+    \    n_colors : int\n        Number of colors in the palette.\n    start : float,\
+    \ 0 <= start <= 3\n        The hue value at the start of the helix.\n    rot :\
+    \ float\n        Rotations around the hue wheel over the range of the palette.\n\
+    \    gamma : float 0 <= gamma\n        Nonlinearity to emphasize dark (gamma <\
+    \ 1) or light (gamma > 1) colors.\n    hue : float, 0 <= hue <= 1\n        Saturation\
+    \ of the colors.\n    dark : float 0 <= dark <= 1\n        Intensity of the darkest\
+    \ color in the palette.\n    light : float 0 <= light <= 1\n        Intensity\
+    \ of the lightest color in the palette.\n    reverse : bool\n        If True,\
+    \ the palette will go from dark to light.\n    as_cmap : bool\n        If True,\
+    \ return a :class:`matplotlib.colors.ListedColormap`.\n\n    Returns\n    -------\n\
+    \    palette\n        list of RGB tuples or :class:`matplotlib.colors.ListedColormap`\n\
+    \n    See Also\n    --------\n    choose_cubehelix_palette : Launch an interactive\
+    \ widget to select cubehelix\n                               palette parameters.\n\
+    \    dark_palette : Create a sequential palette with dark low values.\n    light_palette\
+    \ : Create a sequential palette with bright low values.\n\n    References\n  \
+    \  ----------\n    Green, D. A. (2011). \"A colour scheme for the display of astronomical\n\
+    \    intensity images\". Bulletin of the Astromical Society of India, Vol. 39,\n\
+    \    p. 289-295.\n\n    Examples\n    --------\n    .. include:: ../docstrings/cubehelix_palette.rst\n\
+    \n    \"\"\"\n    def get_color_function(p0, p1):\n        # Copied from matplotlib\
+    \ because it lives in private module\n        def color(x):\n            # Apply\
+    \ gamma factor to emphasise low or high intensity values\n            xg = x **\
+    \ gamma\n\n            # Calculate amplitude and angle of deviation from the black\n\
+    \            # to white diagonal in the plane of constant\n            # perceived\
+    \ intensity.\n            a = hue * xg * (1 - xg) / 2\n\n            phi = 2 *\
+    \ np.pi * (start / 3 + rot * x)\n\n            return xg + a * (p0 * np.cos(phi)\
+    \ + p1 * np.sin(phi))\n        return color\n\n    cdict = {\n        \"red\"\
+    : get_color_function(-0.14861, 1.78277),\n        \"green\": get_color_function(-0.29227,\
+    \ -0.90649),\n        \"blue\": get_color_function(1.97294, 0.0),\n    }\n\n \
+    \   cmap = mpl.colors.LinearSegmentedColormap(\"cubehelix\", cdict)\n\n    x =\
+    \ np.linspace(light, dark, int(n_colors))\n    pal = cmap(x)[:, :3].tolist()\n\
+    \    if reverse:\n        pal = pal[::-1]\n\n    if as_cmap:\n        x_256 =\
+    \ np.linspace(light, dark, 256)\n        if reverse:\n            x_256 = x_256[::-1]\n\
+    \        pal_256 = cmap(x_256)\n        cmap = mpl.colors.ListedColormap(pal_256,\
+    \ \"seaborn_cubehelix\")\n        return cmap\n    else:\n        return _ColorPalette(pal)\n\
+    \n\ndef _parse_cubehelix_args(argstr):\n    \"\"\"Turn stringified cubehelix params\
+    \ into args/kwargs.\"\"\"\n\n    if argstr.startswith(\"ch:\"):\n        argstr\
+    \ = argstr[3:]\n\n    if argstr.endswith(\"_r\"):\n        reverse = True\n  \
+    \      argstr = argstr[:-2]\n    else:\n        reverse = False\n\n    if not\
+    \ argstr:\n        return [], {\"reverse\": reverse}\n\n    all_args = argstr.split(\"\
+    ,\")\n\n    args = [float(a.strip(\" \")) for a in all_args if \"=\" not in a]\n\
+    \n    kwargs = [a.split(\"=\") for a in all_args if \"=\" in a]\n    kwargs =\
+    \ {k.strip(\" \"): float(v.strip(\" \")) for k, v in kwargs}\n\n    kwarg_map\
+    \ = dict(\n        s=\"start\", r=\"rot\", g=\"gamma\",\n        h=\"hue\", l=\"\
+    light\", d=\"dark\",  # noqa: E741\n    )\n\n    kwargs = {kwarg_map.get(k, k):\
+    \ v for k, v in kwargs.items()}\n\n    if reverse:\n        kwargs[\"reverse\"\
+    ] = True\n\n    return args, kwargs\n\n\ndef set_color_codes(palette=\"deep\"\
+    ):\n    \"\"\"Change how matplotlib color shorthands are interpreted.\n\n    Calling\
+    \ this will change how shorthand codes like \"b\" or \"g\"\n    are interpreted\
+    \ by matplotlib in subsequent plots.\n\n    Parameters\n    ----------\n    palette\
+    \ : {deep, muted, pastel, dark, bright, colorblind}\n        Named seaborn palette\
+    \ to use as the source of colors.\n\n    See Also\n    --------\n    set : Color\
+    \ codes can be set through the high-level seaborn style\n          manager.\n\
+    \    set_palette : Color codes can also be set through the function that\n   \
+    \               sets the matplotlib color cycle.\n\n    \"\"\"\n    if palette\
+    \ == \"reset\":\n        colors = [\n            (0., 0., 1.),\n            (0.,\
+    \ .5, 0.),\n            (1., 0., 0.),\n            (.75, 0., .75),\n         \
+    \   (.75, .75, 0.),\n            (0., .75, .75),\n            (0., 0., 0.)\n \
+    \       ]\n    elif not isinstance(palette, str):\n        err = \"set_color_codes\
+    \ requires a named seaborn palette\"\n        raise TypeError(err)\n    elif palette\
+    \ in SEABORN_PALETTES:\n        if not palette.endswith(\"6\"):\n            palette\
+    \ = palette + \"6\"\n        colors = SEABORN_PALETTES[palette] + [(.1, .1, .1)]\n\
+    \    else:\n        err = f\"Cannot set colors with palette '{palette}'\"\n  \
+    \      raise ValueError(err)\n\n    for code, color in zip(\"bgrmyck\", colors):\n\
+    \        rgb = mpl.colors.colorConverter.to_rgb(color)\n        mpl.colors.colorConverter.colors[code]\
+    \ = rgb\n\nOutput the complete test file, code only, no explanations.\n### Time\n\
+    Current time: 2025-03-14 17:28:31\n"
+  role: user

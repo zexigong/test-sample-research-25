@@ -1,0 +1,96 @@
+response: "```python\n# Copyright (c) Twisted Matrix Laboratories.\n# See LICENSE\
+  \ for details.\n\n\"\"\"\nTests for L{twisted.protocols.htb}.\n\"\"\"\n\nfrom zope.interface\
+  \ import Interface, implementer\n\nfrom twisted.test.proto_helpers import StringTransport\n\
+  from twisted.trial.unittest import TestCase\nfrom twisted.protocols import htb\n\
+  \n\nclass TestBucket(htb.Bucket):\n    rate = 1\n\n\nclass BucketTests(TestCase):\n\
+  \    def testBucketMaxburst(self):\n        \"\"\"\n        L{htb.Bucket} will not\
+  \ allow more tokens than its C{maxburst}\n        to accumulate.\n        \"\"\"\
+  \n        b = TestBucket()\n        b.maxburst = 10\n        b.add(50)\n       \
+  \ self.assertEqual(b.content, 10)\n\n    def testBucketMaxburstUnlimited(self):\n\
+  \        \"\"\"\n        L{htb.Bucket} with C{maxburst} set to L{None} will allow\n\
+  \        unlimited tokens to accumulate.\n        \"\"\"\n        b = TestBucket()\n\
+  \        b.maxburst = None\n        b.add(50)\n        self.assertEqual(b.content,\
+  \ 50)\n\n    def testBucketDrip(self):\n        \"\"\"\n        L{htb.Bucket} will\
+  \ automatically drain at the rate specified by\n        its C{rate}.\n        \"\
+  \"\"\n        b = TestBucket()\n        b.maxburst = 10\n        b.add(10)\n   \
+  \     self.assertFalse(b.drip())\n        b.lastDrip -= 20\n        self.assertTrue(b.drip())\n\
+  \        self.assertEqual(b.content, 0)\n\n    def testBucketDripUnlimited(self):\n\
+  \        \"\"\"\n        L{htb.Bucket} with C{rate} set to L{None} will drain instantly.\n\
+  \        \"\"\"\n        b = TestBucket()\n        b.maxburst = 10\n        b.rate\
+  \ = None\n        b.add(10)\n        self.assertTrue(b.drip())\n        self.assertEqual(b.content,\
+  \ 0)\n\n    def testBucketParent(self):\n        \"\"\"\n        L{htb.Bucket} with\
+  \ a C{parentBucket} specified will add to and\n        drip that C{parentBucket}\
+  \ as well as itself.\n        \"\"\"\n        parent = TestBucket()\n        parent.maxburst\
+  \ = 10\n        parent.add(10)\n        b = TestBucket(parent)\n        b.maxburst\
+  \ = 20\n        b.add(20)\n        b.lastDrip -= 20\n        self.assertTrue(b.drip())\n\
+  \        self.assertEqual(b.content, 0)\n        self.assertEqual(parent.content,\
+  \ 0)\n\n\nclass TestFilter(htb.HierarchicalBucketFilter):\n    bucketFactory = TestBucket\n\
+  \    sweepInterval = 0\n    sweepTime = 0\n\n    def sweep(self):\n        \"\"\"\
+  \n        Overridden to allow tests to control sweep time.\n        \"\"\"\n   \
+  \     for key, bucket in list(self.buckets.items()):\n            if (bucket._refcount\
+  \ == 0) and bucket.drip():\n                del self.buckets[key]\n\n        self.lastSweep\
+  \ = self.sweepTime\n\n\nclass TestFilter1(TestFilter):\n    def getBucketKey(self,\
+  \ someObject):\n        return someObject.attr1\n\n\nclass TestFilter2(TestFilter):\n\
+  \    def getBucketKey(self, someObject):\n        return someObject.attr2\n\n\n\
+  class FilterTests(TestCase):\n    def setUp(self):\n        self.rootFilter = TestFilter()\n\
+  \        self.subFilter = TestFilter1(self.rootFilter)\n        self.filter = TestFilter2(self.subFilter)\n\
+  \n    def testFilter(self):\n        \"\"\"\n        L{htb.HierarchicalBucketFilter}\
+  \ will return L{htb.Buckets} that\n        are added to its cache and will return\
+  \ the same bucket for\n        arguments that map to the same key.\n        \"\"\
+  \"\n        class O:\n            pass\n\n        o1 = O()\n        o2 = O()\n \
+  \       o1.attr1 = 1\n        o2.attr1 = 1\n        o1.attr2 = 1\n        o2.attr2\
+  \ = 2\n        b1 = self.filter.getBucketFor(o1)\n        b2 = self.filter.getBucketFor(o2)\n\
+  \        self.assertIs(b1.parentBucket, b2.parentBucket)\n        self.assertEqual(\n\
+  \            b1.parentBucket.parentBucket, b2.parentBucket.parentBucket\n      \
+  \  )\n        self.assertEqual(\n            b1.parentBucket.parentBucket.parentBucket,\
+  \ b2.parentBucket.parentBucket\n        )\n        self.assertEqual(len(self.rootFilter.buckets),\
+  \ 1)\n        self.assertEqual(len(self.subFilter.buckets), 1)\n        self.assertEqual(len(self.filter.buckets),\
+  \ 2)\n\n    def testFilterSweep(self):\n        \"\"\"\n        L{htb.HierarchicalBucketFilter}\
+  \ will sweep its cache of\n        L{htb.Bucket}s that are empty and have no references.\n\
+  \        \"\"\"\n        class O:\n            pass\n\n        o1 = O()\n      \
+  \  o2 = O()\n        o1.attr1 = 1\n        o2.attr1 = 1\n        o1.attr2 = 1\n\
+  \        o2.attr2 = 2\n        b1 = self.filter.getBucketFor(o1)\n        b2 = self.filter.getBucketFor(o2)\n\
+  \        self.assertIs(b1.parentBucket, b2.parentBucket)\n        self.assertEqual(\n\
+  \            b1.parentBucket.parentBucket, b2.parentBucket.parentBucket\n      \
+  \  )\n        self.assertEqual(\n            b1.parentBucket.parentBucket.parentBucket,\
+  \ b2.parentBucket.parentBucket\n        )\n        self.assertEqual(len(self.rootFilter.buckets),\
+  \ 1)\n        self.assertEqual(len(self.subFilter.buckets), 1)\n        self.assertEqual(len(self.filter.buckets),\
+  \ 2)\n        b1.add(10)\n        self.rootFilter.sweepTime += 1\n        self.rootFilter.sweep()\n\
+  \        self.assertEqual(len(self.rootFilter.buckets), 1)\n        self.assertEqual(len(self.subFilter.buckets),\
+  \ 1)\n        self.assertEqual(len(self.filter.buckets), 2)\n        b1.lastDrip\
+  \ -= 20\n        b1.drip()\n        self.rootFilter.sweepTime += 1\n        self.rootFilter.sweep()\n\
+  \        self.assertEqual(len(self.rootFilter.buckets), 0)\n        self.assertEqual(len(self.subFilter.buckets),\
+  \ 0)\n        self.assertEqual(len(self.filter.buckets), 0)\n\n\nclass IProducerConsumer(Interface):\n\
+  \    def write(data):\n        pass\n\n    def finish():\n        pass\n\n    def\
+  \ registerProducer(producer, streaming):\n        pass\n\n    def unregisterProducer():\n\
+  \        pass\n\n\n@implementer(IProducerConsumer)\nclass ShapedProducerConsumerProxy(htb.ShapedConsumer):\n\
+  \    def __init__(self):\n        self.consumer = StringTransport()\n        self.paused\
+  \ = 0\n        self.resumed = 0\n        self.stopped = 0\n        self.data = []\n\
+  \        self.finished = False\n        self.producer = None\n        self.streaming\
+  \ = None\n        self.unregistered = False\n\n    def write(self, data):\n    \
+  \    self.data.append(data)\n\n    def finish(self):\n        self.finished = True\n\
+  \n    def pauseProducing(self):\n        self.paused += 1\n\n    def resumeProducing(self):\n\
+  \        self.resumed += 1\n\n    def stopProducing(self):\n        self.stopped\
+  \ += 1\n\n    def registerProducer(self, producer, streaming):\n        self.producer\
+  \ = producer\n        self.streaming = streaming\n\n    def unregisterProducer(self):\n\
+  \        self.unregistered = True\n\n    def _writeSomeData(self, data):\n     \
+  \   return htb.ShapedConsumer._writeSomeData(self, data)\n\n\nclass ShapedConsumerTests(TestCase):\n\
+  \    def testShapedConsumer(self):\n        \"\"\"\n        L{htb.ShapedConsumer}\
+  \ will limit writes according to the\n        L{htb.Bucket} it was constructed with.\n\
+  \        \"\"\"\n        b = TestBucket()\n        b.maxburst = 10\n        c =\
+  \ ShapedProducerConsumerProxy()\n        s = htb.ShapedConsumer(c, b)\n        s.registerProducer(c,\
+  \ False)\n        c.producer = s\n        c.streaming = False\n        s.write(\"\
+  x\" * 30)\n        s.write(\"x\" * 30)\n        s.resumeProducing()\n        self.assertEqual(len(c.data[0]),\
+  \ 10)\n        self.assertEqual(len(c.data[1]), 0)\n        self.assertEqual(c.producer,\
+  \ s)\n        self.assertEqual(c.streaming, False)\n        s.resumeProducing()\n\
+  \        self.assertEqual(len(c.data[1]), 10)\n\n\nclass ShapedTransportTests(TestCase):\n\
+  \    def testShapedTransport(self):\n        \"\"\"\n        L{htb.ShapedTransport}\
+  \ will limit writes according to the\n        L{htb.Bucket} it was constructed with.\n\
+  \        \"\"\"\n        b = TestBucket()\n        b.maxburst = 10\n        c =\
+  \ ShapedProducerConsumerProxy()\n        s = htb.ShapedTransport(c, b)\n       \
+  \ s.registerProducer(c, False)\n        c.producer = s\n        c.streaming = False\n\
+  \        s.write(\"x\" * 30)\n        s.write(\"x\" * 30)\n        s.resumeProducing()\n\
+  \        self.assertEqual(len(c.data[0]), 10)\n        self.assertEqual(len(c.data[1]),\
+  \ 0)\n        self.assertEqual(c.producer, s)\n        self.assertEqual(c.streaming,\
+  \ False)\n        s.resumeProducing()\n        self.assertEqual(len(c.data[1]),\
+  \ 10)\n```"

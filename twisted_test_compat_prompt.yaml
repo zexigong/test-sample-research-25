@@ -1,0 +1,587 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: twisted\nTest File Path: twisted\\test_compat\\\
+    test_compat.py\nProject Programming Language: Python\nTesting Framework: pytest\n\
+    ### Source File Content\n### Source File Content:\n# -*- test-case-name: twisted.test.test_compat\
+    \ -*-\n#\n# Copyright (c) Twisted Matrix Laboratories.\n# See LICENSE for details.\n\
+    \n\n\"\"\"\nCompatibility module to provide backwards compatibility for useful\
+    \ Python\nfeatures.\n\nThis is mainly for use of internal Twisted code. We encourage\
+    \ you to use\nthe latest version of Python directly from your code, if possible.\n\
+    \n@var unicode: The type of Unicode strings, C{unicode} on Python 2 and C{str}\n\
+    \    on Python 3.\n\n@var NativeStringIO: An in-memory file-like object that operates\
+    \ on the native\n    string type (bytes in Python 2, unicode in Python 3).\n\n\
+    @var urllib_parse: a URL-parsing module (urlparse on Python 2, urllib.parse on\n\
+    \    Python 3)\n\"\"\"\n\n\nimport inspect\nimport os\nimport platform\nimport\
+    \ socket\nimport urllib.parse as urllib_parse\nfrom collections.abc import Sequence\n\
+    from functools import reduce\nfrom html import escape\nfrom http import cookiejar\
+    \ as cookielib\nfrom io import IOBase, StringIO as NativeStringIO, TextIOBase\n\
+    from sys import intern\nfrom types import FrameType, MethodType as _MethodType\n\
+    from typing import Any, AnyStr, cast\nfrom urllib.parse import quote as urlquote,\
+    \ unquote as urlunquote\n\nfrom incremental import Version\n\nfrom twisted.python.deprecate\
+    \ import deprecated, deprecatedModuleAttribute\n\nif platform.python_implementation()\
+    \ == \"PyPy\":\n    _PYPY = True\nelse:\n    _PYPY = False\n\nFileType = IOBase\n\
+    deprecatedModuleAttribute(\n    Version(\"Twisted\", 21, 2, 0),\n    \"Obsolete\
+    \ alias for io.IOBase\",\n    __name__,\n    \"FileType\",\n)\n\nfrozenset = frozenset\n\
+    deprecatedModuleAttribute(\n    Version(\"Twisted\", 21, 2, 0),\n    \"Obsolete\
+    \ alias for frozenset builtin type\",\n    __name__,\n    \"frozenset\",\n)\n\n\
+    InstanceType = object\ndeprecatedModuleAttribute(\n    Version(\"Twisted\", 21,\
+    \ 2, 0),\n    \"Old-style classes don't exist in Python 3\",\n    __name__,\n\
+    \    \"InstanceType\",\n)\n\nizip = zip\ndeprecatedModuleAttribute(\n    Version(\"\
+    Twisted\", 21, 2, 0),\n    \"Obsolete alias for zip() builtin\",\n    __name__,\n\
+    \    \"izip\",\n)\n\nlong = int\ndeprecatedModuleAttribute(\n    Version(\"Twisted\"\
+    , 21, 2, 0),\n    \"Obsolete alias for int builtin type\",\n    __name__,\n  \
+    \  \"long\",\n)\n\nrange = range\ndeprecatedModuleAttribute(\n    Version(\"Twisted\"\
+    , 21, 2, 0),\n    \"Obsolete alias for range() builtin\",\n    __name__,\n   \
+    \ \"range\",\n)\n\nraw_input = input\ndeprecatedModuleAttribute(\n    Version(\"\
+    Twisted\", 21, 2, 0),\n    \"Obsolete alias for input() builtin\",\n    __name__,\n\
+    \    \"raw_input\",\n)\n\nset = set\ndeprecatedModuleAttribute(\n    Version(\"\
+    Twisted\", 21, 2, 0),\n    \"Obsolete alias for set builtin type\",\n    __name__,\n\
+    \    \"set\",\n)\n\nStringType = str\ndeprecatedModuleAttribute(\n    Version(\"\
+    Twisted\", 21, 2, 0),\n    \"Obsolete alias for str builtin type\",\n    __name__,\n\
+    \    \"StringType\",\n)\n\nunichr = chr\ndeprecatedModuleAttribute(\n    Version(\"\
+    Twisted\", 21, 2, 0),\n    \"Obsolete alias for chr() builtin\",\n    __name__,\n\
+    \    \"unichr\",\n)\n\nunicode = str\ndeprecatedModuleAttribute(\n    Version(\"\
+    Twisted\", 21, 2, 0),\n    \"Obsolete alias for str builtin type\",\n    __name__,\n\
+    \    \"unicode\",\n)\n\nxrange = range\ndeprecatedModuleAttribute(\n    Version(\"\
+    Twisted\", 21, 2, 0),\n    \"Obsolete alias for range() builtin\",\n    __name__,\n\
+    \    \"xrange\",\n)\n\n\n@deprecated(Version(\"Twisted\", 21, 2, 0), replacement=\"\
+    d.items()\")\ndef iteritems(d):\n    \"\"\"\n    Return an iterable of the items\
+    \ of C{d}.\n\n    @type d: L{dict}\n    @rtype: iterable\n    \"\"\"\n    return\
+    \ d.items()\n\n\n@deprecated(Version(\"Twisted\", 21, 2, 0), replacement=\"d.values()\"\
+    )\ndef itervalues(d):\n    \"\"\"\n    Return an iterable of the values of C{d}.\n\
+    \n    @type d: L{dict}\n    @rtype: iterable\n    \"\"\"\n    return d.values()\n\
+    \n\n@deprecated(Version(\"Twisted\", 21, 2, 0), replacement=\"list(d.items())\"\
+    )\ndef items(d):\n    \"\"\"\n    Return a list of the items of C{d}.\n\n    @type\
+    \ d: L{dict}\n    @rtype: L{list}\n    \"\"\"\n    return list(d.items())\n\n\n\
+    def currentframe(n: int = 0) -> FrameType:\n    \"\"\"\n    In Python 3, L{inspect.currentframe}\
+    \ does not take a stack-level argument.\n    Restore that functionality from Python\
+    \ 2 so we don't have to re-implement\n    the C{f_back}-walking loop in places\
+    \ where it's called.\n\n    @param n: The number of stack levels above the caller\
+    \ to walk.\n\n    @return: a frame, n levels up the stack from the caller.\n \
+    \   \"\"\"\n    f = inspect.currentframe()\n    for x in range(n + 1):\n     \
+    \   assert f is not None\n        f = f.f_back\n    assert f is not None\n   \
+    \ return f\n\n\ndef execfile(filename, globals, locals=None):\n    \"\"\"\n  \
+    \  Execute a Python script in the given namespaces.\n\n    Similar to the execfile\
+    \ builtin, but a namespace is mandatory, partly\n    because that's a sensible\
+    \ thing to require, and because otherwise we'd\n    have to do some frame hacking.\n\
+    \n    This is a compatibility implementation for Python 3 porting, to avoid the\n\
+    \    use of the deprecated builtin C{execfile} function.\n    \"\"\"\n    if locals\
+    \ is None:\n        locals = globals\n    with open(filename, \"rb\") as fin:\n\
+    \        source = fin.read()\n    code = compile(source, filename, \"exec\")\n\
+    \    exec(code, globals, locals)\n\n\n# type note: Can't find a Comparable type,\
+    \ despite\n# https://github.com/python/typing/issues/59\ndef cmp(a: object, b:\
+    \ object) -> int:\n    \"\"\"\n    Compare two objects.\n\n    Returns a negative\
+    \ number if C{a < b}, zero if they are equal, and a\n    positive number if C{a\
+    \ > b}.\n    \"\"\"\n    if a < b:  # type: ignore[operator]\n        return -1\n\
+    \    elif a == b:\n        return 0\n    else:\n        return 1\n\n\ndef comparable(klass):\n\
+    \    \"\"\"\n    Class decorator that ensures support for the special C{__cmp__}\
+    \ method.\n\n    C{__eq__}, C{__lt__}, etc. methods are added to the class, relying\
+    \ on\n    C{__cmp__} to implement their comparisons.\n    \"\"\"\n\n    def __eq__(self:\
+    \ Any, other: object) -> bool:\n        c = cast(bool, self.__cmp__(other))\n\
+    \        if c is NotImplemented:\n            return c\n        return c == 0\n\
+    \n    def __ne__(self: Any, other: object) -> bool:\n        c = cast(bool, self.__cmp__(other))\n\
+    \        if c is NotImplemented:\n            return c\n        return c != 0\n\
+    \n    def __lt__(self: Any, other: object) -> bool:\n        c = cast(bool, self.__cmp__(other))\n\
+    \        if c is NotImplemented:\n            return c\n        return c < 0\n\
+    \n    def __le__(self: Any, other: object) -> bool:\n        c = cast(bool, self.__cmp__(other))\n\
+    \        if c is NotImplemented:\n            return c\n        return c <= 0\n\
+    \n    def __gt__(self: Any, other: object) -> bool:\n        c = cast(bool, self.__cmp__(other))\n\
+    \        if c is NotImplemented:\n            return c\n        return c > 0\n\
+    \n    def __ge__(self: Any, other: object) -> bool:\n        c = cast(bool, self.__cmp__(other))\n\
+    \        if c is NotImplemented:\n            return c\n        return c >= 0\n\
+    \n    klass.__lt__ = __lt__\n    klass.__gt__ = __gt__\n    klass.__le__ = __le__\n\
+    \    klass.__ge__ = __ge__\n    klass.__eq__ = __eq__\n    klass.__ne__ = __ne__\n\
+    \    return klass\n\n\ndef ioType(fileIshObject, default=str):\n    \"\"\"\n \
+    \   Determine the type which will be returned from the given file object's\n \
+    \   read() and accepted by its write() method as an argument.\n\n    In other\
+    \ words, determine whether the given file is 'opened in text mode'.\n\n    @param\
+    \ fileIshObject: Any object, but ideally one which resembles a file.\n    @type\
+    \ fileIshObject: L{object}\n\n    @param default: A default value to return when\
+    \ the type of C{fileIshObject}\n        cannot be determined.\n    @type default:\
+    \ L{type}\n\n    @return: There are 3 possible return values:\n\n            1.\
+    \ L{str}, if the file is unambiguously opened in text mode.\n\n            2.\
+    \ L{bytes}, if the file is unambiguously opened in binary mode.\n\n          \
+    \  3. The C{default} parameter, if the given type is not understood.\n\n    @rtype:\
+    \ L{type}\n    \"\"\"\n    if isinstance(fileIshObject, TextIOBase):\n       \
+    \ # If it's for text I/O, then it's for text I/O.\n        return str\n    if\
+    \ isinstance(fileIshObject, IOBase):\n        # If it's for I/O but it's _not_\
+    \ for text I/O, it's for bytes I/O.\n        return bytes\n    encoding = getattr(fileIshObject,\
+    \ \"encoding\", None)\n    import codecs\n\n    if isinstance(fileIshObject, (codecs.StreamReader,\
+    \ codecs.StreamWriter)):\n        # On StreamReaderWriter, the 'encoding' attribute\
+    \ has special meaning;\n        # it is unambiguously text.\n        if encoding:\n\
+    \            return str\n        else:\n            return bytes\n    return default\n\
+    \n\ndef nativeString(s: AnyStr) -> str:\n    \"\"\"\n    Convert C{bytes} or C{str}\
+    \ to C{str} type, using ASCII encoding if\n    conversion is necessary.\n\n  \
+    \  @raise UnicodeError: The input string is not ASCII encodable/decodable.\n \
+    \   @raise TypeError: The input is neither C{bytes} nor C{str}.\n    \"\"\"\n\
+    \    if not isinstance(s, (bytes, str)):\n        raise TypeError(\"%r is neither\
+    \ bytes nor str\" % s)\n    if isinstance(s, bytes):\n        return s.decode(\"\
+    ascii\")\n    else:\n        # Ensure we're limited to ASCII subset:\n       \
+    \ s.encode(\"ascii\")\n    return s\n\n\ndef _matchingString(constantString, inputString):\n\
+    \    \"\"\"\n    Some functions, such as C{os.path.join}, operate on string arguments\
+    \ which\n    may be bytes or text, and wish to return a value of the same type.\
+    \  In\n    those cases you may wish to have a string constant (in the case of\n\
+    \    C{os.path.join}, that constant would be C{os.path.sep}) involved in the\n\
+    \    parsing or processing, that must be of a matching type in order to use\n\
+    \    string operations on it.  L{_matchingString} will take a constant string\n\
+    \    (either L{bytes} or L{str}) and convert it to the same type as the\n    input\
+    \ string.  C{constantString} should contain only characters from ASCII;\n    to\
+    \ ensure this, it will be encoded or decoded regardless.\n\n    @param constantString:\
+    \ A string literal used in processing.\n    @type constantString: L{str} or L{bytes}\n\
+    \n    @param inputString: A byte string or text string provided by the user.\n\
+    \    @type inputString: L{str} or L{bytes}\n\n    @return: C{constantString} converted\
+    \ into the same type as C{inputString}\n    @rtype: the type of C{inputString}\n\
+    \    \"\"\"\n    if isinstance(constantString, bytes):\n        otherType = constantString.decode(\"\
+    ascii\")\n    else:\n        otherType = constantString.encode(\"ascii\")\n  \
+    \  if type(constantString) == type(inputString):\n        return constantString\n\
+    \    else:\n        return otherType\n\n\n@deprecated(\n    Version(\"Twisted\"\
+    , 21, 2, 0),\n    replacement=\"raise exception.with_traceback(traceback)\",\n\
+    )\ndef reraise(exception, traceback):\n    \"\"\"\n    Re-raise an exception,\
+    \ with an optional traceback.\n\n    Re-raised exceptions will be mutated, with\
+    \ their C{__traceback__} attribute\n    being set.\n\n    @param exception: The\
+    \ exception instance.\n    @param traceback: The traceback to use, or L{None}\
+    \ indicating a new\n    traceback.\n    \"\"\"\n    raise exception.with_traceback(traceback)\n\
+    \n\ndef iterbytes(originalBytes):\n    \"\"\"\n    Return an iterable wrapper\
+    \ for a C{bytes} object that provides the behavior\n    of iterating over C{bytes}\
+    \ on Python 2.\n\n    In particular, the results of iteration are the individual\
+    \ bytes (rather\n    than integers as on Python 3).\n\n    @param originalBytes:\
+    \ A C{bytes} object that will be wrapped.\n    \"\"\"\n    for i in range(len(originalBytes)):\n\
+    \        yield originalBytes[i : i + 1]\n\n\n@deprecated(Version(\"Twisted\",\
+    \ 21, 2, 0), replacement=\"b'%d'\")\ndef intToBytes(i: int) -> bytes:\n    \"\"\
+    \"\n    Convert the given integer into C{bytes}, as ASCII-encoded Arab numeral.\n\
+    \n    @param i: The C{int} to convert to C{bytes}.\n    @rtype: C{bytes}\n   \
+    \ \"\"\"\n    return b\"%d\" % (i,)\n\n\ndef lazyByteSlice(object, offset=0, size=None):\n\
+    \    \"\"\"\n    Return a memory view of the given bytes-like object.\n\n    If\
+    \ an offset is given, the view starts at that offset. If a size is\n    given,\
+    \ the view will only be of that length.\n\n    @param object: C{bytes} to be sliced.\n\
+    \n    @param offset: C{int}, starting index of view.\n\n    @param size: Optional,\
+    \ if an C{int} is given limit the length of the view\n        to this size.\n\
+    \    \"\"\"\n    view = memoryview(object)\n    if size is None:\n        return\
+    \ view[offset:]\n    else:\n        return view[offset : (offset + size)]\n\n\n\
+    def networkString(s: str) -> bytes:\n    \"\"\"\n    Convert a string to L{bytes}\
+    \ using ASCII encoding.\n\n    This is useful for sending text-like bytes that\
+    \ are constructed using\n    string interpolation.  For example::\n\n        networkString(\"\
+    Hello %d\" % (n,))\n\n    @param s: A string to convert to bytes.\n    @type s:\
+    \ L{str}\n\n    @raise UnicodeError: The input string is not ASCII encodable.\n\
+    \    @raise TypeError: The input is not L{str}.\n\n    @rtype: L{bytes}\n    \"\
+    \"\"\n    if not isinstance(s, str):\n        raise TypeError(\"Can only convert\
+    \ strings to bytes\")\n    return s.encode(\"ascii\")\n\n\n@deprecated(Version(\"\
+    Twisted\", 21, 2, 0), replacement=\"os.environb\")\ndef bytesEnviron():\n    \"\
+    \"\"\n    Return a L{dict} of L{os.environ} where all text-strings are encoded\
+    \ into\n    L{bytes}.\n\n    This function is POSIX only; environment variables\
+    \ are always text strings\n    on Windows.\n    \"\"\"\n    encodekey = os.environ.encodekey\n\
+    \    encodevalue = os.environ.encodevalue\n\n    return {encodekey(x): encodevalue(y)\
+    \ for x, y in os.environ.items()}\n\n\ndef _constructMethod(cls, name, self):\n\
+    \    \"\"\"\n    Construct a bound method.\n\n    @param cls: The class that the\
+    \ method should be bound to.\n    @type cls: L{type}\n\n    @param name: The name\
+    \ of the method.\n    @type name: native L{str}\n\n    @param self: The object\
+    \ that the method is bound to.\n    @type self: any object\n\n    @return: a bound\
+    \ method\n    @rtype: L{_MethodType}\n    \"\"\"\n    func = cls.__dict__[name]\n\
+    \    return _MethodType(func, self)\n\n\ndef _pypy3BlockingHack():\n    \"\"\"\
+    \n    Work around U{https://foss.heptapod.net/pypy/pypy/-/issues/3051}\n    by\
+    \ replacing C{socket.fromfd} with a more conservative version.\n    \"\"\"\n \
+    \   try:\n        from fcntl import F_GETFL, F_SETFL, fcntl\n    except ImportError:\n\
+    \        return\n    if not _PYPY:\n        return\n\n    def fromFDWithoutModifyingFlags(fd,\
+    \ family, type, proto=None):\n        passproto = [proto] * (proto is not None)\n\
+    \        flags = fcntl(fd, F_GETFL)\n        try:\n            return realFromFD(fd,\
+    \ family, type, *passproto)\n        finally:\n            fcntl(fd, F_SETFL,\
+    \ flags)\n\n    realFromFD = socket.fromfd\n    if realFromFD.__name__ == fromFDWithoutModifyingFlags.__name__:\n\
+    \        return\n    socket.fromfd = fromFDWithoutModifyingFlags\n\n\n_pypy3BlockingHack()\n\
+    \n\ndeprecatedModuleAttribute(\n    Version(\"Twisted\", 21, 2, 0),\n    \"Use\
+    \ functools.reduce() directly\",\n    __name__,\n    \"reduce\",\n)\n\ndeprecatedModuleAttribute(\n\
+    \    Version(\"Twisted\", 21, 2, 0),\n    \"Use io.StringIO directly\",\n    __name__,\n\
+    \    \"NativeStringIO\",\n)\n\ndeprecatedModuleAttribute(\n    Version(\"Twisted\"\
+    , 21, 2, 0),\n    \"Import urllib.parse directly\",\n    __name__,\n    \"urllib_parse\"\
+    ,\n)\n\ndeprecatedModuleAttribute(\n    Version(\"Twisted\", 21, 2, 0), \"Use\
+    \ html.escape directly\", __name__, \"escape\"\n)\n\ndeprecatedModuleAttribute(\n\
+    \    Version(\"Twisted\", 21, 2, 0),\n    \"Use urllib.parse.quote() directly\"\
+    ,\n    __name__,\n    \"urlquote\",\n)\n\ndeprecatedModuleAttribute(\n    Version(\"\
+    Twisted\", 21, 2, 0),\n    \"Use urllib.parse.unquote() directly\",\n    __name__,\n\
+    \    \"urlunquote\",\n)\n\ndeprecatedModuleAttribute(\n    Version(\"Twisted\"\
+    , 21, 2, 0),\n    \"Use http.cookiejar directly\",\n    __name__,\n    \"cookielib\"\
+    ,\n)\n\ndeprecatedModuleAttribute(\n    Version(\"Twisted\", 21, 2, 0), \"Use\
+    \ sys.intern() directly\", __name__, \"intern\"\n)\n\ndeprecatedModuleAttribute(\n\
+    \    Version(\"Twisted\", 21, 2, 0),\n    \"Use collections.abc.Sequence directly\"\
+    ,\n    __name__,\n    \"Sequence\",\n)\n\n\n__all__ = [\n    \"reraise\",\n  \
+    \  \"execfile\",\n    \"frozenset\",\n    \"reduce\",\n    \"set\",\n    \"cmp\"\
+    ,\n    \"comparable\",\n    \"nativeString\",\n    \"NativeStringIO\",\n    \"\
+    networkString\",\n    \"unicode\",\n    \"iterbytes\",\n    \"intToBytes\",\n\
+    \    \"lazyByteSlice\",\n    \"StringType\",\n    \"InstanceType\",\n    \"FileType\"\
+    ,\n    \"items\",\n    \"iteritems\",\n    \"itervalues\",\n    \"range\",\n \
+    \   \"xrange\",\n    \"urllib_parse\",\n    \"bytesEnviron\",\n    \"escape\"\
+    ,\n    \"urlquote\",\n    \"urlunquote\",\n    \"cookielib\",\n    \"intern\"\
+    ,\n    \"unichr\",\n    \"raw_input\",\n    \"Sequence\",\n]\n\n### Source File\
+    \ Dependency Files Content\n### Dependency File: deprecate.py\n# -*- test-case-name:\
+    \ twisted.python.test.test_deprecate -*-\n# Copyright (c) Twisted Matrix Laboratories.\n\
+    # See LICENSE for details.\n\n\"\"\"\nDeprecation framework for Twisted.\n\nTo\
+    \ mark a method, function, or class as being deprecated do this::\n\n    from\
+    \ incremental import Version\n    from twisted.python.deprecate import deprecated\n\
+    \n    @deprecated(Version(\"Twisted\", 22, 10, 0))\n    def badAPI(self, first,\
+    \ second):\n        '''\n        Docstring for badAPI.\n        '''\n        ...\n\
+    \n    @deprecated(Version(\"Twisted\", 22, 10, 0))\n    class BadClass:\n    \
+    \    '''\n        Docstring for BadClass.\n        '''\n\nThe newly-decorated\
+    \ badAPI will issue a warning when called, and BadClass will\nissue a warning\
+    \ when instantiated. Both will also have  a deprecation notice\nappended to their\
+    \ docstring.\n\nTo deprecate properties you can use::\n\n    from incremental\
+    \ import Version\n    from twisted.python.deprecate import deprecatedProperty\n\
+    \n    class OtherwiseUndeprecatedClass:\n\n        @deprecatedProperty(Version(\"\
+    Twisted\", 22, 10, 0))\n        def badProperty(self):\n            '''\n    \
+    \        Docstring for badProperty.\n            '''\n\n        @badProperty.setter\n\
+    \        def badProperty(self, value):\n            '''\n            Setter sill\
+    \ also raise the deprecation warning.\n            '''\n\n\nWhile it's best to\
+    \ avoid this as it adds performance overhead to *any* usage of\nthe module, to\
+    \ mark module-level attributes as being deprecated you can use::\n\n    badAttribute\
+    \ = \"someValue\"\n\n    ...\n\n    deprecatedModuleAttribute(\n        Version(\"\
+    Twisted\", 22, 10, 0),\n        \"Use goodAttribute instead.\",\n        \"your.full.module.name\"\
+    ,\n        \"badAttribute\")\n\nThe deprecated attributes will issue a warning\
+    \ whenever they are accessed. If\nthe attributes being deprecated are in the same\
+    \ module as the\nL{deprecatedModuleAttribute} call is being made from, the C{__name__}\
+    \ global\ncan be used as the C{moduleName} parameter.\n\n\nTo mark an optional,\
+    \ keyword parameter of a function or method as deprecated\nwithout deprecating\
+    \ the function itself, you can use::\n\n    @deprecatedKeywordParameter(Version(\"\
+    Twisted\", 22, 10, 0), \"baz\")\n    def someFunction(foo, bar=0, baz=None):\n\
+    \        ...\n\nSee also L{incremental.Version}.\n\n@type DEPRECATION_WARNING_FORMAT:\
+    \ C{str}\n@var DEPRECATION_WARNING_FORMAT: The default deprecation warning string\
+    \ format\n    to use when one is not provided by the user.\n\"\"\"\nfrom __future__\
+    \ import annotations\n\n__all__ = [\n    \"deprecated\",\n    \"deprecatedProperty\"\
+    ,\n    \"getDeprecationWarningString\",\n    \"getWarningMethod\",\n    \"setWarningMethod\"\
+    ,\n    \"deprecatedModuleAttribute\",\n    \"deprecatedKeywordParameter\",\n]\n\
+    \n\nimport inspect\nimport sys\nfrom dis import findlinestarts\nfrom functools\
+    \ import wraps\nfrom types import ModuleType\nfrom typing import Any, Callable,\
+    \ Dict, Optional, TypeVar, cast\nfrom warnings import warn, warn_explicit\n\n\
+    from incremental import Version, getVersionString\nfrom typing_extensions import\
+    \ ParamSpec\n\n_P = ParamSpec(\"_P\")\n_R = TypeVar(\"_R\")\n\nDEPRECATION_WARNING_FORMAT\
+    \ = \"%(fqpn)s was deprecated in %(version)s\"\n\n# Notionally, part of twisted.python.reflect,\
+    \ but defining it there causes a\n# cyclic dependency between this module and\
+    \ that module.  Define it here,\n# instead, and let reflect import it to re-expose\
+    \ to the public.\n\n\ndef _fullyQualifiedName(obj):\n    \"\"\"\n    Return the\
+    \ fully qualified name of a module, class, method or function.\n    Classes and\
+    \ functions need to be module level ones to be correctly\n    qualified.\n\n \
+    \   @rtype: C{str}.\n    \"\"\"\n    try:\n        name = obj.__qualname__\n \
+    \   except AttributeError:\n        name = obj.__name__\n\n    if inspect.isclass(obj)\
+    \ or inspect.isfunction(obj):\n        moduleName = obj.__module__\n        return\
+    \ f\"{moduleName}.{name}\"\n    elif inspect.ismethod(obj):\n        return f\"\
+    {obj.__module__}.{obj.__qualname__}\"\n    return name\n\n\n# Try to keep it looking\
+    \ like something in twisted.python.reflect.\n_fullyQualifiedName.__module__ =\
+    \ \"twisted.python.reflect\"\n_fullyQualifiedName.__name__ = \"fullyQualifiedName\"\
+    \n_fullyQualifiedName.__qualname__ = \"fullyQualifiedName\"\n\n\ndef _getReplacementString(replacement):\n\
+    \    \"\"\"\n    Surround a replacement for a deprecated API with some polite\
+    \ text exhorting\n    the user to consider it as an alternative.\n\n    @type\
+    \ replacement: C{str} or callable\n\n    @return: a string like \"please use twisted.python.modules.getModule\n\
+    \        instead\".\n    \"\"\"\n    if callable(replacement):\n        replacement\
+    \ = _fullyQualifiedName(replacement)\n    return f\"please use {replacement} instead\"\
+    \n\n\ndef _getDeprecationDocstring(version, replacement=None):\n    \"\"\"\n \
+    \   Generate an addition to a deprecated object's docstring that explains its\n\
+    \    deprecation.\n\n    @param version: the version it was deprecated.\n    @type\
+    \ version: L{incremental.Version}\n\n    @param replacement: The replacement,\
+    \ if specified.\n    @type replacement: C{str} or callable\n\n    @return: a string\
+    \ like \"Deprecated in Twisted 27.2.0; please use\n        twisted.timestream.tachyon.flux\
+    \ instead.\"\n    \"\"\"\n    doc = f\"Deprecated in {getVersionString(version)}\"\
+    \n    if replacement:\n        doc = f\"{doc}; {_getReplacementString(replacement)}\"\
+    \n    return doc + \".\"\n\n\ndef _getDeprecationWarningString(fqpn, version,\
+    \ format=None, replacement=None):\n    \"\"\"\n    Return a string indicating\
+    \ that the Python name was deprecated in the given\n    version.\n\n    @param\
+    \ fqpn: Fully qualified Python name of the thing being deprecated\n    @type fqpn:\
+    \ C{str}\n\n    @param version: Version that C{fqpn} was deprecated in.\n    @type\
+    \ version: L{incremental.Version}\n\n    @param format: A user-provided format\
+    \ to interpolate warning values into, or\n        L{DEPRECATION_WARNING_FORMAT\n\
+    \        <twisted.python.deprecate.DEPRECATION_WARNING_FORMAT>} if L{None} is\n\
+    \        given.\n    @type format: C{str}\n\n    @param replacement: what should\
+    \ be used in place of C{fqpn}. Either pass in\n        a string, which will be\
+    \ inserted into the warning message, or a\n        callable, which will be expanded\
+    \ to its full import path.\n    @type replacement: C{str} or callable\n\n    @return:\
+    \ A textual description of the deprecation\n    @rtype: C{str}\n    \"\"\"\n \
+    \   if format is None:\n        format = DEPRECATION_WARNING_FORMAT\n    warningString\
+    \ = format % {\"fqpn\": fqpn, \"version\": getVersionString(version)}\n    if\
+    \ replacement:\n        warningString = \"{}; {}\".format(\n            warningString,\
+    \ _getReplacementString(replacement)\n        )\n    return warningString\n\n\n\
+    def getDeprecationWarningString(callableThing, version, format=None, replacement=None):\n\
+    \    \"\"\"\n    Return a string indicating that the callable was deprecated in\
+    \ the given\n    version.\n\n    @type callableThing: C{callable}\n    @param\
+    \ callableThing: Callable object to be deprecated\n\n    @type version: L{incremental.Version}\n\
+    \    @param version: Version that C{callableThing} was deprecated in.\n\n    @type\
+    \ format: C{str}\n    @param format: A user-provided format to interpolate warning\
+    \ values into,\n        or L{DEPRECATION_WARNING_FORMAT\n        <twisted.python.deprecate.DEPRECATION_WARNING_FORMAT>}\
+    \ if L{None} is\n        given\n\n    @param replacement: what should be used\
+    \ in place of the callable. Either\n        pass in a string, which will be inserted\
+    \ into the warning message,\n        or a callable, which will be expanded to\
+    \ its full import path.\n    @type replacement: C{str} or callable\n\n    @return:\
+    \ A string describing the deprecation.\n    @rtype: C{str}\n    \"\"\"\n    return\
+    \ _getDeprecationWarningString(\n        _fullyQualifiedName(callableThing), version,\
+    \ format, replacement\n    )\n\n\ndef _appendToDocstring(thingWithDoc, textToAppend):\n\
+    \    \"\"\"\n    Append the given text to the docstring of C{thingWithDoc}.\n\n\
+    \    If C{thingWithDoc} has no docstring, then the text just replaces the\n  \
+    \  docstring. If it has a single-line docstring then it appends a blank line\n\
+    \    and the message text. If it has a multi-line docstring, then in appends a\n\
+    \    blank line a the message text, and also does the indentation correctly.\n\
+    \    \"\"\"\n    if thingWithDoc.__doc__:\n        docstringLines = thingWithDoc.__doc__.splitlines()\n\
+    \    else:\n        docstringLines = []\n\n    if len(docstringLines) == 0:\n\
+    \        docstringLines.append(textToAppend)\n    elif len(docstringLines) ==\
+    \ 1:\n        docstringLines.extend([\"\", textToAppend, \"\"])\n    else:\n \
+    \       trailer = docstringLines[-1]\n        spaces = \"\"\n        if not trailer.strip():\n\
+    \            # Deal with differences between Python 3.13 and older versions.\n\
+    \            spaces = docstringLines.pop()\n        docstringLines.extend([\"\"\
+    , spaces + textToAppend, spaces])\n        docstringLines = [l.lstrip(\" \") for\
+    \ l in docstringLines]\n    thingWithDoc.__doc__ = \"\\n\".join(docstringLines)\n\
+    \n\ndef deprecated(\n    version: Version, replacement: str | Callable[..., object]\
+    \ | None = None\n) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:\n    \"\"\
+    \"\n    Return a decorator that marks callables as deprecated. To deprecate a\n\
+    \    property, see L{deprecatedProperty}.\n\n    @type version: L{incremental.Version}\n\
+    \    @param version: The version in which the callable will be marked as\n   \
+    \     having been deprecated.  The decorated function will be annotated\n    \
+    \    with this version, having it set as its C{deprecatedVersion}\n        attribute.\n\
+    \n    @param replacement: what should be used in place of the callable. Either\n\
+    \        pass in a string, which will be inserted into the warning message,\n\
+    \        or a callable, which will be expanded to its full import path.\n    @type\
+    \ replacement: C{str} or callable\n    \"\"\"\n\n    def deprecationDecorator(function:\
+    \ Callable[_P, _R]) -> Callable[_P, _R]:\n        \"\"\"\n        Decorator that\
+    \ marks C{function} as deprecated.\n        \"\"\"\n        warningString = getDeprecationWarningString(\n\
+    \            function, version, None, replacement\n        )\n\n        @wraps(function)\n\
+    \        def deprecatedFunction(*args: _P.args, **kwargs: _P.kwargs) -> _R:\n\
+    \            warn(warningString, DeprecationWarning, stacklevel=2)\n         \
+    \   return function(*args, **kwargs)\n\n        _appendToDocstring(\n        \
+    \    deprecatedFunction, _getDeprecationDocstring(version, replacement)\n    \
+    \    )\n        deprecatedFunction.deprecatedVersion = version  # type: ignore[attr-defined]\n\
+    \        return deprecatedFunction\n\n    return deprecationDecorator\n\n\ndef\
+    \ deprecatedProperty(\n    version: Version, replacement: str | Callable[...,\
+    \ object] | None = None\n) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:\n\
+    \    \"\"\"\n    Return a decorator that marks a property as deprecated. To deprecate\
+    \ a\n    regular callable or class, see L{deprecated}.\n\n    @type version: L{incremental.Version}\n\
+    \    @param version: The version in which the callable will be marked as\n   \
+    \     having been deprecated.  The decorated function will be annotated\n    \
+    \    with this version, having it set as its C{deprecatedVersion}\n        attribute.\n\
+    \n    @param replacement: what should be used in place of the callable.\n    \
+    \    Either pass in a string, which will be inserted into the warning\n      \
+    \  message, or a callable, which will be expanded to its full import\n       \
+    \ path.\n    @type replacement: C{str} or callable\n\n    @return: A new property\
+    \ with deprecated setter and getter.\n    @rtype: C{property}\n\n    @since: 16.1.0\n\
+    \    \"\"\"\n\n    class _DeprecatedProperty(property):\n        \"\"\"\n    \
+    \    Extension of the build-in property to allow deprecated setters.\n       \
+    \ \"\"\"\n\n        def _deprecatedWrapper(self, function):\n            @wraps(function)\n\
+    \            def deprecatedFunction(*args, **kwargs):\n                warn(\n\
+    \                    self.warningString,  # type: ignore[attr-defined]\n     \
+    \               DeprecationWarning,\n                    stacklevel=2,\n     \
+    \           )\n                return function(*args, **kwargs)\n\n          \
+    \  return deprecatedFunction\n\n        def setter(self, function):\n        \
+    \    return property.setter(self, self._deprecatedWrapper(function))\n\n    def\
+    \ deprecationDecorator(function):\n        warningString = getDeprecationWarningString(\n\
+    \            function, version, None, replacement\n        )\n\n        @wraps(function)\n\
+    \        def deprecatedFunction(*args, **kwargs):\n            warn(warningString,\
+    \ DeprecationWarning, stacklevel=2)\n            return function(*args, **kwargs)\n\
+    \n        _appendToDocstring(\n            deprecatedFunction, _getDeprecationDocstring(version,\
+    \ replacement)\n        )\n        deprecatedFunction.deprecatedVersion = version\
+    \  # type: ignore[attr-defined]\n\n        result = _DeprecatedProperty(deprecatedFunction)\n\
+    \        result.warningString = warningString  # type: ignore[attr-defined]\n\
+    \        return result\n\n    return deprecationDecorator\n\n\ndef getWarningMethod():\n\
+    \    \"\"\"\n    Return the warning method currently used to record deprecation\
+    \ warnings.\n    \"\"\"\n    return warn\n\n\ndef setWarningMethod(newMethod):\n\
+    \    \"\"\"\n    Set the warning method to use to record deprecation warnings.\n\
+    \n    The callable should take message, category and stacklevel. The return\n\
+    \    value is ignored.\n    \"\"\"\n    global warn\n    warn = newMethod\n\n\n\
+    class _InternalState:\n    \"\"\"\n    An L{_InternalState} is a helper object\
+    \ for a L{_ModuleProxy}, so that it\n    can easily access its own attributes,\
+    \ bypassing its logic for delegating to\n    another object that it's proxying\
+    \ for.\n\n    @ivar proxy: a L{_ModuleProxy}\n    \"\"\"\n\n    def __init__(self,\
+    \ proxy):\n        object.__setattr__(self, \"proxy\", proxy)\n\n    def __getattribute__(self,\
+    \ name):\n        return object.__getattribute__(object.__getattribute__(self,\
+    \ \"proxy\"), name)\n\n    def __setattr__(self, name, value):\n        return\
+    \ object.__setattr__(object.__getattribute__(self, \"proxy\"), name, value)\n\n\
+    \nclass _ModuleProxy:\n    \"\"\"\n    Python module wrapper to hook module-level\
+    \ attribute access.\n\n    Access to deprecated attributes first checks\n    L{_ModuleProxy._deprecatedAttributes},\
+    \ if the attribute does not appear\n    there then access falls through to L{_ModuleProxy._module},\
+    \ the wrapped\n    module object.\n\n    @ivar _module: Module on which to hook\
+    \ attribute access.\n    @type _module: C{module}\n\n    @ivar _deprecatedAttributes:\
+    \ Mapping of attribute names to objects that\n        retrieve the module attribute's\
+    \ original value.\n    @type _deprecatedAttributes: C{dict} mapping C{str} to\n\
+    \        L{_DeprecatedAttribute}\n\n    @ivar _lastWasPath: Heuristic guess as\
+    \ to whether warnings about this\n        package should be ignored for the next\
+    \ call.  If the last attribute\n        access of this module was a C{getattr}\
+    \ of C{__path__}, we will assume\n        that it was the import system doing\
+    \ it and we won't emit a warning for\n        the next access, even if it is to\
+    \ a deprecated attribute.  The CPython\n        import system always tries to\
+    \ access C{__path__}, then the attribute\n        itself, then the attribute itself\
+    \ again, in both successful and failed\n        cases.\n    @type _lastWasPath:\
+    \ C{bool}\n    \"\"\"\n\n    def __init__(self, module):\n        state = _InternalState(self)\n\
+    \        state._module = module\n        state._deprecatedAttributes = {}\n  \
+    \      state._lastWasPath = False\n\n    def __repr__(self) -> str:\n        \"\
+    \"\"\n        Get a string containing the type of the module proxy and a\n   \
+    \     representation of the wrapped module object.\n        \"\"\"\n        state\
+    \ = _InternalState(self)\n        return f\"<{type(self).__name__} module={state._module!r}>\"\
+    \n\n    def __setattr__(self, name, value):\n        \"\"\"\n        Set an attribute\
+    \ on the wrapped module object.\n        \"\"\"\n        state = _InternalState(self)\n\
+    \        state._lastWasPath = False\n        setattr(state._module, name, value)\n\
+    \n    def __getattribute__(self, name):\n        \"\"\"\n        Get an attribute\
+    \ from the module object, possibly emitting a warning.\n\n        If the specified\
+    \ name has been deprecated, then a warning is issued.\n        (Unless certain\
+    \ obscure conditions are met; see\n        L{_ModuleProxy._lastWasPath} for more\
+    \ information about what might quash\n        such a warning.)\n        \"\"\"\
+    \n        state = _InternalState(self)\n        if state._lastWasPath:\n     \
+    \       deprecatedAttribute = None\n        else:\n            deprecatedAttribute\
+    \ = state._deprecatedAttributes.get(name)\n\n        if deprecatedAttribute is\
+    \ not None:\n            # If we have a _DeprecatedAttribute object from the earlier\
+    \ lookup,\n            # allow it to issue the warning.\n            value = deprecatedAttribute.get()\n\
+    \        else:\n            # Otherwise, just retrieve the underlying value directly;\
+    \ it's not\n            # deprecated, there's no warning to issue.\n         \
+    \   value = getattr(state._module, name)\n        if name == \"__path__\":\n \
+    \           state._lastWasPath = True\n        else:\n            state._lastWasPath\
+    \ = False\n        return value\n\n\nclass _DeprecatedAttribute:\n    \"\"\"\n\
+    \    Wrapper for deprecated attributes.\n\n    This is intended to be used by\
+    \ L{_ModuleProxy}. Calling\n    L{_DeprecatedAttribute.get} will issue a warning\
+    \ and retrieve the\n    underlying attribute's value.\n\n    @type module: C{module}\n\
+    \    @ivar module: The original module instance containing this attribute\n\n\
+    \    @type fqpn: C{str}\n    @ivar fqpn: Fully qualified Python name for the deprecated\
+    \ attribute\n\n    @type version: L{incremental.Version}\n    @ivar version: Version\
+    \ that the attribute was deprecated in\n\n    @type message: C{str}\n    @ivar\
+    \ message: Deprecation message\n    \"\"\"\n\n    def __init__(self, module, name,\
+    \ version, message):\n        \"\"\"\n        Initialise a deprecated name wrapper.\n\
+    \        \"\"\"\n        self.module = module\n        self.__name__ = name\n\
+    \        self.fqpn = module.__name__ + \".\" + name\n        self.version = version\n\
+    \        self.message = message\n\n    def get(self):\n        \"\"\"\n      \
+    \  Get the underlying attribute value and issue a deprecation warning.\n     \
+    \   \"\"\"\n        # This might fail if the deprecated thing is a module inside\
+    \ a package.\n        # In that case, don't emit the warning this time.  The import\
+    \ system\n        # will come back again when it's not an AttributeError and we\
+    \ can emit\n        # the warning then.\n        result = getattr(self.module,\
+    \ self.__name__)\n        message = _getDeprecationWarningString(\n          \
+    \  self.fqpn, self.version, DEPRECATION_WARNING_FORMAT + \": \" + self.message\n\
+    \        )\n        warn(message, DeprecationWarning, stacklevel=3)\n        return\
+    \ result\n\n\ndef _deprecateAttribute(proxy, name, version, message):\n    \"\"\
+    \"\n    Mark a module-level attribute as being deprecated.\n\n    @type proxy:\
+    \ L{_ModuleProxy}\n    @param proxy: The module proxy instance proxying the deprecated\
+    \ attributes\n\n    @type name: C{str}\n    @param name: Attribute name\n\n  \
+    \  @type version: L{incremental.Version}\n    @param version: Version that the\
+    \ attribute was deprecated in\n\n    @type message: C{str}\n    @param message:\
+    \ Deprecation message\n    \"\"\"\n    _module = object.__getattribute__(proxy,\
+    \ \"_module\")\n    attr = _DeprecatedAttribute(_module, name, version, message)\n\
+    \    # Add a deprecated attribute marker for this module's attribute. When this\n\
+    \    # attribute is accessed via _ModuleProxy a warning is emitted.\n    _deprecatedAttributes\
+    \ = object.__getattribute__(proxy, \"_deprecatedAttributes\")\n    _deprecatedAttributes[name]\
+    \ = attr\n\n\ndef deprecatedModuleAttribute(version, message, moduleName, name):\n\
+    \    \"\"\"\n    Declare a module-level attribute as being deprecated.\n\n   \
+    \ @type version: L{incremental.Version}\n    @param version: Version that the\
+    \ attribute was deprecated in\n\n    @type message: C{str}\n    @param message:\
+    \ Deprecation message\n\n    @type moduleName: C{str}\n    @param moduleName:\
+    \ Fully-qualified Python name of the module containing\n        the deprecated\
+    \ attribute; if called from the same module as the\n        attributes are being\
+    \ deprecated in, using the C{__name__} global can\n        be helpful\n\n    @type\
+    \ name: C{str}\n    @param name: Attribute name to deprecate\n    \"\"\"\n   \
+    \ module = sys.modules[moduleName]\n    if not isinstance(module, _ModuleProxy):\n\
+    \        module = cast(ModuleType, _ModuleProxy(module))\n        sys.modules[moduleName]\
+    \ = module\n\n    _deprecateAttribute(module, name, version, message)\n\n\ndef\
+    \ warnAboutFunction(offender, warningString):\n    \"\"\"\n    Issue a warning\
+    \ string, identifying C{offender} as the responsible code.\n\n    This function\
+    \ is used to deprecate some behavior of a function.  It differs\n    from L{warnings.warn}\
+    \ in that it is not limited to deprecating the behavior\n    of a function currently\
+    \ on the call stack.\n\n    @param offender: The function that is being deprecated.\n\
+    \n    @param warningString: The string that should be emitted by this warning.\n\
+    \    @type warningString: C{str}\n\n    @since: 11.0\n    \"\"\"\n    # inspect.getmodule()\
+    \ is attractive, but somewhat\n    # broken in Python < 2.6.  See Python bug 4845.\n\
+    \    # In Python 3.13 line numbers returned by findlinestarts\n    # can be None\
+    \ for bytecode that does not map to source\n    # lines.\n    offenderModule =\
+    \ sys.modules[offender.__module__]\n    warn_explicit(\n        warningString,\n\
+    \        category=DeprecationWarning,\n        filename=inspect.getabsfile(offenderModule),\n\
+    \        lineno=max(\n            lineNumber\n            for _, lineNumber in\
+    \ findlinestarts(offender.__code__)\n            if lineNumber is not None\n \
+    \       ),\n        module=offenderModule.__name__,\n        registry=offender.__globals__.setdefault(\"\
+    __warningregistry__\", {}),\n        module_globals=None,\n    )\n\n\ndef _passedArgSpec(argspec,\
+    \ positional, keyword):\n    \"\"\"\n    Take an I{inspect.ArgSpec}, a tuple of\
+    \ positional arguments, and a dict of\n    keyword arguments, and return a mapping\
+    \ of arguments that were actually\n    passed to their passed values.\n\n    @param\
+    \ argspec: The argument specification for the function to inspect.\n    @type\
+    \ argspec: I{inspect.ArgSpec}\n\n    @param positional: The positional arguments\
+    \ that were passed.\n    @type positional: L{tuple}\n\n    @param keyword: The\
+    \ keyword arguments that were passed.\n    @type keyword: L{dict}\n\n    @return:\
+    \ A dictionary mapping argument names (those declared in C{argspec})\n       \
+    \ to values that were passed explicitly by the user.\n    @rtype: L{dict} mapping\
+    \ L{str} to L{object}\n    \"\"\"\n    result: Dict[str, object] = {}\n    unpassed\
+    \ = len(argspec.args) - len(positional)\n    if argspec.keywords is not None:\n\
+    \        kwargs = result[argspec.keywords] = {}\n    if unpassed < 0:\n      \
+    \  if argspec.varargs is None:\n            raise TypeError(\"Too many arguments.\"\
+    )\n        else:\n            result[argspec.varargs] = positional[len(argspec.args)\
+    \ :]\n    for name, value in zip(argspec.args, positional):\n        result[name]\
+    \ = value\n    for name, value in keyword.items():\n        if name in argspec.args:\n\
+    \            if name in result:\n                raise TypeError(\"Already passed.\"\
+    )\n            result[name] = value\n        elif argspec.keywords is not None:\n\
+    \            kwargs[name] = value\n        else:\n            raise TypeError(\"\
+    no such param\")\n    return result\n\n\ndef _passedSignature(signature, positional,\
+    \ keyword):\n    \"\"\"\n    Take an L{inspect.Signature}, a tuple of positional\
+    \ arguments, and a dict of\n    keyword arguments, and return a mapping of arguments\
+    \ that were actually\n    passed to their passed values.\n\n    @param signature:\
+    \ The signature of the function to inspect.\n    @type signature: L{inspect.Signature}\n\
+    \n    @param positional: The positional arguments that were passed.\n    @type\
+    \ positional: L{tuple}\n\n    @param keyword: The keyword arguments that were\
+    \ passed.\n    @type keyword: L{dict}\n\n    @return: A dictionary mapping argument\
+    \ names (those declared in\n        C{signature}) to values that were passed explicitly\
+    \ by the user.\n    @rtype: L{dict} mapping L{str} to L{object}\n    \"\"\"\n\
+    \    result = {}\n    kwargs = None\n    numPositional = 0\n    for n, (name,\
+    \ param) in enumerate(signature.parameters.items()):\n        if param.kind ==\
+    \ inspect.Parameter.VAR_POSITIONAL:\n            # Varargs, for example: *args\n\
+    \            result[name] = positional[n:]\n            numPositional = len(result[name])\
+    \ + 1\n        elif param.kind == inspect.Parameter.VAR_KEYWORD:\n           \
+    \ # Variable keyword args, for example: **my_kwargs\n            kwargs = result[name]\
+    \ = {}\n        elif param.kind in (\n            inspect.Parameter.POSITIONAL_OR_KEYWORD,\n\
+    \            inspect.Parameter.POSITIONAL_ONLY,\n        ):\n            if n\
+    \ < len(positional):\n                result[name] = positional[n]\n         \
+    \       numPositional += 1\n        elif param.kind == inspect.Parameter.KEYWORD_ONLY:\n\
+    \            if name not in keyword:\n                if param.default == inspect.Parameter.empty:\n\
+    \                    raise TypeError(f\"missing keyword arg {name}\")\n      \
+    \          else:\n                    result[name] = param.default\n        else:\n\
+    \            raise TypeError(f\"'{name}' parameter is invalid kind: {param.kind}\"\
+    )\n\n    if len(positional) > numPositional:\n        raise TypeError(\"Too many\
+    \ arguments.\")\n    for name, value in keyword.items():\n        if name in signature.parameters.keys():\n\
+    \            if name in result:\n                raise TypeError(\"Already passed.\"\
+    )\n            result[name] = value\n        elif kwargs is not None:\n      \
+    \      kwargs[name] = value\n        else:\n            raise TypeError(\"no such\
+    \ param\")\n    return result\n\n\ndef _mutuallyExclusiveArguments(argumentPairs):\n\
+    \    \"\"\"\n    Decorator which causes its decoratee to raise a L{TypeError}\
+    \ if two of the\n    given arguments are passed at the same time.\n\n    @param\
+    \ argumentPairs: pairs of argument identifiers, each pair indicating\n       \
+    \ an argument that may not be passed in conjunction with another.\n    @type argumentPairs:\
+    \ sequence of 2-sequences of L{str}\n\n    @return: A decorator, used like so::\n\
+    \n            @_mutuallyExclusiveArguments([[\"tweedledum\", \"tweedledee\"]])\n\
+    \            def function(tweedledum=1, tweedledee=2):\n                \"Don't\
+    \ pass tweedledum and tweedledee at the same time.\"\n\n    @rtype: 1-argument\
+    \ callable taking a callable and returning a callable.\n    \"\"\"\n\n    def\
+    \ wrapper(wrappee):\n        spec = inspect.signature(wrappee)\n        _passed\
+    \ = _passedSignature\n\n        @wraps(wrappee)\n        def wrapped(*args, **kwargs):\n\
+    \            arguments = _passed(spec, args, kwargs)\n            for this, that\
+    \ in argumentPairs:\n                if this in arguments and that in arguments:\n\
+    \                    raise TypeError(\n                        (\"The %r and %r\
+    \ arguments to %s \" \"are mutually exclusive.\")\n                        % (this,\
+    \ that, _fullyQualifiedName(wrappee))\n                    )\n            return\
+    \ wrappee(*args, **kwargs)\n\n        return wrapped\n\n    return wrapper\n\n\
+    \n_Tc = TypeVar(\"_Tc\", bound=Callable[..., Any])\n\n\ndef deprecatedKeywordParameter(\n\
+    \    version: Version, name: str, replacement: Optional[str] = None\n) -> Callable[[_Tc],\
+    \ _Tc]:\n    \"\"\"\n    Return a decorator that marks a keyword parameter of\
+    \ a callable\n    as deprecated. A warning will be emitted if a caller supplies\n\
+    \    a value for the parameter, whether the caller uses a keyword or\n    positional\
+    \ syntax.\n\n    @type version: L{incremental.Version}\n    @param version: The\
+    \ version in which the parameter will be marked as\n        having been deprecated.\n\
+    \n    @type name: L{str}\n    @param name: The name of the deprecated parameter.\n\
+    \n    @type replacement: L{str}\n    @param replacement: Optional text indicating\
+    \ what should be used in\n        place of the deprecated parameter.\n\n    @since:\
+    \ Twisted 21.2.0\n    \"\"\"\n\n    def wrapper(wrappee: _Tc) -> _Tc:\n      \
+    \  warningString = _getDeprecationWarningString(\n            f\"The {name!r}\
+    \ parameter to {_fullyQualifiedName(wrappee)}\",\n            version,\n     \
+    \       replacement=replacement,\n        )\n\n        doc = \"The {!r} parameter\
+    \ was deprecated in {}\".format(\n            name,\n            getVersionString(version),\n\
+    \        )\n        if replacement:\n            doc = doc + \"; \" + _getReplacementString(replacement)\n\
+    \        doc += \".\"\n\n        params = inspect.signature(wrappee).parameters\n\
+    \        if (\n            name in params\n            and params[name].kind ==\
+    \ inspect.Parameter.POSITIONAL_OR_KEYWORD\n        ):\n            parameterIndex\
+    \ = list(params).index(name)\n\n            def checkDeprecatedParameter(*args,\
+    \ **kwargs):\n                if len(args) > parameterIndex or name in kwargs:\n\
+    \                    warn(warningString, DeprecationWarning, stacklevel=2)\n \
+    \               return wrappee(*args, **kwargs)\n\n        else:\n\n         \
+    \   def checkDeprecatedParameter(*args, **kwargs):\n                if name in\
+    \ kwargs:\n                    warn(warningString, DeprecationWarning, stacklevel=2)\n\
+    \                return wrappee(*args, **kwargs)\n\n        decorated = cast(_Tc,\
+    \ wraps(wrappee)(checkDeprecatedParameter))\n        _appendToDocstring(decorated,\
+    \ doc)\n        return decorated\n\n    return wrapper\n\nOutput the complete\
+    \ test file, code only, no explanations.\n```Python\n<complete test code>\n```\n\
+    ### Time\nCurrent time: 2025-03-13 17:46:40\n"
+  role: user

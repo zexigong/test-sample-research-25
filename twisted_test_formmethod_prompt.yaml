@@ -1,0 +1,171 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: twisted\nTest File Path: twisted\\test_formmethod\\\
+    test_formmethod.py\nProject Programming Language: Python\nTesting Framework: pytest\n\
+    ### Source File Content\n### Source File Content:\n# -*- test-case-name: twisted.test.test_formmethod\
+    \ -*-\n# Copyright (c) Twisted Matrix Laboratories.\n# See LICENSE for details.\n\
+    \n\n\"\"\"\nForm-based method objects.\n\nThis module contains support for descriptive\
+    \ method signatures that can be used\nto format methods.\n\"\"\"\n\nimport calendar\n\
+    from typing import Any, Optional, Tuple\n\n\nclass FormException(Exception):\n\
+    \    \"\"\"An error occurred calling the form method.\"\"\"\n\n    def __init__(self,\
+    \ *args, **kwargs):\n        Exception.__init__(self, *args)\n        self.descriptions\
+    \ = kwargs\n\n\nclass InputError(FormException):\n    \"\"\"\n    An error occurred\
+    \ with some input.\n    \"\"\"\n\n\nclass Argument:\n    \"\"\"Base class for\
+    \ form arguments.\"\"\"\n\n    # default value for argument, if no other default\
+    \ is given\n    defaultDefault: Any = None\n\n    def __init__(\n        self,\
+    \ name, default=None, shortDesc=None, longDesc=None, hints=None, allowNone=1\n\
+    \    ):\n        self.name = name\n        self.allowNone = allowNone\n      \
+    \  if default is None:\n            default = self.defaultDefault\n        self.default\
+    \ = default\n        self.shortDesc = shortDesc\n        self.longDesc = longDesc\n\
+    \        if not hints:\n            hints = {}\n        self.hints = hints\n\n\
+    \    def addHints(self, **kwargs):\n        self.hints.update(kwargs)\n\n    def\
+    \ getHint(self, name, default=None):\n        return self.hints.get(name, default)\n\
+    \n    def getShortDescription(self):\n        return self.shortDesc or self.name.capitalize()\n\
+    \n    def getLongDescription(self):\n        return self.longDesc or \"\"  # self.shortDesc\
+    \ or \"The %s.\" % self.name\n\n    def coerce(self, val):\n        \"\"\"Convert\
+    \ the value to the correct format.\"\"\"\n        raise NotImplementedError(\"\
+    implement in subclass\")\n\n\nclass String(Argument):\n    \"\"\"A single string.\"\
+    \"\"\n\n    defaultDefault: str = \"\"\n    min = 0\n    max = None\n\n    def\
+    \ __init__(\n        self,\n        name,\n        default=None,\n        shortDesc=None,\n\
+    \        longDesc=None,\n        hints=None,\n        allowNone=1,\n        min=0,\n\
+    \        max=None,\n    ):\n        Argument.__init__(\n            self,\n  \
+    \          name,\n            default=default,\n            shortDesc=shortDesc,\n\
+    \            longDesc=longDesc,\n            hints=hints,\n            allowNone=allowNone,\n\
+    \        )\n        self.min = min\n        self.max = max\n\n    def coerce(self,\
+    \ val):\n        s = str(val)\n        if len(s) < self.min:\n            raise\
+    \ InputError(\"Value must be at least %s characters long\" % self.min)\n     \
+    \   if self.max is not None and len(s) > self.max:\n            raise InputError(\"\
+    Value must be at most %s characters long\" % self.max)\n        return str(val)\n\
+    \n\nclass Text(String):\n    \"\"\"A long string.\"\"\"\n\n\nclass Password(String):\n\
+    \    \"\"\"A string which should be obscured when input.\"\"\"\n\n\nclass VerifiedPassword(String):\n\
+    \    \"\"\"A string that should be obscured when input and needs verification.\"\
+    \"\"\n\n    def coerce(self, vals):\n        if len(vals) != 2 or vals[0] != vals[1]:\n\
+    \            raise InputError(\"Please enter the same password twice.\")\n   \
+    \     s = str(vals[0])\n        if len(s) < self.min:\n            raise InputError(\"\
+    Value must be at least %s characters long\" % self.min)\n        if self.max is\
+    \ not None and len(s) > self.max:\n            raise InputError(\"Value must be\
+    \ at most %s characters long\" % self.max)\n        return s\n\n\nclass Hidden(String):\n\
+    \    \"\"\"A string which is not displayed.\n\n    The passed default is used\
+    \ as the value.\n    \"\"\"\n\n\nclass Integer(Argument):\n    \"\"\"A single\
+    \ integer.\"\"\"\n\n    defaultDefault: Optional[int] = None\n\n    def __init__(\n\
+    \        self, name, allowNone=1, default=None, shortDesc=None, longDesc=None,\
+    \ hints=None\n    ):\n        # although Argument now has allowNone, that was\
+    \ recently added, and\n        # putting it at the end kept things which relied\
+    \ on argument order\n        # from breaking.  However, allowNone originally was\
+    \ in here, so\n        # I have to keep the same order, to prevent breaking code\
+    \ that\n        # depends on argument order only\n        Argument.__init__(self,\
+    \ name, default, shortDesc, longDesc, hints, allowNone)\n\n    def coerce(self,\
+    \ val):\n        if not val.strip() and self.allowNone:\n            return None\n\
+    \        try:\n            return int(val)\n        except ValueError:\n     \
+    \       raise InputError(\n                \"{} is not valid, please enter \"\
+    \ \"a whole number, e.g. 10\".format(val)\n            )\n\n\nclass IntegerRange(Integer):\n\
+    \    def __init__(\n        self,\n        name,\n        min,\n        max,\n\
+    \        allowNone=1,\n        default=None,\n        shortDesc=None,\n      \
+    \  longDesc=None,\n        hints=None,\n    ):\n        self.min = min\n     \
+    \   self.max = max\n        Integer.__init__(\n            self,\n           \
+    \ name,\n            allowNone=allowNone,\n            default=default,\n    \
+    \        shortDesc=shortDesc,\n            longDesc=longDesc,\n            hints=hints,\n\
+    \        )\n\n    def coerce(self, val):\n        result = Integer.coerce(self,\
+    \ val)\n        if self.allowNone and result == None:\n            return result\n\
+    \        if result < self.min:\n            raise InputError(\n              \
+    \  \"Value {} is too small, it should be at least {}\".format(\n             \
+    \       result, self.min\n                )\n            )\n        if result\
+    \ > self.max:\n            raise InputError(\n                \"Value {} is too\
+    \ large, it should be at most {}\".format(\n                    result, self.max\n\
+    \                )\n            )\n        return result\n\n\nclass Float(Argument):\n\
+    \    defaultDefault: Optional[float] = None\n\n    def __init__(\n        self,\
+    \ name, allowNone=1, default=None, shortDesc=None, longDesc=None, hints=None\n\
+    \    ):\n        # although Argument now has allowNone, that was recently added,\
+    \ and\n        # putting it at the end kept things which relied on argument order\n\
+    \        # from breaking.  However, allowNone originally was in here, so\n   \
+    \     # I have to keep the same order, to prevent breaking code that\n       \
+    \ # depends on argument order only\n        Argument.__init__(self, name, default,\
+    \ shortDesc, longDesc, hints, allowNone)\n\n    def coerce(self, val):\n     \
+    \   if not val.strip() and self.allowNone:\n            return None\n        try:\n\
+    \            return float(val)\n        except ValueError:\n            raise\
+    \ InputError(\"Invalid float: %s\" % val)\n\n\nclass Choice(Argument):\n    \"\
+    \"\"\n    The result of a choice between enumerated types.  The choices should\n\
+    \    be a list of tuples of tag, value, and description.  The tag will be\n  \
+    \  the value returned if the user hits \"Submit\", and the description\n    is\
+    \ the bale for the enumerated type.  default is a list of all the\n    values\
+    \ (seconds element in choices).  If no defaults are specified,\n    initially\
+    \ the first item will be selected.  Only one item can (should)\n    be selected\
+    \ at once.\n    \"\"\"\n\n    def __init__(\n        self,\n        name,\n  \
+    \      choices=[],\n        default=[],\n        shortDesc=None,\n        longDesc=None,\n\
+    \        hints=None,\n        allowNone=1,\n    ):\n        self.choices = choices\n\
+    \        if choices and not default:\n            default.append(choices[0][1])\n\
+    \        Argument.__init__(\n            self, name, default, shortDesc, longDesc,\
+    \ hints, allowNone=allowNone\n        )\n\n    def coerce(self, inIdent):\n  \
+    \      for ident, val, desc in self.choices:\n            if ident == inIdent:\n\
+    \                return val\n        else:\n            raise InputError(\"Invalid\
+    \ Choice: %s\" % inIdent)\n\n\nclass Flags(Argument):\n    \"\"\"\n    The result\
+    \ of a checkbox group or multi-menu.  The flags should be a\n    list of tuples\
+    \ of tag, value, and description. The tag will be\n    the value returned if the\
+    \ user hits \"Submit\", and the description\n    is the bale for the enumerated\
+    \ type.  default is a list of all the\n    values (second elements in flags).\
+    \  If no defaults are specified,\n    initially nothing will be selected.  Several\
+    \ items may be selected at\n    once.\n    \"\"\"\n\n    def __init__(\n     \
+    \   self,\n        name,\n        flags=(),\n        default=(),\n        shortDesc=None,\n\
+    \        longDesc=None,\n        hints=None,\n        allowNone=1,\n    ):\n \
+    \       self.flags = flags\n        Argument.__init__(\n            self, name,\
+    \ default, shortDesc, longDesc, hints, allowNone=allowNone\n        )\n\n    def\
+    \ coerce(self, inFlagKeys):\n        if not inFlagKeys:\n            return []\n\
+    \        outFlags = []\n        for inFlagKey in inFlagKeys:\n            for\
+    \ flagKey, flagVal, flagDesc in self.flags:\n                if inFlagKey == flagKey:\n\
+    \                    outFlags.append(flagVal)\n                    break\n   \
+    \         else:\n                raise InputError(\"Invalid Flag: %s\" % inFlagKey)\n\
+    \        return outFlags\n\n\nclass CheckGroup(Flags):\n    pass\n\n\nclass RadioGroup(Choice):\n\
+    \    pass\n\n\nclass Boolean(Argument):\n    def coerce(self, inVal):\n      \
+    \  if not inVal:\n            return 0\n        lInVal = str(inVal).lower()\n\
+    \        if lInVal in (\"no\", \"n\", \"f\", \"false\", \"0\"):\n            return\
+    \ 0\n        return 1\n\n\nclass File(Argument):\n    def __init__(self, name,\
+    \ allowNone=1, shortDesc=None, longDesc=None, hints=None):\n        Argument.__init__(\n\
+    \            self, name, None, shortDesc, longDesc, hints, allowNone=allowNone\n\
+    \        )\n\n    def coerce(self, file):\n        if not file and self.allowNone:\n\
+    \            return None\n        elif file:\n            return file\n      \
+    \  else:\n            raise InputError(\"Invalid File\")\n\n\ndef positiveInt(x):\n\
+    \    x = int(x)\n    if x <= 0:\n        raise ValueError\n    return x\n\n\n\
+    class Date(Argument):\n    \"\"\"A date -- (year, month, day) tuple.\"\"\"\n\n\
+    \    defaultDefault: Optional[Tuple[int, int, int]] = None\n\n    def __init__(\n\
+    \        self, name, allowNone=1, default=None, shortDesc=None, longDesc=None,\
+    \ hints=None\n    ):\n        Argument.__init__(self, name, default, shortDesc,\
+    \ longDesc, hints)\n        self.allowNone = allowNone\n        if not allowNone:\n\
+    \            self.defaultDefault = (1970, 1, 1)\n\n    def coerce(self, args):\n\
+    \        \"\"\"Return tuple of ints (year, month, day).\"\"\"\n        if tuple(args)\
+    \ == (\"\", \"\", \"\") and self.allowNone:\n            return None\n\n     \
+    \   try:\n            year, month, day = map(positiveInt, args)\n        except\
+    \ ValueError:\n            raise InputError(\"Invalid date\")\n        if (month,\
+    \ day) == (2, 29):\n            if not calendar.isleap(year):\n              \
+    \  raise InputError(\"%d was not a leap year\" % year)\n            else:\n  \
+    \              return year, month, day\n        try:\n            mdays = calendar.mdays[month]\n\
+    \        except IndexError:\n            raise InputError(\"Invalid date\")\n\
+    \        if day > mdays:\n            raise InputError(\"Invalid date\")\n   \
+    \     return year, month, day\n\n\nclass Submit(Choice):\n    \"\"\"Submit button\
+    \ or a reasonable facsimile thereof.\"\"\"\n\n    def __init__(\n        self,\n\
+    \        name,\n        choices=[(\"Submit\", \"submit\", \"Submit form\")],\n\
+    \        reset=0,\n        shortDesc=None,\n        longDesc=None,\n        allowNone=0,\n\
+    \        hints=None,\n    ):\n        Choice.__init__(\n            self,\n  \
+    \          name,\n            choices=choices,\n            shortDesc=shortDesc,\n\
+    \            longDesc=longDesc,\n            hints=hints,\n        )\n       \
+    \ self.allowNone = allowNone\n        self.reset = reset\n\n    def coerce(self,\
+    \ value):\n        if self.allowNone and not value:\n            return None\n\
+    \        else:\n            return Choice.coerce(self, value)\n\n\nclass PresentationHint:\n\
+    \    \"\"\"\n    A hint to a particular system.\n    \"\"\"\n\n\nclass MethodSignature:\n\
+    \    \"\"\"\n    A signature of a callable.\n    \"\"\"\n\n    def __init__(self,\
+    \ *sigList):\n        \"\"\"\"\"\"\n        self.methodSignature = sigList\n\n\
+    \    def getArgument(self, name):\n        for a in self.methodSignature:\n  \
+    \          if a.name == name:\n                return a\n\n    def method(self,\
+    \ callable, takesRequest=False):\n        return FormMethod(self, callable, takesRequest)\n\
+    \n\nclass FormMethod:\n    \"\"\"A callable object with a signature.\"\"\"\n\n\
+    \    def __init__(self, signature, callable, takesRequest=False):\n        self.signature\
+    \ = signature\n        self.callable = callable\n        self.takesRequest = takesRequest\n\
+    \n    def getArgs(self):\n        return tuple(self.signature.methodSignature)\n\
+    \n    def call(self, *args, **kw):\n        return self.callable(*args, **kw)\n\
+    \n### Source File Dependency Files Content\n### Dependency File: empty.txt\n\n\
+    Output the complete test file, code only, no explanations.\n```Python\n<complete\
+    \ test code>\n```\n### Time\nCurrent time: 2025-03-13 17:52:06\n"
+  role: user

@@ -1,0 +1,948 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: twisted\nTest File Path: twisted\\test_failure\\\
+    test_failure.py\nProject Programming Language: Python\nTesting Framework: pytest\n\
+    ### Source File Content\n### Source File Content:\n# -*- test-case-name: twisted.test.test_failure\
+    \ -*-\n# See also test suite twisted.test.test_pbfailure\n\n# Copyright (c) Twisted\
+    \ Matrix Laboratories.\n# See LICENSE for details.\n\n\n\"\"\"\nAsynchronous-friendly\
+    \ error mechanism.\n\nSee L{Failure}.\n\"\"\"\n\nfrom __future__ import annotations\n\
+    \n# System Imports\nimport builtins\nimport copy\nimport inspect\nimport linecache\n\
+    import sys\nfrom functools import partial\nfrom inspect import getmro\nfrom io\
+    \ import StringIO\nfrom typing import Callable, NoReturn, TypeVar\n\nfrom incremental\
+    \ import Version\n\nfrom twisted.python import reflect\nfrom twisted.python.deprecate\
+    \ import deprecatedProperty\n\n_T_Callable = TypeVar(\"_T_Callable\", bound=Callable[...,\
+    \ object])\n\ncount = 0\ntraceupLength = 4\n\n\nclass DefaultException(Exception):\n\
+    \    pass\n\n\ndef format_frames(frames, write, detail=\"default\"):\n    \"\"\
+    \"\n    Format and write frames.\n\n    @param frames: is a list of frames as\
+    \ used by Failure.frames, with\n        each frame being a list of\n        (funcName,\
+    \ fileName, lineNumber, locals.items(), globals.items())\n    @type frames: list\n\
+    \    @param write: this will be called with formatted strings.\n    @type write:\
+    \ callable\n    @param detail: Four detail levels are available:\n        default,\
+    \ brief, verbose, and verbose-vars-not-captured.\n        C{Failure.printDetailedTraceback}\
+    \ uses the latter when the caller asks\n        for verbose, but no vars were\
+    \ captured, so that an explicit warning\n        about the missing data is shown.\n\
+    \    @type detail: string\n    \"\"\"\n    if detail not in (\"default\", \"brief\"\
+    , \"verbose\", \"verbose-vars-not-captured\"):\n        raise ValueError(\n  \
+    \          \"Detail must be default, brief, verbose, or \"\n            \"verbose-vars-not-captured.\
+    \ (not %r)\" % (detail,)\n        )\n    w = write\n    if detail == \"brief\"\
+    :\n        for method, filename, lineno, localVars, globalVars in frames:\n  \
+    \          w(f\"{filename}:{lineno}:{method}\\n\")\n    elif detail == \"default\"\
+    :\n        for method, filename, lineno, localVars, globalVars in frames:\n  \
+    \          w(f'  File \"{filename}\", line {lineno}, in {method}\\n')\n      \
+    \      w(\"    %s\\n\" % linecache.getline(filename, lineno).strip())\n    elif\
+    \ detail == \"verbose-vars-not-captured\":\n        for method, filename, lineno,\
+    \ localVars, globalVars in frames:\n            w(\"%s:%d: %s(...)\\n\" % (filename,\
+    \ lineno, method))\n        w(\" [Capture of Locals and Globals disabled (use\
+    \ captureVars=True)]\\n\")\n    elif detail == \"verbose\":\n        for method,\
+    \ filename, lineno, localVars, globalVars in frames:\n            w(\"%s:%d: %s(...)\\\
+    n\" % (filename, lineno, method))\n            w(\" [ Locals ]\\n\")\n       \
+    \     # Note: the repr(val) was (self.pickled and val) or repr(val)))\n      \
+    \      for name, val in localVars:\n                w(f\"  {name} : {repr(val)}\\\
+    n\")\n            w(\" ( Globals )\\n\")\n            for name, val in globalVars:\n\
+    \                w(f\"  {name} : {repr(val)}\\n\")\n\n\n# Unused, here for backwards\
+    \ compatibility.\nEXCEPTION_CAUGHT_HERE = \"--- <exception caught here> ---\"\n\
+    \n\nclass NoCurrentExceptionError(Exception):\n    \"\"\"\n    Raised when trying\
+    \ to create a Failure from the current interpreter\n    exception state and there\
+    \ is no current exception state.\n    \"\"\"\n\n\ndef _Traceback(tbFrames):\n\
+    \    \"\"\"\n    Construct a fake traceback object using a list of frames.\n\n\
+    \    It should have the same API as stdlib to allow interaction with\n    other\
+    \ tools.\n\n    @param tbFrames: [(methodname, filename, lineno, locals, globals),\
+    \ ...]\n    \"\"\"\n    assert len(tbFrames) > 0, \"Must pass some frames\"\n\
+    \    # We deliberately avoid using recursion here, as the frames list may be\n\
+    \    # long.\n\n    stack = None\n    # 'tbFrames' is a list of frames from the\
+    \ point the exception was caught,\n    # down to where it was thrown, with the\
+    \ oldest at the start. Add these to\n    # the linked list of _Frames, but also\
+    \ wrap each one with a _Traceback\n    # frame which is linked in the opposite\
+    \ direction (towards the newest\n    # frame).\n    stack = _Frame(tbFrames[0],\
+    \ stack)\n    firstTb = tb = _TracebackFrame(stack)\n    for sf in tbFrames[1:]:\n\
+    \        stack = _Frame(sf, stack)\n        tb.tb_next = _TracebackFrame(stack)\n\
+    \        tb = tb.tb_next\n\n    # Return the first _TracebackFrame.\n    return\
+    \ firstTb\n\n\n# The set of attributes for _TracebackFrame, _Frame and _Code were\
+    \ taken from\n# https://docs.python.org/3.11/library/inspect.html Other Pythons\
+    \ may have a\n# few more attributes that should be added if needed.\nclass _TracebackFrame:\n\
+    \    \"\"\"\n    Fake traceback object which can be passed to functions in the\
+    \ standard\n    library L{traceback} module.\n    \"\"\"\n\n    def __init__(self,\
+    \ frame):\n        \"\"\"\n        @param frame: _Frame object\n        \"\"\"\
+    \n        self.tb_frame = frame\n        self.tb_lineno = frame.f_lineno\n   \
+    \     self.tb_lasti = frame.f_lasti\n        self.tb_next = None\n\n\nclass _Frame:\n\
+    \    \"\"\"\n    A fake frame object, used by L{_Traceback}.\n\n    @ivar f_code:\
+    \ fake L{code<types.CodeType>} object\n    @ivar f_lineno: line number\n    @ivar\
+    \ f_globals: fake f_globals dictionary (usually empty)\n    @ivar f_locals: fake\
+    \ f_locals dictionary (usually empty)\n    @ivar f_back: previous stack frame\
+    \ (towards the caller)\n    \"\"\"\n\n    def __init__(self, frameinfo, back):\n\
+    \        \"\"\"\n        @param frameinfo: (methodname, filename, lineno, locals,\
+    \ globals)\n        @param back: previous (older) stack frame\n        @type back:\
+    \ C{frame}\n        \"\"\"\n        name, filename, lineno, localz, globalz =\
+    \ frameinfo\n        self.f_code = _Code(name, filename)\n        self.f_lineno\
+    \ = lineno\n        self.f_globals = dict(globalz or {})\n        self.f_locals\
+    \ = dict(localz or {})\n        self.f_back = back\n        self.f_lasti = 0\n\
+    \        self.f_builtins = vars(builtins).copy()\n        self.f_trace = None\n\
+    \n\nclass _Code:\n    \"\"\"\n    A fake code object, used by L{_Traceback} via\
+    \ L{_Frame}.\n\n    It is intended to have the same API as the stdlib code type\
+    \ to allow\n    interoperation with other tools based on that interface.\n   \
+    \ \"\"\"\n\n    def __init__(self, name, filename):\n        self.co_name = name\n\
+    \        self.co_filename = filename\n        self.co_lnotab = b\"\"\n       \
+    \ self.co_firstlineno = 0\n        self.co_argcount = 0\n        self.co_varnames\
+    \ = []\n        self.co_code = b\"\"\n        self.co_cellvars = ()\n        self.co_consts\
+    \ = ()\n        self.co_flags = 0\n        self.co_freevars = ()\n        self.co_posonlyargcount\
+    \ = 0\n        self.co_kwonlyargcount = 0\n        self.co_names = ()\n      \
+    \  self.co_nlocals = 0\n        self.co_stacksize = 0\n\n    def co_positions(self):\n\
+    \        return ((None, None, None, None),)\n\n\n_inlineCallbacksExtraneous =\
+    \ []\n\n\ndef _extraneous(f: _T_Callable) -> _T_Callable:\n    \"\"\"\n    Mark\
+    \ the given callable as extraneous to inlineCallbacks exception\n    reporting;\
+    \ don't show these functions.\n\n    @param f: a function that you NEVER WANT\
+    \ TO SEE AGAIN in ANY TRACEBACK\n        reported by Failure.\n\n    @type f:\
+    \ function\n\n    @return: f\n    \"\"\"\n    _inlineCallbacksExtraneous.append(f.__code__)\n\
+    \    return f\n\n\nclass Failure(BaseException):\n    \"\"\"\n    A basic abstraction\
+    \ for an error that has occurred.\n\n    This is necessary because Python's built-in\
+    \ error mechanisms are\n    inconvenient for asynchronous communication.\n\n \
+    \   The C{frame} attribute contain the traceback frames.  Each frame is a tuple\n\
+    \    of (funcName, fileName, lineNumber, localsItems, globalsItems), where\n \
+    \   localsItems and globalsItems are the contents of\n    C{locals().items()}/C{globals().items()}\
+    \ for that frame, or an empty tuple\n    if those details were not captured.\n\
+    \n    Local/global variables in C{frame} will only be captured if\n    C{captureVars=True}\
+    \ when constructing the L{Failure}.\n\n    @ivar value: The exception instance\
+    \ responsible for this failure.\n\n    @ivar type: The exception's class.\n\n\
+    \    @ivar stack: Deprecated, always an empty list.  Equivalent information can\n\
+    \        be extracted from C{import traceback;\n        traceback.extract_stack(your_failure.tb)}\n\
+    \n    @ivar frames: list of frames, innermost first.\n    \"\"\"\n\n    pickled\
+    \ = 0\n    _parents = None\n\n    def __init__(self, exc_value=None, exc_type=None,\
+    \ exc_tb=None, captureVars=False):\n        \"\"\"\n        Initialize me with\
+    \ an explanation of the error.\n\n        By default, this will use the current\
+    \ C{exception}\n        (L{sys.exc_info}()).  However, if you want to specify\
+    \ a\n        particular kind of failure, you can pass an exception as an\n   \
+    \     argument.\n\n        If no C{exc_value} is passed, then an \"original\"\
+    \ C{Failure} will\n        be searched for. If the current exception handler that\
+    \ this\n        C{Failure} is being constructed in is handling an exception\n\
+    \        raised by L{raiseException}, then this C{Failure} will act like\n   \
+    \     the original C{Failure}.\n\n        For C{exc_tb} only L{traceback} instances\
+    \ or L{None} are allowed.\n        If L{None} is supplied for C{exc_value}, the\
+    \ value of C{exc_tb} is\n        ignored, otherwise if C{exc_tb} is L{None}, it\
+    \ will be found from\n        execution context (ie, L{sys.exc_info}).\n\n   \
+    \     @param captureVars: if set, capture locals and globals of stack\n      \
+    \      frames.  This is pretty slow, and makes no difference unless you\n    \
+    \        are going to use L{printDetailedTraceback}.\n        \"\"\"\n       \
+    \ global count\n        count = count + 1\n        self.count = count\n      \
+    \  self.type = self.value = tb = None\n        self.captureVars = captureVars\n\
+    \n        if exc_value is None:\n            self.type, self.value, tb = sys.exc_info()\n\
+    \            if self.type is None:\n                raise NoCurrentExceptionError()\n\
+    \        elif exc_type is None:\n            if isinstance(exc_value, Exception):\n\
+    \                self.type = exc_value.__class__\n            else:\n        \
+    \        # Allow arbitrary objects.\n                self.type = type(exc_value)\n\
+    \            self.value = exc_value\n        else:\n            self.type = exc_type\n\
+    \            self.value = exc_value\n\n        if isinstance(self.value, Failure):\n\
+    \            self._extrapolate(self.value)\n            return\n\n        if tb\
+    \ is None:\n            if exc_tb:\n                tb = exc_tb\n            elif\
+    \ getattr(self.value, \"__traceback__\", None):\n                # Python 3\n\
+    \                tb = self.value.__traceback__\n        self.tb = tb\n\n    @property\n\
+    \    def frames(self):\n        if hasattr(self, \"_frames\"):\n            return\
+    \ self._frames\n\n        frames = self._frames = []\n        tb = self.tb\n\n\
+    \        while tb is not None:\n            f = tb.tb_frame\n            if self.captureVars:\n\
+    \                localz = f.f_locals.copy()\n                if f.f_locals is\
+    \ f.f_globals:\n                    globalz = {}\n                else:\n    \
+    \                globalz = f.f_globals.copy()\n                for d in globalz,\
+    \ localz:\n                    if \"__builtins__\" in d:\n                   \
+    \     del d[\"__builtins__\"]\n                localz = list(localz.items())\n\
+    \                globalz = list(globalz.items())\n            else:\n        \
+    \        localz = globalz = ()\n            frames.append(\n                (\n\
+    \                    f.f_code.co_name,\n                    f.f_code.co_filename,\n\
+    \                    tb.tb_lineno,\n                    localz,\n            \
+    \        globalz,\n                )\n            )\n            tb = tb.tb_next\n\
+    \        return frames\n\n    @frames.setter\n    def frames(self, frames):\n\
+    \        self._frames = frames\n\n    @deprecatedProperty(Version(\"Twisted\"\
+    , 24, 10, 0))\n    def stack(self):\n        return []\n\n    @stack.setter  #\
+    \ type: ignore[no-redef]\n    def stack(self, stack):\n        del stack\n\n \
+    \   @property\n    def parents(self):\n        if self._parents is not None:\n\
+    \            return self._parents\n\n        if inspect.isclass(self.type) and\
+    \ issubclass(self.type, Exception):\n            parentCs = getmro(self.type)\n\
+    \            self._parents = list(map(reflect.qual, parentCs))\n        else:\n\
+    \            self._parents = [self.type]\n        return self._parents\n\n   \
+    \ @parents.setter\n    def parents(self, parents):\n        self._parents = parents\n\
+    \n    def _extrapolate(self, otherFailure):\n        \"\"\"\n        Extrapolate\
+    \ from one failure into another, copying its stack frames.\n\n        @param otherFailure:\
+    \ Another L{Failure}, whose traceback information,\n            if any, should\
+    \ be preserved as part of the stack presented by this\n            one.\n    \
+    \    @type otherFailure: L{Failure}\n        \"\"\"\n        # Copy all infos\
+    \ from that failure (including self._frames).\n        self.__dict__ = copy.copy(otherFailure.__dict__)\n\
+    \n    @staticmethod\n    def _withoutTraceback(value: BaseException) -> Failure:\n\
+    \        \"\"\"\n        Create a L{Failure} for an exception without a traceback.\n\
+    \n        By restricting the inputs significantly, this constructor runs much\n\
+    \        faster.\n        \"\"\"\n        result = Failure.__new__(Failure)\n\
+    \        global count\n        count += 1\n        result.captureVars = False\n\
+    \        result.count = count\n        result.value = value\n        result.type\
+    \ = value.__class__\n        result.tb = None\n        return result\n\n    def\
+    \ trap(self, *errorTypes):\n        \"\"\"\n        Trap this failure if its type\
+    \ is in a predetermined list.\n\n        This allows you to trap a Failure in\
+    \ an error callback.  It will be\n        automatically re-raised if it is not\
+    \ a type that you expect.\n\n        The reason for having this particular API\
+    \ is because it's very useful\n        in Deferred errback chains::\n\n      \
+    \      def _ebFoo(self, failure):\n                r = failure.trap(Spam, Eggs)\n\
+    \                print('The Failure is due to either Spam or Eggs!')\n       \
+    \         if r == Spam:\n                    print('Spam did it!')\n         \
+    \       elif r == Eggs:\n                    print('Eggs did it!')\n\n       \
+    \ If the failure is not a Spam or an Eggs, then the Failure will be\n        'passed\
+    \ on' to the next errback. In Python 2 the Failure will be\n        raised; in\
+    \ Python 3 the underlying exception will be re-raised.\n\n        @type errorTypes:\
+    \ L{Exception}\n        \"\"\"\n        error = self.check(*errorTypes)\n    \
+    \    if not error:\n            self.raiseException()\n        return error\n\n\
+    \    def check(self, *errorTypes):\n        \"\"\"\n        Check if this failure's\
+    \ type is in a predetermined list.\n\n        @type errorTypes: list of L{Exception}\
+    \ classes or\n                          fully-qualified class names.\n       \
+    \ @returns: the matching L{Exception} type, or None if no match.\n        \"\"\
+    \"\n        for error in errorTypes:\n            err = error\n            if\
+    \ inspect.isclass(error) and issubclass(error, Exception):\n                err\
+    \ = reflect.qual(error)\n            if err in self.parents:\n               \
+    \ return error\n        return None\n\n    def raiseException(self) -> NoReturn:\n\
+    \        \"\"\"\n        raise the original exception, preserving traceback\n\
+    \        information if available.\n        \"\"\"\n        raise self.value.with_traceback(self.tb)\n\
+    \n    @_extraneous\n    def throwExceptionIntoGenerator(self, g):\n        \"\"\
+    \"\n        Throw the original exception into the given generator,\n        preserving\
+    \ traceback information if available.\n\n        @return: The next value yielded\
+    \ from the generator.\n        @raise StopIteration: If there are no more values\
+    \ in the generator.\n        @raise anything else: Anything that the generator\
+    \ raises.\n        \"\"\"\n        return g.throw(self.value.with_traceback(self.tb))\n\
+    \n    def __repr__(self) -> str:\n        return \"<{} {}: {}>\".format(\n   \
+    \         reflect.qual(self.__class__),\n            reflect.qual(self.type),\n\
+    \            self.getErrorMessage(),\n        )\n\n    def __str__(self) -> str:\n\
+    \        return \"[Failure instance: %s]\" % self.getBriefTraceback()\n\n    def\
+    \ __setstate__(self, state):\n        if \"stack\" in state:\n            state.pop(\"\
+    stack\")\n        state[\"_parents\"] = state.pop(\"parents\")\n        state[\"\
+    _frames\"] = state.pop(\"frames\")\n        self.__dict__.update(state)\n\n  \
+    \  def __getstate__(self):\n        \"\"\"\n        Avoid pickling objects in\
+    \ the traceback.\n\n        This is not called direclty by pickle, since C{BaseException}\n\
+    \        implements reduce; instead, pickle calls C{Failure.__reduce__} which\n\
+    \        then calls this API.\n        \"\"\"\n        # Make sure _parents field\
+    \ is populated:\n        _ = self.parents\n\n        c = self.__dict__.copy()\n\
+    \n        # Backwards compatibility with old code, e.g. for Perspective Broker:\n\
+    \        c[\"parents\"] = c.pop(\"_parents\")\n        c[\"stack\"] = []\n\n \
+    \       if \"_frames\" in c:\n            c.pop(\"_frames\")\n\n        if self.captureVars:\n\
+    \            c[\"frames\"] = [\n                [\n                    v[0],\n\
+    \                    v[1],\n                    v[2],\n                    _safeReprVars(v[3]),\n\
+    \                    _safeReprVars(v[4]),\n                ]\n               \
+    \ for v in self.frames\n            ]\n        else:\n            c[\"frames\"\
+    ] = self.frames\n\n        # Added 2003-06-23. See comment above in __init__\n\
+    \        c[\"tb\"] = None\n\n        c[\"pickled\"] = 1\n        return c\n\n\
+    \    def __reduce__(self):\n        # BaseException implements a __reduce__ (in\
+    \ C, technically), so we need\n        # to override this to get pickling working.\n\
+    \        return (partial(Failure.__new__, Failure), (), self.__getstate__())\n\
+    \n    def cleanFailure(self):\n        \"\"\"\n        Remove references to other\
+    \ objects, replacing them with strings.\n\n        On Python 3, this will also\
+    \ set the C{__traceback__} attribute of the\n        exception instance to L{None}.\n\
+    \        \"\"\"\n        state = self.__getstate__()\n        state[\"_frames\"\
+    ] = state.pop(\"frames\")\n        self.__dict__ = state\n        if getattr(self.value,\
+    \ \"__traceback__\", None):\n            # Python 3\n            self.value.__traceback__\
+    \ = None\n\n    def getTracebackObject(self):\n        \"\"\"\n        Get an\
+    \ object that represents this Failure's stack that can be passed\n        to traceback.extract_tb.\n\
+    \n        If the original traceback object is still present, return that. If this\n\
+    \        traceback object has been lost but we still have the information,\n \
+    \       return a fake traceback object (see L{_Traceback}). If there is no\n \
+    \       traceback information at all, return None.\n        \"\"\"\n        if\
+    \ self.tb is not None:\n            return self.tb\n        elif len(self.frames)\
+    \ > 0:\n            return _Traceback(self.frames)\n        else:\n          \
+    \  return None\n\n    def getErrorMessage(self) -> str:\n        \"\"\"\n    \
+    \    Get a string of the exception which caused this Failure.\n        \"\"\"\n\
+    \        if isinstance(self.value, Failure):\n            return self.value.getErrorMessage()\n\
+    \        return reflect.safe_str(self.value)\n\n    def getBriefTraceback(self)\
+    \ -> str:\n        io = StringIO()\n        self.printBriefTraceback(file=io)\n\
+    \        return io.getvalue()\n\n    def getTraceback(self, elideFrameworkCode:\
+    \ int = 0, detail: str = \"default\") -> str:\n        io = StringIO()\n     \
+    \   self.printTraceback(\n            file=io, elideFrameworkCode=elideFrameworkCode,\
+    \ detail=detail\n        )\n        return io.getvalue()\n\n    def printTraceback(self,\
+    \ file=None, elideFrameworkCode=False, detail=\"default\"):\n        \"\"\"\n\
+    \        Emulate Python's standard error reporting mechanism.\n\n        @param\
+    \ file: If specified, a file-like object to which to write the\n            traceback.\n\
+    \n        @param elideFrameworkCode: Deprecated, ignored.\n\n        @param detail:\
+    \ A string indicating how much information to include\n            in the traceback.\
+    \  Must be one of C{'brief'}, C{'default'}, or\n            C{'verbose'}.\n  \
+    \      \"\"\"\n        if file is None:\n            from twisted.python import\
+    \ log\n\n            file = log.logerr\n\n        w = file.write\n\n        if\
+    \ detail == \"verbose\" and not self.captureVars:\n            # We don't have\
+    \ any locals or globals, so rather than show them as\n            # empty make\
+    \ the output explicitly say that we don't have them at\n            # all.\n \
+    \           formatDetail = \"verbose-vars-not-captured\"\n        else:\n    \
+    \        formatDetail = detail\n\n        # Preamble\n        if detail == \"\
+    verbose\":\n            w(\n                \"*--- Failure #%d%s---\\n\"\n   \
+    \             % (self.count, (self.pickled and \" (pickled) \") or \" \")\n  \
+    \          )\n        elif detail == \"brief\":\n            if self.frames:\n\
+    \                hasFrames = \"Traceback\"\n            else:\n              \
+    \  hasFrames = \"Traceback (failure with no frames)\"\n            w(\n      \
+    \          \"%s: %s: %s\\n\"\n                % (hasFrames, reflect.safe_str(self.type),\
+    \ reflect.safe_str(self.value))\n            )\n        else:\n            w(\"\
+    Traceback (most recent call last):\\n\")\n\n        # Frames, formatted in appropriate\
+    \ style\n        if self.frames:\n            format_frames(self.frames, w, formatDetail)\n\
+    \        elif not detail == \"brief\":\n            # Yeah, it's not really a\
+    \ traceback, despite looking like one...\n            w(\"Failure: \")\n\n   \
+    \     # Postamble, if any\n        if not detail == \"brief\":\n            w(f\"\
+    {reflect.qual(self.type)}: {reflect.safe_str(self.value)}\\n\")\n\n        # Chaining\n\
+    \        if isinstance(self.value, Failure):\n            # TODO: indentation\
+    \ for chained failures?\n            file.write(\" (chained Failure)\\n\")\n \
+    \           self.value.printTraceback(file, elideFrameworkCode, detail)\n    \
+    \    if detail == \"verbose\":\n            w(\"*--- End of Failure #%d ---\\\
+    n\" % self.count)\n\n    def printBriefTraceback(self, file=None, elideFrameworkCode=0):\n\
+    \        \"\"\"\n        Print a traceback as densely as possible.\n        \"\
+    \"\"\n        self.printTraceback(file, elideFrameworkCode, detail=\"brief\")\n\
+    \n    def printDetailedTraceback(self, file=None, elideFrameworkCode=0):\n   \
+    \     \"\"\"\n        Print a traceback with detailed locals and globals information.\n\
+    \        \"\"\"\n        self.printTraceback(file, elideFrameworkCode, detail=\"\
+    verbose\")\n\n\ndef _safeReprVars(varsDictItems):\n    \"\"\"\n    Convert a list\
+    \ of (name, object) pairs into (name, repr) pairs.\n\n    L{twisted.python.reflect.safe_repr}\
+    \ is used to generate the repr, so no\n    exceptions will be raised by faulty\
+    \ C{__repr__} methods.\n\n    @param varsDictItems: a sequence of (name, value)\
+    \ pairs as returned by e.g.\n        C{locals().items()}.\n    @returns: a sequence\
+    \ of (name, repr) pairs.\n    \"\"\"\n    return [(name, reflect.safe_repr(obj))\
+    \ for (name, obj) in varsDictItems]\n\n\n# slyphon: make post-morteming exceptions\
+    \ tweakable\n\nDO_POST_MORTEM = True\n\n\ndef _debuginit(\n    self,\n    exc_value=None,\n\
+    \    exc_type=None,\n    exc_tb=None,\n    captureVars=False,\n    Failure__init__=Failure.__init__,\n\
+    ):\n    \"\"\"\n    Initialize failure object, possibly spawning pdb.\n    \"\"\
+    \"\n    if (exc_value, exc_type, exc_tb) == (None, None, None):\n        exc =\
+    \ sys.exc_info()\n        if not exc[0] == self.__class__ and DO_POST_MORTEM:\n\
+    \            try:\n                strrepr = str(exc[1])\n            except BaseException:\n\
+    \                strrepr = \"broken str\"\n            print(\n              \
+    \  \"Jumping into debugger for post-mortem of exception '{}':\".format(\n    \
+    \                strrepr\n                )\n            )\n            import\
+    \ pdb\n\n            pdb.post_mortem(exc[2])\n    Failure__init__(self, exc_value,\
+    \ exc_type, exc_tb, captureVars)\n\n\ndef startDebugMode():\n    \"\"\"\n    Enable\
+    \ debug hooks for Failures.\n    \"\"\"\n    Failure.__init__ = _debuginit\n\n\
+    ### Source File Dependency Files Content\n### Dependency File: deprecate.py\n\
+    # -*- test-case-name: twisted.python.test.test_deprecate -*-\n# Copyright (c)\
+    \ Twisted Matrix Laboratories.\n# See LICENSE for details.\n\n\"\"\"\nDeprecation\
+    \ framework for Twisted.\n\nTo mark a method, function, or class as being deprecated\
+    \ do this::\n\n    from incremental import Version\n    from twisted.python.deprecate\
+    \ import deprecated\n\n    @deprecated(Version(\"Twisted\", 22, 10, 0))\n    def\
+    \ badAPI(self, first, second):\n        '''\n        Docstring for badAPI.\n \
+    \       '''\n        ...\n\n    @deprecated(Version(\"Twisted\", 22, 10, 0))\n\
+    \    class BadClass:\n        '''\n        Docstring for BadClass.\n        '''\n\
+    \nThe newly-decorated badAPI will issue a warning when called, and BadClass will\n\
+    issue a warning when instantiated. Both will also have  a deprecation notice\n\
+    appended to their docstring.\n\nTo deprecate properties you can use::\n\n    from\
+    \ incremental import Version\n    from twisted.python.deprecate import deprecatedProperty\n\
+    \n    class OtherwiseUndeprecatedClass:\n\n        @deprecatedProperty(Version(\"\
+    Twisted\", 22, 10, 0))\n        def badProperty(self):\n            '''\n    \
+    \        Docstring for badProperty.\n            '''\n\n        @badProperty.setter\n\
+    \        def badProperty(self, value):\n            '''\n            Setter sill\
+    \ also raise the deprecation warning.\n            '''\n\n\nWhile it's best to\
+    \ avoid this as it adds performance overhead to *any* usage of\nthe module, to\
+    \ mark module-level attributes as being deprecated you can use::\n\n    badAttribute\
+    \ = \"someValue\"\n\n    ...\n\n    deprecatedModuleAttribute(\n        Version(\"\
+    Twisted\", 22, 10, 0),\n        \"Use goodAttribute instead.\",\n        \"your.full.module.name\"\
+    ,\n        \"badAttribute\")\n\nThe deprecated attributes will issue a warning\
+    \ whenever they are accessed. If\nthe attributes being deprecated are in the same\
+    \ module as the\nL{deprecatedModuleAttribute} call is being made from, the C{__name__}\
+    \ global\ncan be used as the C{moduleName} parameter.\n\n\nTo mark an optional,\
+    \ keyword parameter of a function or method as deprecated\nwithout deprecating\
+    \ the function itself, you can use::\n\n    @deprecatedKeywordParameter(Version(\"\
+    Twisted\", 22, 10, 0), \"baz\")\n    def someFunction(foo, bar=0, baz=None):\n\
+    \        ...\n\nSee also L{incremental.Version}.\n\n@type DEPRECATION_WARNING_FORMAT:\
+    \ C{str}\n@var DEPRECATION_WARNING_FORMAT: The default deprecation warning string\
+    \ format\n    to use when one is not provided by the user.\n\"\"\"\nfrom __future__\
+    \ import annotations\n\n__all__ = [\n    \"deprecated\",\n    \"deprecatedProperty\"\
+    ,\n    \"getDeprecationWarningString\",\n    \"getWarningMethod\",\n    \"setWarningMethod\"\
+    ,\n    \"deprecatedModuleAttribute\",\n    \"deprecatedKeywordParameter\",\n]\n\
+    \n\nimport inspect\nimport sys\nfrom dis import findlinestarts\nfrom functools\
+    \ import wraps\nfrom types import ModuleType\nfrom typing import Any, Callable,\
+    \ Dict, Optional, TypeVar, cast\nfrom warnings import warn, warn_explicit\n\n\
+    from incremental import Version, getVersionString\nfrom typing_extensions import\
+    \ ParamSpec\n\n_P = ParamSpec(\"_P\")\n_R = TypeVar(\"_R\")\n\nDEPRECATION_WARNING_FORMAT\
+    \ = \"%(fqpn)s was deprecated in %(version)s\"\n\n# Notionally, part of twisted.python.reflect,\
+    \ but defining it there causes a\n# cyclic dependency between this module and\
+    \ that module.  Define it here,\n# instead, and let reflect import it to re-expose\
+    \ to the public.\n\n\ndef _fullyQualifiedName(obj):\n    \"\"\"\n    Return the\
+    \ fully qualified name of a module, class, method or function.\n    Classes and\
+    \ functions need to be module level ones to be correctly\n    qualified.\n\n \
+    \   @rtype: C{str}.\n    \"\"\"\n    try:\n        name = obj.__qualname__\n \
+    \   except AttributeError:\n        name = obj.__name__\n\n    if inspect.isclass(obj)\
+    \ or inspect.isfunction(obj):\n        moduleName = obj.__module__\n        return\
+    \ f\"{moduleName}.{name}\"\n    elif inspect.ismethod(obj):\n        return f\"\
+    {obj.__module__}.{obj.__qualname__}\"\n    return name\n\n\n# Try to keep it looking\
+    \ like something in twisted.python.reflect.\n_fullyQualifiedName.__module__ =\
+    \ \"twisted.python.reflect\"\n_fullyQualifiedName.__name__ = \"fullyQualifiedName\"\
+    \n_fullyQualifiedName.__qualname__ = \"fullyQualifiedName\"\n\n\ndef _getReplacementString(replacement):\n\
+    \    \"\"\"\n    Surround a replacement for a deprecated API with some polite\
+    \ text exhorting\n    the user to consider it as an alternative.\n\n    @type\
+    \ replacement: C{str} or callable\n\n    @return: a string like \"please use twisted.python.modules.getModule\n\
+    \        instead\".\n    \"\"\"\n    if callable(replacement):\n        replacement\
+    \ = _fullyQualifiedName(replacement)\n    return f\"please use {replacement} instead\"\
+    \n\n\ndef _getDeprecationDocstring(version, replacement=None):\n    \"\"\"\n \
+    \   Generate an addition to a deprecated object's docstring that explains its\n\
+    \    deprecation.\n\n    @param version: the version it was deprecated.\n    @type\
+    \ version: L{incremental.Version}\n\n    @param replacement: The replacement,\
+    \ if specified.\n    @type replacement: C{str} or callable\n\n    @return: a string\
+    \ like \"Deprecated in Twisted 27.2.0; please use\n        twisted.timestream.tachyon.flux\
+    \ instead.\"\n    \"\"\"\n    doc = f\"Deprecated in {getVersionString(version)}\"\
+    \n    if replacement:\n        doc = f\"{doc}; {_getReplacementString(replacement)}\"\
+    \n    return doc + \".\"\n\n\ndef _getDeprecationWarningString(fqpn, version,\
+    \ format=None, replacement=None):\n    \"\"\"\n    Return a string indicating\
+    \ that the Python name was deprecated in the given\n    version.\n\n    @param\
+    \ fqpn: Fully qualified Python name of the thing being deprecated\n    @type fqpn:\
+    \ C{str}\n\n    @param version: Version that C{fqpn} was deprecated in.\n    @type\
+    \ version: L{incremental.Version}\n\n    @param format: A user-provided format\
+    \ to interpolate warning values into, or\n        L{DEPRECATION_WARNING_FORMAT\n\
+    \        <twisted.python.deprecate.DEPRECATION_WARNING_FORMAT>} if L{None} is\n\
+    \        given.\n    @type format: C{str}\n\n    @param replacement: what should\
+    \ be used in place of C{fqpn}. Either pass in\n        a string, which will be\
+    \ inserted into the warning message, or a\n        callable, which will be expanded\
+    \ to its full import path.\n    @type replacement: C{str} or callable\n\n    @return:\
+    \ A textual description of the deprecation\n    @rtype: C{str}\n    \"\"\"\n \
+    \   if format is None:\n        format = DEPRECATION_WARNING_FORMAT\n    warningString\
+    \ = format % {\"fqpn\": fqpn, \"version\": getVersionString(version)}\n    if\
+    \ replacement:\n        warningString = \"{}; {}\".format(\n            warningString,\
+    \ _getReplacementString(replacement)\n        )\n    return warningString\n\n\n\
+    def getDeprecationWarningString(callableThing, version, format=None, replacement=None):\n\
+    \    \"\"\"\n    Return a string indicating that the callable was deprecated in\
+    \ the given\n    version.\n\n    @type callableThing: C{callable}\n    @param\
+    \ callableThing: Callable object to be deprecated\n\n    @type version: L{incremental.Version}\n\
+    \    @param version: Version that C{callableThing} was deprecated in.\n\n    @type\
+    \ format: C{str}\n    @param format: A user-provided format to interpolate warning\
+    \ values into,\n        or L{DEPRECATION_WARNING_FORMAT\n        <twisted.python.deprecate.DEPRECATION_WARNING_FORMAT>}\
+    \ if L{None} is\n        given\n\n    @param replacement: what should be used\
+    \ in place of the callable. Either\n        pass in a string, which will be inserted\
+    \ into the warning message,\n        or a callable, which will be expanded to\
+    \ its full import path.\n    @type replacement: C{str} or callable\n\n    @return:\
+    \ A string describing the deprecation.\n    @rtype: C{str}\n    \"\"\"\n    return\
+    \ _getDeprecationWarningString(\n        _fullyQualifiedName(callableThing), version,\
+    \ format, replacement\n    )\n\n\ndef _appendToDocstring(thingWithDoc, textToAppend):\n\
+    \    \"\"\"\n    Append the given text to the docstring of C{thingWithDoc}.\n\n\
+    \    If C{thingWithDoc} has no docstring, then the text just replaces the\n  \
+    \  docstring. If it has a single-line docstring then it appends a blank line\n\
+    \    and the message text. If it has a multi-line docstring, then in appends a\n\
+    \    blank line a the message text, and also does the indentation correctly.\n\
+    \    \"\"\"\n    if thingWithDoc.__doc__:\n        docstringLines = thingWithDoc.__doc__.splitlines()\n\
+    \    else:\n        docstringLines = []\n\n    if len(docstringLines) == 0:\n\
+    \        docstringLines.append(textToAppend)\n    elif len(docstringLines) ==\
+    \ 1:\n        docstringLines.extend([\"\", textToAppend, \"\"])\n    else:\n \
+    \       trailer = docstringLines[-1]\n        spaces = \"\"\n        if not trailer.strip():\n\
+    \            # Deal with differences between Python 3.13 and older versions.\n\
+    \            spaces = docstringLines.pop()\n        docstringLines.extend([\"\"\
+    , spaces + textToAppend, spaces])\n        docstringLines = [l.lstrip(\" \") for\
+    \ l in docstringLines]\n    thingWithDoc.__doc__ = \"\\n\".join(docstringLines)\n\
+    \n\ndef deprecated(\n    version: Version, replacement: str | Callable[..., object]\
+    \ | None = None\n) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:\n    \"\"\
+    \"\n    Return a decorator that marks callables as deprecated. To deprecate a\n\
+    \    property, see L{deprecatedProperty}.\n\n    @type version: L{incremental.Version}\n\
+    \    @param version: The version in which the callable will be marked as\n   \
+    \     having been deprecated.  The decorated function will be annotated\n    \
+    \    with this version, having it set as its C{deprecatedVersion}\n        attribute.\n\
+    \n    @param replacement: what should be used in place of the callable. Either\n\
+    \        pass in a string, which will be inserted into the warning message,\n\
+    \        or a callable, which will be expanded to its full import path.\n    @type\
+    \ replacement: C{str} or callable\n    \"\"\"\n\n    def deprecationDecorator(function:\
+    \ Callable[_P, _R]) -> Callable[_P, _R]:\n        \"\"\"\n        Decorator that\
+    \ marks C{function} as deprecated.\n        \"\"\"\n        warningString = getDeprecationWarningString(\n\
+    \            function, version, None, replacement\n        )\n\n        @wraps(function)\n\
+    \        def deprecatedFunction(*args: _P.args, **kwargs: _P.kwargs) -> _R:\n\
+    \            warn(warningString, DeprecationWarning, stacklevel=2)\n         \
+    \   return function(*args, **kwargs)\n\n        _appendToDocstring(\n        \
+    \    deprecatedFunction, _getDeprecationDocstring(version, replacement)\n    \
+    \    )\n        deprecatedFunction.deprecatedVersion = version  # type: ignore[attr-defined]\n\
+    \        return deprecatedFunction\n\n    return deprecationDecorator\n\n\ndef\
+    \ deprecatedProperty(\n    version: Version, replacement: str | Callable[...,\
+    \ object] | None = None\n) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:\n\
+    \    \"\"\"\n    Return a decorator that marks a property as deprecated. To deprecate\
+    \ a\n    regular callable or class, see L{deprecated}.\n\n    @type version: L{incremental.Version}\n\
+    \    @param version: The version in which the callable will be marked as\n   \
+    \     having been deprecated.  The decorated function will be annotated\n    \
+    \    with this version, having it set as its C{deprecatedVersion}\n        attribute.\n\
+    \n    @param replacement: what should be used in place of the callable.\n    \
+    \    Either pass in a string, which will be inserted into the warning\n      \
+    \  message, or a callable, which will be expanded to its full import\n       \
+    \ path.\n    @type replacement: C{str} or callable\n\n    @return: A new property\
+    \ with deprecated setter and getter.\n    @rtype: C{property}\n\n    @since: 16.1.0\n\
+    \    \"\"\"\n\n    class _DeprecatedProperty(property):\n        \"\"\"\n    \
+    \    Extension of the build-in property to allow deprecated setters.\n       \
+    \ \"\"\"\n\n        def _deprecatedWrapper(self, function):\n            @wraps(function)\n\
+    \            def deprecatedFunction(*args, **kwargs):\n                warn(\n\
+    \                    self.warningString,  # type: ignore[attr-defined]\n     \
+    \               DeprecationWarning,\n                    stacklevel=2,\n     \
+    \           )\n                return function(*args, **kwargs)\n\n          \
+    \  return deprecatedFunction\n\n        def setter(self, function):\n        \
+    \    return property.setter(self, self._deprecatedWrapper(function))\n\n    def\
+    \ deprecationDecorator(function):\n        warningString = getDeprecationWarningString(\n\
+    \            function, version, None, replacement\n        )\n\n        @wraps(function)\n\
+    \        def deprecatedFunction(*args, **kwargs):\n            warn(warningString,\
+    \ DeprecationWarning, stacklevel=2)\n            return function(*args, **kwargs)\n\
+    \n        _appendToDocstring(\n            deprecatedFunction, _getDeprecationDocstring(version,\
+    \ replacement)\n        )\n        deprecatedFunction.deprecatedVersion = version\
+    \  # type: ignore[attr-defined]\n\n        result = _DeprecatedProperty(deprecatedFunction)\n\
+    \        result.warningString = warningString  # type: ignore[attr-defined]\n\
+    \        return result\n\n    return deprecationDecorator\n\n\ndef getWarningMethod():\n\
+    \    \"\"\"\n    Return the warning method currently used to record deprecation\
+    \ warnings.\n    \"\"\"\n    return warn\n\n\ndef setWarningMethod(newMethod):\n\
+    \    \"\"\"\n    Set the warning method to use to record deprecation warnings.\n\
+    \n    The callable should take message, category and stacklevel. The return\n\
+    \    value is ignored.\n    \"\"\"\n    global warn\n    warn = newMethod\n\n\n\
+    class _InternalState:\n    \"\"\"\n    An L{_InternalState} is a helper object\
+    \ for a L{_ModuleProxy}, so that it\n    can easily access its own attributes,\
+    \ bypassing its logic for delegating to\n    another object that it's proxying\
+    \ for.\n\n    @ivar proxy: a L{_ModuleProxy}\n    \"\"\"\n\n    def __init__(self,\
+    \ proxy):\n        object.__setattr__(self, \"proxy\", proxy)\n\n    def __getattribute__(self,\
+    \ name):\n        return object.__getattribute__(object.__getattribute__(self,\
+    \ \"proxy\"), name)\n\n    def __setattr__(self, name, value):\n        return\
+    \ object.__setattr__(object.__getattribute__(self, \"proxy\"), name, value)\n\n\
+    \nclass _ModuleProxy:\n    \"\"\"\n    Python module wrapper to hook module-level\
+    \ attribute access.\n\n    Access to deprecated attributes first checks\n    L{_ModuleProxy._deprecatedAttributes},\
+    \ if the attribute does not appear\n    there then access falls through to L{_ModuleProxy._module},\
+    \ the wrapped\n    module object.\n\n    @ivar _module: Module on which to hook\
+    \ attribute access.\n    @type _module: C{module}\n\n    @ivar _deprecatedAttributes:\
+    \ Mapping of attribute names to objects that\n        retrieve the module attribute's\
+    \ original value.\n    @type _deprecatedAttributes: C{dict} mapping C{str} to\n\
+    \        L{_DeprecatedAttribute}\n\n    @ivar _lastWasPath: Heuristic guess as\
+    \ to whether warnings about this\n        package should be ignored for the next\
+    \ call.  If the last attribute\n        access of this module was a C{getattr}\
+    \ of C{__path__}, we will assume\n        that it was the import system doing\
+    \ it and we won't emit a warning for\n        the next access, even if it is to\
+    \ a deprecated attribute.  The CPython\n        import system always tries to\
+    \ access C{__path__}, then the attribute\n        itself, then the attribute itself\
+    \ again, in both successful and failed\n        cases.\n    @type _lastWasPath:\
+    \ C{bool}\n    \"\"\"\n\n    def __init__(self, module):\n        state = _InternalState(self)\n\
+    \        state._module = module\n        state._deprecatedAttributes = {}\n  \
+    \      state._lastWasPath = False\n\n    def __repr__(self) -> str:\n        \"\
+    \"\"\n        Get a string containing the type of the module proxy and a\n   \
+    \     representation of the wrapped module object.\n        \"\"\"\n        state\
+    \ = _InternalState(self)\n        return f\"<{type(self).__name__} module={state._module!r}>\"\
+    \n\n    def __setattr__(self, name, value):\n        \"\"\"\n        Set an attribute\
+    \ on the wrapped module object.\n        \"\"\"\n        state = _InternalState(self)\n\
+    \        state._lastWasPath = False\n        setattr(state._module, name, value)\n\
+    \n    def __getattribute__(self, name):\n        \"\"\"\n        Get an attribute\
+    \ from the module object, possibly emitting a warning.\n\n        If the specified\
+    \ name has been deprecated, then a warning is issued.\n        (Unless certain\
+    \ obscure conditions are met; see\n        L{_ModuleProxy._lastWasPath} for more\
+    \ information about what might quash\n        such a warning.)\n        \"\"\"\
+    \n        state = _InternalState(self)\n        if state._lastWasPath:\n     \
+    \       deprecatedAttribute = None\n        else:\n            deprecatedAttribute\
+    \ = state._deprecatedAttributes.get(name)\n\n        if deprecatedAttribute is\
+    \ not None:\n            # If we have a _DeprecatedAttribute object from the earlier\
+    \ lookup,\n            # allow it to issue the warning.\n            value = deprecatedAttribute.get()\n\
+    \        else:\n            # Otherwise, just retrieve the underlying value directly;\
+    \ it's not\n            # deprecated, there's no warning to issue.\n         \
+    \   value = getattr(state._module, name)\n        if name == \"__path__\":\n \
+    \           state._lastWasPath = True\n        else:\n            state._lastWasPath\
+    \ = False\n        return value\n\n\nclass _DeprecatedAttribute:\n    \"\"\"\n\
+    \    Wrapper for deprecated attributes.\n\n    This is intended to be used by\
+    \ L{_ModuleProxy}. Calling\n    L{_DeprecatedAttribute.get} will issue a warning\
+    \ and retrieve the\n    underlying attribute's value.\n\n    @type module: C{module}\n\
+    \    @ivar module: The original module instance containing this attribute\n\n\
+    \    @type fqpn: C{str}\n    @ivar fqpn: Fully qualified Python name for the deprecated\
+    \ attribute\n\n    @type version: L{incremental.Version}\n    @ivar version: Version\
+    \ that the attribute was deprecated in\n\n    @type message: C{str}\n    @ivar\
+    \ message: Deprecation message\n    \"\"\"\n\n    def __init__(self, module, name,\
+    \ version, message):\n        \"\"\"\n        Initialise a deprecated name wrapper.\n\
+    \        \"\"\"\n        self.module = module\n        self.__name__ = name\n\
+    \        self.fqpn = module.__name__ + \".\" + name\n        self.version = version\n\
+    \        self.message = message\n\n    def get(self):\n        \"\"\"\n      \
+    \  Get the underlying attribute value and issue a deprecation warning.\n     \
+    \   \"\"\"\n        # This might fail if the deprecated thing is a module inside\
+    \ a package.\n        # In that case, don't emit the warning this time.  The import\
+    \ system\n        # will come back again when it's not an AttributeError and we\
+    \ can emit\n        # the warning then.\n        result = getattr(self.module,\
+    \ self.__name__)\n        message = _getDeprecationWarningString(\n          \
+    \  self.fqpn, self.version, DEPRECATION_WARNING_FORMAT + \": \" + self.message\n\
+    \        )\n        warn(message, DeprecationWarning, stacklevel=3)\n        return\
+    \ result\n\n\ndef _deprecateAttribute(proxy, name, version, message):\n    \"\"\
+    \"\n    Mark a module-level attribute as being deprecated.\n\n    @type proxy:\
+    \ L{_ModuleProxy}\n    @param proxy: The module proxy instance proxying the deprecated\
+    \ attributes\n\n    @type name: C{str}\n    @param name: Attribute name\n\n  \
+    \  @type version: L{incremental.Version}\n    @param version: Version that the\
+    \ attribute was deprecated in\n\n    @type message: C{str}\n    @param message:\
+    \ Deprecation message\n    \"\"\"\n    _module = object.__getattribute__(proxy,\
+    \ \"_module\")\n    attr = _DeprecatedAttribute(_module, name, version, message)\n\
+    \    # Add a deprecated attribute marker for this module's attribute. When this\n\
+    \    # attribute is accessed via _ModuleProxy a warning is emitted.\n    _deprecatedAttributes\
+    \ = object.__getattribute__(proxy, \"_deprecatedAttributes\")\n    _deprecatedAttributes[name]\
+    \ = attr\n\n\ndef deprecatedModuleAttribute(version, message, moduleName, name):\n\
+    \    \"\"\"\n    Declare a module-level attribute as being deprecated.\n\n   \
+    \ @type version: L{incremental.Version}\n    @param version: Version that the\
+    \ attribute was deprecated in\n\n    @type message: C{str}\n    @param message:\
+    \ Deprecation message\n\n    @type moduleName: C{str}\n    @param moduleName:\
+    \ Fully-qualified Python name of the module containing\n        the deprecated\
+    \ attribute; if called from the same module as the\n        attributes are being\
+    \ deprecated in, using the C{__name__} global can\n        be helpful\n\n    @type\
+    \ name: C{str}\n    @param name: Attribute name to deprecate\n    \"\"\"\n   \
+    \ module = sys.modules[moduleName]\n    if not isinstance(module, _ModuleProxy):\n\
+    \        module = cast(ModuleType, _ModuleProxy(module))\n        sys.modules[moduleName]\
+    \ = module\n\n    _deprecateAttribute(module, name, version, message)\n\n\ndef\
+    \ warnAboutFunction(offender, warningString):\n    \"\"\"\n    Issue a warning\
+    \ string, identifying C{offender} as the responsible code.\n\n    This function\
+    \ is used to deprecate some behavior of a function.  It differs\n    from L{warnings.warn}\
+    \ in that it is not limited to deprecating the behavior\n    of a function currently\
+    \ on the call stack.\n\n    @param offender: The function that is being deprecated.\n\
+    \n    @param warningString: The string that should be emitted by this warning.\n\
+    \    @type warningString: C{str}\n\n    @since: 11.0\n    \"\"\"\n    # inspect.getmodule()\
+    \ is attractive, but somewhat\n    # broken in Python < 2.6.  See Python bug 4845.\n\
+    \    # In Python 3.13 line numbers returned by findlinestarts\n    # can be None\
+    \ for bytecode that does not map to source\n    # lines.\n    offenderModule =\
+    \ sys.modules[offender.__module__]\n    warn_explicit(\n        warningString,\n\
+    \        category=DeprecationWarning,\n        filename=inspect.getabsfile(offenderModule),\n\
+    \        lineno=max(\n            lineNumber\n            for _, lineNumber in\
+    \ findlinestarts(offender.__code__)\n            if lineNumber is not None\n \
+    \       ),\n        module=offenderModule.__name__,\n        registry=offender.__globals__.setdefault(\"\
+    __warningregistry__\", {}),\n        module_globals=None,\n    )\n\n\ndef _passedArgSpec(argspec,\
+    \ positional, keyword):\n    \"\"\"\n    Take an I{inspect.ArgSpec}, a tuple of\
+    \ positional arguments, and a dict of\n    keyword arguments, and return a mapping\
+    \ of arguments that were actually\n    passed to their passed values.\n\n    @param\
+    \ argspec: The argument specification for the function to inspect.\n    @type\
+    \ argspec: I{inspect.ArgSpec}\n\n    @param positional: The positional arguments\
+    \ that were passed.\n    @type positional: L{tuple}\n\n    @param keyword: The\
+    \ keyword arguments that were passed.\n    @type keyword: L{dict}\n\n    @return:\
+    \ A dictionary mapping argument names (those declared in C{argspec})\n       \
+    \ to values that were passed explicitly by the user.\n    @rtype: L{dict} mapping\
+    \ L{str} to L{object}\n    \"\"\"\n    result: Dict[str, object] = {}\n    unpassed\
+    \ = len(argspec.args) - len(positional)\n    if argspec.keywords is not None:\n\
+    \        kwargs = result[argspec.keywords] = {}\n    if unpassed < 0:\n      \
+    \  if argspec.varargs is None:\n            raise TypeError(\"Too many arguments.\"\
+    )\n        else:\n            result[argspec.varargs] = positional[len(argspec.args)\
+    \ :]\n    for name, value in zip(argspec.args, positional):\n        result[name]\
+    \ = value\n    for name, value in keyword.items():\n        if name in argspec.args:\n\
+    \            if name in result:\n                raise TypeError(\"Already passed.\"\
+    )\n            result[name] = value\n        elif argspec.keywords is not None:\n\
+    \            kwargs[name] = value\n        else:\n            raise TypeError(\"\
+    no such param\")\n    return result\n\n\ndef _passedSignature(signature, positional,\
+    \ keyword):\n    \"\"\"\n    Take an L{inspect.Signature}, a tuple of positional\
+    \ arguments, and a dict of\n    keyword arguments, and return a mapping of arguments\
+    \ that were actually\n    passed to their passed values.\n\n    @param signature:\
+    \ The signature of the function to inspect.\n    @type signature: L{inspect.Signature}\n\
+    \n    @param positional: The positional arguments that were passed.\n    @type\
+    \ positional: L{tuple}\n\n    @param keyword: The keyword arguments that were\
+    \ passed.\n    @type keyword: L{dict}\n\n    @return: A dictionary mapping argument\
+    \ names (those declared in\n        C{signature}) to values that were passed explicitly\
+    \ by the user.\n    @rtype: L{dict} mapping L{str} to L{object}\n    \"\"\"\n\
+    \    result = {}\n    kwargs = None\n    numPositional = 0\n    for n, (name,\
+    \ param) in enumerate(signature.parameters.items()):\n        if param.kind ==\
+    \ inspect.Parameter.VAR_POSITIONAL:\n            # Varargs, for example: *args\n\
+    \            result[name] = positional[n:]\n            numPositional = len(result[name])\
+    \ + 1\n        elif param.kind == inspect.Parameter.VAR_KEYWORD:\n           \
+    \ # Variable keyword args, for example: **my_kwargs\n            kwargs = result[name]\
+    \ = {}\n        elif param.kind in (\n            inspect.Parameter.POSITIONAL_OR_KEYWORD,\n\
+    \            inspect.Parameter.POSITIONAL_ONLY,\n        ):\n            if n\
+    \ < len(positional):\n                result[name] = positional[n]\n         \
+    \       numPositional += 1\n        elif param.kind == inspect.Parameter.KEYWORD_ONLY:\n\
+    \            if name not in keyword:\n                if param.default == inspect.Parameter.empty:\n\
+    \                    raise TypeError(f\"missing keyword arg {name}\")\n      \
+    \          else:\n                    result[name] = param.default\n        else:\n\
+    \            raise TypeError(f\"'{name}' parameter is invalid kind: {param.kind}\"\
+    )\n\n    if len(positional) > numPositional:\n        raise TypeError(\"Too many\
+    \ arguments.\")\n    for name, value in keyword.items():\n        if name in signature.parameters.keys():\n\
+    \            if name in result:\n                raise TypeError(\"Already passed.\"\
+    )\n            result[name] = value\n        elif kwargs is not None:\n      \
+    \      kwargs[name] = value\n        else:\n            raise TypeError(\"no such\
+    \ param\")\n    return result\n\n\ndef _mutuallyExclusiveArguments(argumentPairs):\n\
+    \    \"\"\"\n    Decorator which causes its decoratee to raise a L{TypeError}\
+    \ if two of the\n    given arguments are passed at the same time.\n\n    @param\
+    \ argumentPairs: pairs of argument identifiers, each pair indicating\n       \
+    \ an argument that may not be passed in conjunction with another.\n    @type argumentPairs:\
+    \ sequence of 2-sequences of L{str}\n\n    @return: A decorator, used like so::\n\
+    \n            @_mutuallyExclusiveArguments([[\"tweedledum\", \"tweedledee\"]])\n\
+    \            def function(tweedledum=1, tweedledee=2):\n                \"Don't\
+    \ pass tweedledum and tweedledee at the same time.\"\n\n    @rtype: 1-argument\
+    \ callable taking a callable and returning a callable.\n    \"\"\"\n\n    def\
+    \ wrapper(wrappee):\n        spec = inspect.signature(wrappee)\n        _passed\
+    \ = _passedSignature\n\n        @wraps(wrappee)\n        def wrapped(*args, **kwargs):\n\
+    \            arguments = _passed(spec, args, kwargs)\n            for this, that\
+    \ in argumentPairs:\n                if this in arguments and that in arguments:\n\
+    \                    raise TypeError(\n                        (\"The %r and %r\
+    \ arguments to %s \" \"are mutually exclusive.\")\n                        % (this,\
+    \ that, _fullyQualifiedName(wrappee))\n                    )\n            return\
+    \ wrappee(*args, **kwargs)\n\n        return wrapped\n\n    return wrapper\n\n\
+    \n_Tc = TypeVar(\"_Tc\", bound=Callable[..., Any])\n\n\ndef deprecatedKeywordParameter(\n\
+    \    version: Version, name: str, replacement: Optional[str] = None\n) -> Callable[[_Tc],\
+    \ _Tc]:\n    \"\"\"\n    Return a decorator that marks a keyword parameter of\
+    \ a callable\n    as deprecated. A warning will be emitted if a caller supplies\n\
+    \    a value for the parameter, whether the caller uses a keyword or\n    positional\
+    \ syntax.\n\n    @type version: L{incremental.Version}\n    @param version: The\
+    \ version in which the parameter will be marked as\n        having been deprecated.\n\
+    \n    @type name: L{str}\n    @param name: The name of the deprecated parameter.\n\
+    \n    @type replacement: L{str}\n    @param replacement: Optional text indicating\
+    \ what should be used in\n        place of the deprecated parameter.\n\n    @since:\
+    \ Twisted 21.2.0\n    \"\"\"\n\n    def wrapper(wrappee: _Tc) -> _Tc:\n      \
+    \  warningString = _getDeprecationWarningString(\n            f\"The {name!r}\
+    \ parameter to {_fullyQualifiedName(wrappee)}\",\n            version,\n     \
+    \       replacement=replacement,\n        )\n\n        doc = \"The {!r} parameter\
+    \ was deprecated in {}\".format(\n            name,\n            getVersionString(version),\n\
+    \        )\n        if replacement:\n            doc = doc + \"; \" + _getReplacementString(replacement)\n\
+    \        doc += \".\"\n\n        params = inspect.signature(wrappee).parameters\n\
+    \        if (\n            name in params\n            and params[name].kind ==\
+    \ inspect.Parameter.POSITIONAL_OR_KEYWORD\n        ):\n            parameterIndex\
+    \ = list(params).index(name)\n\n            def checkDeprecatedParameter(*args,\
+    \ **kwargs):\n                if len(args) > parameterIndex or name in kwargs:\n\
+    \                    warn(warningString, DeprecationWarning, stacklevel=2)\n \
+    \               return wrappee(*args, **kwargs)\n\n        else:\n\n         \
+    \   def checkDeprecatedParameter(*args, **kwargs):\n                if name in\
+    \ kwargs:\n                    warn(warningString, DeprecationWarning, stacklevel=2)\n\
+    \                return wrappee(*args, **kwargs)\n\n        decorated = cast(_Tc,\
+    \ wraps(wrappee)(checkDeprecatedParameter))\n        _appendToDocstring(decorated,\
+    \ doc)\n        return decorated\n\n    return wrapper\n\n\n### Dependency File:\
+    \ reflect.py\n# -*- test-case-name: twisted.test.test_reflect -*-\n# Copyright\
+    \ (c) Twisted Matrix Laboratories.\n# See LICENSE for details.\n\n\"\"\"\nStandardized\
+    \ versions of various cool and/or strange things that you can do\nwith Python's\
+    \ reflection capabilities.\n\"\"\"\n\n\nimport os\nimport pickle\nimport re\n\
+    import sys\nimport traceback\nimport types\nimport weakref\nfrom collections import\
+    \ deque\nfrom io import IOBase, StringIO\nfrom typing import Type, Union\n\nfrom\
+    \ twisted.python.compat import nativeString\nfrom twisted.python.deprecate import\
+    \ _fullyQualifiedName as fullyQualifiedName\n\nRegexType = type(re.compile(\"\"\
+    ))\n\n\ndef prefixedMethodNames(classObj, prefix):\n    \"\"\"\n    Given a class\
+    \ object C{classObj}, returns a list of method names that match\n    the string\
+    \ C{prefix}.\n\n    @param classObj: A class object from which to collect method\
+    \ names.\n\n    @param prefix: A native string giving a prefix.  Each method with\
+    \ a name\n        which begins with this prefix will be returned.\n    @type prefix:\
+    \ L{str}\n\n    @return: A list of the names of matching methods of C{classObj}\
+    \ (and base\n        classes of C{classObj}).\n    @rtype: L{list} of L{str}\n\
+    \    \"\"\"\n    dct = {}\n    addMethodNamesToDict(classObj, dct, prefix)\n \
+    \   return list(dct.keys())\n\n\ndef addMethodNamesToDict(classObj, dict, prefix,\
+    \ baseClass=None):\n    \"\"\"\n    This goes through C{classObj} (and its bases)\
+    \ and puts method names\n    starting with 'prefix' in 'dict' with a value of\
+    \ 1. if baseClass isn't\n    None, methods will only be added if classObj is-a\
+    \ baseClass\n\n    If the class in question has the methods 'prefix_methodname'\
+    \ and\n    'prefix_methodname2', the resulting dict should look something like:\n\
+    \    {\"methodname\": 1, \"methodname2\": 1}.\n\n    @param classObj: A class\
+    \ object from which to collect method names.\n\n    @param dict: A L{dict} which\
+    \ will be updated with the results of the\n        accumulation.  Items are added\
+    \ to this dictionary, with method names as\n        keys and C{1} as values.\n\
+    \    @type dict: L{dict}\n\n    @param prefix: A native string giving a prefix.\
+    \  Each method of C{classObj}\n        (and base classes of C{classObj}) with\
+    \ a name which begins with this\n        prefix will be returned.\n    @type prefix:\
+    \ L{str}\n\n    @param baseClass: A class object at which to stop searching upwards\
+    \ for new\n        methods.  To collect all method names, do not pass a value\
+    \ for this\n        parameter.\n\n    @return: L{None}\n    \"\"\"\n    for base\
+    \ in classObj.__bases__:\n        addMethodNamesToDict(base, dict, prefix, baseClass)\n\
+    \n    if baseClass is None or baseClass in classObj.__bases__:\n        for name,\
+    \ method in classObj.__dict__.items():\n            optName = name[len(prefix)\
+    \ :]\n            if (\n                (type(method) is types.FunctionType)\n\
+    \                and (name[: len(prefix)] == prefix)\n                and (len(optName))\n\
+    \            ):\n                dict[optName] = 1\n\n\ndef prefixedMethods(obj,\
+    \ prefix=\"\"):\n    \"\"\"\n    Given an object C{obj}, returns a list of method\
+    \ objects that match the\n    string C{prefix}.\n\n    @param obj: An arbitrary\
+    \ object from which to collect methods.\n\n    @param prefix: A native string\
+    \ giving a prefix.  Each method of C{obj} with\n        a name which begins with\
+    \ this prefix will be returned.\n    @type prefix: L{str}\n\n    @return: A list\
+    \ of the matching method objects.\n    @rtype: L{list}\n    \"\"\"\n    dct =\
+    \ {}\n    accumulateMethods(obj, dct, prefix)\n    return list(dct.values())\n\
+    \n\ndef accumulateMethods(obj, dict, prefix=\"\", curClass=None):\n    \"\"\"\n\
+    \    Given an object C{obj}, add all methods that begin with C{prefix}.\n\n  \
+    \  @param obj: An arbitrary object to collect methods from.\n\n    @param dict:\
+    \ A L{dict} which will be updated with the results of the\n        accumulation.\
+    \  Items are added to this dictionary, with method names as\n        keys and\
+    \ corresponding instance method objects as values.\n    @type dict: L{dict}\n\n\
+    \    @param prefix: A native string giving a prefix.  Each method of C{obj} with\n\
+    \        a name which begins with this prefix will be returned.\n    @type prefix:\
+    \ L{str}\n\n    @param curClass: The class in the inheritance hierarchy at which\
+    \ to start\n        collecting methods.  Collection proceeds up.  To collect all\
+    \ methods\n        from C{obj}, do not pass a value for this parameter.\n\n  \
+    \  @return: L{None}\n    \"\"\"\n    if not curClass:\n        curClass = obj.__class__\n\
+    \    for base in curClass.__bases__:\n        # The implementation of the object\
+    \ class is different on PyPy vs.\n        # CPython.  This has the side effect\
+    \ of making accumulateMethods()\n        # pick up object methods from all new-style\
+    \ classes -\n        # such as __getattribute__, etc.\n        # If we ignore\
+    \ 'object' when accumulating methods, we can get\n        # consistent behavior\
+    \ on Pypy and CPython.\n        if base is not object:\n            accumulateMethods(obj,\
+    \ dict, prefix, base)\n\n    for name, method in curClass.__dict__.items():\n\
+    \        optName = name[len(prefix) :]\n        if (\n            (type(method)\
+    \ is types.FunctionType)\n            and (name[: len(prefix)] == prefix)\n  \
+    \          and (len(optName))\n        ):\n            dict[optName] = getattr(obj,\
+    \ name)\n\n\ndef namedModule(name):\n    \"\"\"\n    Return a module given its\
+    \ name.\n    \"\"\"\n    topLevel = __import__(name)\n    packages = name.split(\"\
+    .\")[1:]\n    m = topLevel\n    for p in packages:\n        m = getattr(m, p)\n\
+    \    return m\n\n\ndef namedObject(name):\n    \"\"\"\n    Get a fully named module-global\
+    \ object.\n    \"\"\"\n    classSplit = name.split(\".\")\n    module = namedModule(\"\
+    .\".join(classSplit[:-1]))\n    return getattr(module, classSplit[-1])\n\n\nnamedClass\
+    \ = namedObject  # backwards compat\n\n\ndef requireModule(name, default=None):\n\
+    \    \"\"\"\n    Try to import a module given its name, returning C{default} value\
+    \ if\n    C{ImportError} is raised during import.\n\n    @param name: Module name\
+    \ as it would have been passed to C{import}.\n    @type name: C{str}.\n\n    @param\
+    \ default: Value returned in case C{ImportError} is raised while\n        importing\
+    \ the module.\n\n    @return: Module or default value.\n    \"\"\"\n    try:\n\
+    \        return namedModule(name)\n    except ImportError:\n        return default\n\
+    \n\nclass _NoModuleFound(Exception):\n    \"\"\"\n    No module was found because\
+    \ none exists.\n    \"\"\"\n\n\nclass InvalidName(ValueError):\n    \"\"\"\n \
+    \   The given name is not a dot-separated list of Python objects.\n    \"\"\"\n\
+    \n\nclass ModuleNotFound(InvalidName):\n    \"\"\"\n    The module associated\
+    \ with the given name doesn't exist and it can't be\n    imported.\n    \"\"\"\
+    \n\n\nclass ObjectNotFound(InvalidName):\n    \"\"\"\n    The object associated\
+    \ with the given name doesn't exist and it can't be\n    imported.\n    \"\"\"\
+    \n\n\ndef _importAndCheckStack(importName):\n    \"\"\"\n    Import the given\
+    \ name as a module, then walk the stack to determine whether\n    the failure\
+    \ was the module not existing, or some code in the module (for\n    example a\
+    \ dependent import) failing.  This can be helpful to determine\n    whether any\
+    \ actual application code was run.  For example, to distiguish\n    administrative\
+    \ error (entering the wrong module name), from programmer\n    error (writing\
+    \ buggy code in a module that fails to import).\n\n    @param importName: The\
+    \ name of the module to import.\n    @type importName: C{str}\n    @raise Exception:\
+    \ if something bad happens.  This can be any type of\n        exception, since\
+    \ nobody knows what loading some arbitrary code might\n        do.\n    @raise\
+    \ _NoModuleFound: if no module was found.\n    \"\"\"\n    try:\n        return\
+    \ __import__(importName)\n    except ImportError:\n        excType, excValue,\
+    \ excTraceback = sys.exc_info()\n        while excTraceback:\n            execName\
+    \ = excTraceback.tb_frame.f_globals[\"__name__\"]\n            if execName ==\
+    \ importName:\n                raise excValue.with_traceback(excTraceback)\n \
+    \           excTraceback = excTraceback.tb_next\n        raise _NoModuleFound()\n\
+    \n\ndef namedAny(name):\n    \"\"\"\n    Retrieve a Python object by its fully\
+    \ qualified name from the global Python\n    module namespace.  The first part\
+    \ of the name, that describes a module,\n    will be discovered and imported.\
+    \  Each subsequent part of the name is\n    treated as the name of an attribute\
+    \ of the object specified by all of the\n    name which came before it.  For example,\
+    \ the fully-qualified name of this\n    object is 'twisted.python.reflect.namedAny'.\n\
+    \n    @type name: L{str}\n    @param name: The name of the object to return.\n\
+    \n    @raise InvalidName: If the name is an empty string, starts or ends with\n\
+    \        a '.', or is otherwise syntactically incorrect.\n\n    @raise ModuleNotFound:\
+    \ If the name is syntactically correct but the\n        module it specifies cannot\
+    \ be imported because it does not appear to\n        exist.\n\n    @raise ObjectNotFound:\
+    \ If the name is syntactically correct, includes at\n        least one '.', but\
+    \ the module it specifies cannot be imported because\n        it does not appear\
+    \ to exist.\n\n    @raise AttributeError: If an attribute of an object along the\
+    \ way cannot be\n        accessed, or a module along the way is not found.\n\n\
+    \    @return: the Python object identified by 'name'.\n    \"\"\"\n    if not\
+    \ name:\n        raise InvalidName(\"Empty module name\")\n\n    names = name.split(\"\
+    .\")\n\n    # if the name starts or ends with a '.' or contains '..', the __import__\n\
+    \    # will raise an 'Empty module name' error. This will provide a better error\n\
+    \    # message.\n    if \"\" in names:\n        raise InvalidName(\n         \
+    \   \"name must be a string giving a '.'-separated list of Python \"\n       \
+    \     \"identifiers, not %r\" % (name,)\n        )\n\n    topLevelPackage = None\n\
+    \    moduleNames = names[:]\n    while not topLevelPackage:\n        if moduleNames:\n\
+    \            trialname = \".\".join(moduleNames)\n            try:\n         \
+    \       topLevelPackage = _importAndCheckStack(trialname)\n            except\
+    \ _NoModuleFound:\n                moduleNames.pop()\n        else:\n        \
+    \    if len(names) == 1:\n                raise ModuleNotFound(f\"No module named\
+    \ {name!r}\")\n            else:\n                raise ObjectNotFound(f\"{name!r}\
+    \ does not name an object\")\n\n    obj = topLevelPackage\n    for n in names[1:]:\n\
+    \        obj = getattr(obj, n)\n\n    return obj\n\n\ndef filenameToModuleName(fn):\n\
+    \    \"\"\"\n    Convert a name in the filesystem to the name of the Python module\
+    \ it is.\n\n    This is aggressive about getting a module name back from a file;\
+    \ it will\n    always return a string.  Aggressive means 'sometimes wrong'; it\
+    \ won't look\n    at the Python path or try to do any error checking: don't use\
+    \ this method\n    unless you already know that the filename you're talking about\
+    \ is a Python\n    module.\n\n    @param fn: A filesystem path to a module or\
+    \ package; C{bytes} on Python 2,\n        C{bytes} or C{unicode} on Python 3.\n\
+    \n    @return: A hopefully importable module name.\n    @rtype: C{str}\n    \"\
+    \"\"\n    if isinstance(fn, bytes):\n        initPy = b\"__init__.py\"\n    else:\n\
+    \        initPy = \"__init__.py\"\n    fullName = os.path.abspath(fn)\n    base\
+    \ = os.path.basename(fn)\n    if not base:\n        # this happens when fn ends\
+    \ with a path separator, just skit it\n        base = os.path.basename(fn[:-1])\n\
+    \    modName = nativeString(os.path.splitext(base)[0])\n    while 1:\n       \
+    \ fullName = os.path.dirname(fullName)\n        if os.path.exists(os.path.join(fullName,\
+    \ initPy)):\n            modName = \"{}.{}\".format(\n                nativeString(os.path.basename(fullName)),\n\
+    \                nativeString(modName),\n            )\n        else:\n      \
+    \      break\n    return modName\n\n\ndef qual(clazz: Type[object]) -> str:\n\
+    \    \"\"\"\n    Return full import path of a class.\n    \"\"\"\n    return clazz.__module__\
+    \ + \".\" + clazz.__name__\n\n\ndef _determineClass(x):\n    try:\n        return\
+    \ x.__class__\n    except BaseException:\n        return type(x)\n\n\ndef _determineClassName(x):\n\
+    \    c = _determineClass(x)\n    try:\n        return c.__name__\n    except BaseException:\n\
+    \        try:\n            return str(c)\n        except BaseException:\n    \
+    \        return \"<BROKEN CLASS AT 0x%x>\" % id(c)\n\n\ndef _safeFormat(formatter:\
+    \ Union[types.FunctionType, Type[str]], o: object) -> str:\n    \"\"\"\n    Helper\
+    \ function for L{safe_repr} and L{safe_str}.\n\n    Called when C{repr} or C{str}\
+    \ fail. Returns a string containing info about\n    C{o} and the latest exception.\n\
+    \n    @param formatter: C{str} or C{repr}.\n    @type formatter: C{type}\n   \
+    \ @param o: Any object.\n\n    @rtype: C{str}\n    @return: A string containing\
+    \ information about C{o} and the raised\n        exception.\n    \"\"\"\n    io\
+    \ = StringIO()\n    traceback.print_exc(file=io)\n    className = _determineClassName(o)\n\
+    \    tbValue = io.getvalue()\n    return \"<{} instance at 0x{:x} with {} error:\\\
+    n {}>\".format(\n        className,\n        id(o),\n        formatter.__name__,\n\
+    \        tbValue,\n    )\n\n\ndef safe_repr(o):\n    \"\"\"\n    Returns a string\
+    \ representation of an object, or a string containing a\n    traceback, if that\
+    \ object's __repr__ raised an exception.\n\n    @param o: Any object.\n\n    @rtype:\
+    \ C{str}\n    \"\"\"\n    try:\n        return repr(o)\n    except BaseException:\n\
+    \        return _safeFormat(repr, o)\n\n\ndef safe_str(o: object) -> str:\n  \
+    \  \"\"\"\n    Returns a string representation of an object, or a string containing\
+    \ a\n    traceback, if that object's __str__ raised an exception.\n\n    @param\
+    \ o: Any object.\n    \"\"\"\n    if isinstance(o, bytes):\n        # If o is\
+    \ bytes and seems to holds a utf-8 encoded string,\n        # convert it to str.\n\
+    \        try:\n            return o.decode(\"utf-8\")\n        except BaseException:\n\
+    \            pass\n    try:\n        return str(o)\n    except BaseException:\n\
+    \        return _safeFormat(str, o)\n\n\nclass QueueMethod:\n    \"\"\"\n    I\
+    \ represent a method that doesn't exist yet.\n    \"\"\"\n\n    def __init__(self,\
+    \ name, calls):\n        self.name = name\n        self.calls = calls\n\n    def\
+    \ __call__(self, *args):\n        self.calls.append((self.name, args))\n\n\ndef\
+    \ fullFuncName(func):\n    qualName = str(pickle.whichmodule(func, func.__name__))\
+    \ + \".\" + func.__name__\n    if namedObject(qualName) is not func:\n       \
+    \ raise Exception(f\"Couldn't find {func} as {qualName}.\")\n    return qualName\n\
+    \n\ndef getClass(obj):\n    \"\"\"\n    Return the class or type of object 'obj'.\n\
+    \    \"\"\"\n    return type(obj)\n\n\ndef accumulateClassDict(classObj, attr,\
+    \ adict, baseClass=None):\n    \"\"\"\n    Accumulate all attributes of a given\
+    \ name in a class hierarchy into a single dictionary.\n\n    Assuming all class\
+    \ attributes of this name are dictionaries.\n    If any of the dictionaries being\
+    \ accumulated have the same key, the\n    one highest in the class hierarchy wins.\n\
+    \    (XXX: If \\\"highest\\\" means \\\"closest to the starting class\\\".)\n\n\
+    \    Ex::\n\n      class Soy:\n        properties = {\\\"taste\\\": \\\"bland\\\
+    \"}\n\n      class Plant:\n        properties = {\\\"colour\\\": \\\"green\\\"\
+    }\n\n      class Seaweed(Plant):\n        pass\n\n      class Lunch(Soy, Seaweed):\n\
+    \        properties = {\\\"vegan\\\": 1 }\n\n      dct = {}\n\n      accumulateClassDict(Lunch,\
+    \ \\\"properties\\\", dct)\n\n      print(dct)\n\n    {\\\"taste\\\": \\\"bland\\\
+    \", \\\"colour\\\": \\\"green\\\", \\\"vegan\\\": 1}\n    \"\"\"\n    for base\
+    \ in classObj.__bases__:\n        accumulateClassDict(base, attr, adict)\n   \
+    \ if baseClass is None or baseClass in classObj.__bases__:\n        adict.update(classObj.__dict__.get(attr,\
+    \ {}))\n\n\ndef accumulateClassList(classObj, attr, listObj, baseClass=None):\n\
+    \    \"\"\"\n    Accumulate all attributes of a given name in a class hierarchy\
+    \ into a single list.\n\n    Assuming all class attributes of this name are lists.\n\
+    \    \"\"\"\n    for base in classObj.__bases__:\n        accumulateClassList(base,\
+    \ attr, listObj)\n    if baseClass is None or baseClass in classObj.__bases__:\n\
+    \        listObj.extend(classObj.__dict__.get(attr, []))\n\n\ndef isSame(a, b):\n\
+    \    return a is b\n\n\ndef isLike(a, b):\n    return a == b\n\n\ndef modgrep(goal):\n\
+    \    return objgrep(sys.modules, goal, isLike, \"sys.modules\")\n\n\ndef isOfType(start,\
+    \ goal):\n    return type(start) is goal\n\n\ndef findInstances(start, t):\n \
+    \   return objgrep(start, t, isOfType)\n\n\ndef objgrep(\n    start,\n    goal,\n\
+    \    eq=isLike,\n    path=\"\",\n    paths=None,\n    seen=None,\n    showUnknowns=0,\n\
+    \    maxDepth=None,\n):\n    \"\"\"\n    L{objgrep} finds paths between C{start}\
+    \ and C{goal}.\n\n    Starting at the python object C{start}, we will loop over\
+    \ every reachable\n    reference, tring to find the python object C{goal} (i.e.\
+    \ every object\n    C{candidate} for whom C{eq(candidate, goal)} is truthy), and\
+    \ return a\n    L{list} of L{str}, where each L{str} is Python syntax for a path\
+    \ between\n    C{start} and C{goal}.\n\n    Since this can be slightly difficult\
+    \ to visualize, here's an example::\n\n        >>> class Holder:\n        ...\
+    \     def __init__(self, x):\n        ...         self.x = x\n        ...\n  \
+    \      >>> start = Holder({\"irrelevant\": \"ignore\",\n        ...          \
+    \       \"relevant\": [7, 1, 3, 5, 7]})\n        >>> for path in objgrep(start,\
+    \ 7):\n        ...     print(\"start\" + path)\n        start.x['relevant'][0]\n\
+    \        start.x['relevant'][4]\n\n    This can be useful, for example, when debugging\
+    \ stateful graphs of objects\n    attached to a socket, trying to figure out where\
+    \ a particular connection is\n    attached.\n\n    @param start: The object to\
+    \ start looking at.\n\n    @param goal: The object to search for.\n\n    @param\
+    \ eq: A 2-argument predicate which takes an object found by traversing\n     \
+    \   references starting at C{start}, as well as C{goal}, and returns a\n     \
+    \   boolean.\n\n    @param path: The prefix of the path to include in every return\
+    \ value; empty\n        by default.\n\n    @param paths: The result object to\
+    \ append values to; a list of strings.\n\n    @param seen: A dictionary mapping\
+    \ ints (object IDs) to objects already\n        seen.\n\n    @param showUnknowns:\
+    \ if true, print a message to C{stdout} when\n        encountering objects that\
+    \ C{objgrep} does not know how to traverse.\n\n    @param maxDepth: The maximum\
+    \ number of object references to attempt\n        traversing before giving up.\
+    \  If an integer, limit to that many links,\n        if C{None}, unlimited.\n\n\
+    \    @return: A list of strings representing python object paths starting at\n\
+    \        C{start} and terminating at C{goal}.\n    \"\"\"\n    if paths is None:\n\
+    \        paths = []\n    if seen is None:\n        seen = {}\n    if eq(start,\
+    \ goal):\n        paths.append(path)\n    if id(start) in seen:\n        if seen[id(start)]\
+    \ is start:\n            return\n    if maxDepth is not None:\n        if maxDepth\
+    \ == 0:\n            return\n        maxDepth -= 1\n    seen[id(start)] = start\n\
+    \    # Make an alias for those arguments which are passed recursively to\n   \
+    \ # objgrep for container objects.\n    args = (paths, seen, showUnknowns, maxDepth)\n\
+    \    if isinstance(start, dict):\n        for k, v in start.items():\n       \
+    \     objgrep(k, goal, eq, path + \"{\" + repr(v) + \"}\", *args)\n          \
+    \  objgrep(v, goal, eq, path + \"[\" + repr(k) + \"]\", *args)\n    elif isinstance(start,\
+    \ (list, tuple, deque)):\n        for idx, _elem in enumerate(start):\n      \
+    \      objgrep(start[idx], goal, eq, path + \"[\" + str(idx) + \"]\", *args)\n\
+    \    elif isinstance(start, types.MethodType):\n        objgrep(start.__self__,\
+    \ goal, eq, path + \".__self__\", *args)\n        objgrep(start.__func__, goal,\
+    \ eq, path + \".__func__\", *args)\n        objgrep(start.__self__.__class__,\
+    \ goal, eq, path + \".__self__.__class__\", *args)\n    elif hasattr(start, \"\
+    __dict__\"):\n        for k, v in start.__dict__.items():\n            objgrep(v,\
+    \ goal, eq, path + \".\" + k, *args)\n    elif isinstance(start, weakref.ReferenceType):\n\
+    \        objgrep(start(), goal, eq, path + \"()\", *args)\n    elif isinstance(\n\
+    \        start,\n        (\n            str,\n            int,\n            types.FunctionType,\n\
+    \            types.BuiltinMethodType,\n            RegexType,\n            float,\n\
+    \            type(None),\n            IOBase,\n        ),\n    ) or type(start).__name__\
+    \ in (\n        \"wrapper_descriptor\",\n        \"method_descriptor\",\n    \
+    \    \"member_descriptor\",\n        \"getset_descriptor\",\n    ):\n        pass\n\
+    \    elif showUnknowns:\n        print(\"unknown type\", type(start), start)\n\
+    \    return paths\n\n\n__all__ = [\n    \"InvalidName\",\n    \"ModuleNotFound\"\
+    ,\n    \"ObjectNotFound\",\n    \"QueueMethod\",\n    \"namedModule\",\n    \"\
+    namedObject\",\n    \"namedClass\",\n    \"namedAny\",\n    \"requireModule\"\
+    ,\n    \"safe_repr\",\n    \"safe_str\",\n    \"prefixedMethodNames\",\n    \"\
+    addMethodNamesToDict\",\n    \"prefixedMethods\",\n    \"accumulateMethods\",\n\
+    \    \"fullFuncName\",\n    \"qual\",\n    \"getClass\",\n    \"accumulateClassDict\"\
+    ,\n    \"accumulateClassList\",\n    \"isSame\",\n    \"isLike\",\n    \"modgrep\"\
+    ,\n    \"isOfType\",\n    \"findInstances\",\n    \"objgrep\",\n    \"filenameToModuleName\"\
+    ,\n    \"fullyQualifiedName\",\n]\n\n\n# This is to be removed when fixing #6986\n\
+    __all__.remove(\"objgrep\")\n\nOutput the complete test file, code only, no explanations.\n\
+    ```Python\n<complete test code>\n```\n### Time\nCurrent time: 2025-03-13 17:46:53\n"
+  role: user

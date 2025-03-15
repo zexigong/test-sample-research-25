@@ -1,0 +1,1323 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: seaborn\nTest File Path: seaborn\\test_palettes\\\
+    test_palettes.py\nProject Programming Language: Python\nTesting Framework: pytest\n\
+    ### Source File Content\n### Source File Content:\nimport colorsys\nfrom itertools\
+    \ import cycle\n\nimport numpy as np\nimport matplotlib as mpl\n\nfrom .external\
+    \ import husl\n\nfrom .utils import desaturate, get_color_cycle\nfrom .colors\
+    \ import xkcd_rgb, crayons\nfrom ._compat import get_colormap\n\n\n__all__ = [\"\
+    color_palette\", \"hls_palette\", \"husl_palette\", \"mpl_palette\",\n       \
+    \    \"dark_palette\", \"light_palette\", \"diverging_palette\",\n           \"\
+    blend_palette\", \"xkcd_palette\", \"crayon_palette\",\n           \"cubehelix_palette\"\
+    , \"set_color_codes\"]\n\n\nSEABORN_PALETTES = dict(\n    deep=[\"#4C72B0\", \"\
+    #DD8452\", \"#55A868\", \"#C44E52\", \"#8172B3\",\n          \"#937860\", \"#DA8BC3\"\
+    , \"#8C8C8C\", \"#CCB974\", \"#64B5CD\"],\n    deep6=[\"#4C72B0\", \"#55A868\"\
+    , \"#C44E52\",\n           \"#8172B3\", \"#CCB974\", \"#64B5CD\"],\n    muted=[\"\
+    #4878D0\", \"#EE854A\", \"#6ACC64\", \"#D65F5F\", \"#956CB4\",\n           \"\
+    #8C613C\", \"#DC7EC0\", \"#797979\", \"#D5BB67\", \"#82C6E2\"],\n    muted6=[\"\
+    #4878D0\", \"#6ACC64\", \"#D65F5F\",\n            \"#956CB4\", \"#D5BB67\", \"\
+    #82C6E2\"],\n    pastel=[\"#A1C9F4\", \"#FFB482\", \"#8DE5A1\", \"#FF9F9B\", \"\
+    #D0BBFF\",\n            \"#DEBB9B\", \"#FAB0E4\", \"#CFCFCF\", \"#FFFEA3\", \"\
+    #B9F2F0\"],\n    pastel6=[\"#A1C9F4\", \"#8DE5A1\", \"#FF9F9B\",\n           \
+    \  \"#D0BBFF\", \"#FFFEA3\", \"#B9F2F0\"],\n    bright=[\"#023EFF\", \"#FF7C00\"\
+    , \"#1AC938\", \"#E8000B\", \"#8B2BE2\",\n            \"#9F4800\", \"#F14CC1\"\
+    , \"#A3A3A3\", \"#FFC400\", \"#00D7FF\"],\n    bright6=[\"#023EFF\", \"#1AC938\"\
+    , \"#E8000B\",\n             \"#8B2BE2\", \"#FFC400\", \"#00D7FF\"],\n    dark=[\"\
+    #001C7F\", \"#B1400D\", \"#12711C\", \"#8C0800\", \"#591E71\",\n          \"#592F0D\"\
+    , \"#A23582\", \"#3C3C3C\", \"#B8850A\", \"#006374\"],\n    dark6=[\"#001C7F\"\
+    , \"#12711C\", \"#8C0800\",\n           \"#591E71\", \"#B8850A\", \"#006374\"\
+    ],\n    colorblind=[\"#0173B2\", \"#DE8F05\", \"#029E73\", \"#D55E00\", \"#CC78BC\"\
+    ,\n                \"#CA9161\", \"#FBAFE4\", \"#949494\", \"#ECE133\", \"#56B4E9\"\
+    ],\n    colorblind6=[\"#0173B2\", \"#029E73\", \"#D55E00\",\n                \
+    \ \"#CC78BC\", \"#ECE133\", \"#56B4E9\"]\n)\n\n\nMPL_QUAL_PALS = {\n    \"tab10\"\
+    : 10, \"tab20\": 20, \"tab20b\": 20, \"tab20c\": 20,\n    \"Set1\": 9, \"Set2\"\
+    : 8, \"Set3\": 12,\n    \"Accent\": 8, \"Paired\": 12,\n    \"Pastel1\": 9, \"\
+    Pastel2\": 8, \"Dark2\": 8,\n}\n\n\nQUAL_PALETTE_SIZES = MPL_QUAL_PALS.copy()\n\
+    QUAL_PALETTE_SIZES.update({k: len(v) for k, v in SEABORN_PALETTES.items()})\n\
+    QUAL_PALETTES = list(QUAL_PALETTE_SIZES.keys())\n\n\nclass _ColorPalette(list):\n\
+    \    \"\"\"Set the color palette in a with statement, otherwise be a list.\"\"\
+    \"\n    def __enter__(self):\n        \"\"\"Open the context.\"\"\"\n        from\
+    \ .rcmod import set_palette\n        self._orig_palette = color_palette()\n  \
+    \      set_palette(self)\n        return self\n\n    def __exit__(self, *args):\n\
+    \        \"\"\"Close the context.\"\"\"\n        from .rcmod import set_palette\n\
+    \        set_palette(self._orig_palette)\n\n    def as_hex(self):\n        \"\"\
+    \"Return a color palette with hex codes instead of RGB values.\"\"\"\n       \
+    \ hex = [mpl.colors.rgb2hex(rgb) for rgb in self]\n        return _ColorPalette(hex)\n\
+    \n    def _repr_html_(self):\n        \"\"\"Rich display of the color palette\
+    \ in an HTML frontend.\"\"\"\n        s = 55\n        n = len(self)\n        html\
+    \ = f'<svg  width=\"{n * s}\" height=\"{s}\">'\n        for i, c in enumerate(self.as_hex()):\n\
+    \            html += (\n                f'<rect x=\"{i * s}\" y=\"0\" width=\"\
+    {s}\" height=\"{s}\" style=\"fill:{c};'\n                'stroke-width:2;stroke:rgb(255,255,255)\"\
+    />'\n            )\n        html += '</svg>'\n        return html\n\n\ndef _patch_colormap_display():\n\
+    \    \"\"\"Simplify the rich display of matplotlib color maps in a notebook.\"\
+    \"\"\n    def _repr_png_(self):\n        \"\"\"Generate a PNG representation of\
+    \ the Colormap.\"\"\"\n        import io\n        from PIL import Image\n    \
+    \    import numpy as np\n        IMAGE_SIZE = (400, 50)\n        X = np.tile(np.linspace(0,\
+    \ 1, IMAGE_SIZE[0]), (IMAGE_SIZE[1], 1))\n        pixels = self(X, bytes=True)\n\
+    \        png_bytes = io.BytesIO()\n        Image.fromarray(pixels).save(png_bytes,\
+    \ format='png')\n        return png_bytes.getvalue()\n\n    def _repr_html_(self):\n\
+    \        \"\"\"Generate an HTML representation of the Colormap.\"\"\"\n      \
+    \  import base64\n        png_bytes = self._repr_png_()\n        png_base64 =\
+    \ base64.b64encode(png_bytes).decode('ascii')\n        return ('<img '\n     \
+    \           + 'alt=\"' + self.name + ' color map\" '\n                + 'title=\"\
+    ' + self.name + '\"'\n                + 'src=\"data:image/png;base64,' + png_base64\
+    \ + '\">')\n\n    mpl.colors.Colormap._repr_png_ = _repr_png_\n    mpl.colors.Colormap._repr_html_\
+    \ = _repr_html_\n\n\ndef color_palette(palette=None, n_colors=None, desat=None,\
+    \ as_cmap=False):\n    \"\"\"Return a list of colors or continuous colormap defining\
+    \ a palette.\n\n    Possible ``palette`` values include:\n        - Name of a\
+    \ seaborn palette (deep, muted, bright, pastel, dark, colorblind)\n        - Name\
+    \ of matplotlib colormap\n        - 'husl' or 'hls'\n        - 'ch:<cubehelix\
+    \ arguments>'\n        - 'light:<color>', 'dark:<color>', 'blend:<color>,<color>',\n\
+    \        - A sequence of colors in any format matplotlib accepts\n\n    Calling\
+    \ this function with ``palette=None`` will return the current\n    matplotlib\
+    \ color cycle.\n\n    This function can also be used in a ``with`` statement to\
+    \ temporarily\n    set the color cycle for a plot or set of plots.\n\n    See\
+    \ the :ref:`tutorial <palette_tutorial>` for more information.\n\n    Parameters\n\
+    \    ----------\n    palette : None, string, or sequence, optional\n        Name\
+    \ of palette or None to return current palette. If a sequence, input\n       \
+    \ colors are used but possibly cycled and desaturated.\n    n_colors : int, optional\n\
+    \        Number of colors in the palette. If ``None``, the default will depend\n\
+    \        on how ``palette`` is specified. Named palettes default to 6 colors,\n\
+    \        but grabbing the current palette or passing in a list of colors will\n\
+    \        not change the number of colors unless this is specified. Asking for\n\
+    \        more colors than exist in the palette will cause it to cycle. Ignored\n\
+    \        when ``as_cmap`` is True.\n    desat : float, optional\n        Proportion\
+    \ to desaturate each color by.\n    as_cmap : bool\n        If True, return a\
+    \ :class:`matplotlib.colors.ListedColormap`.\n\n    Returns\n    -------\n   \
+    \ list of RGB tuples or :class:`matplotlib.colors.ListedColormap`\n\n    See Also\n\
+    \    --------\n    set_palette : Set the default color cycle for all plots.\n\
+    \    set_color_codes : Reassign color codes like ``\"b\"``, ``\"g\"``, etc. to\n\
+    \                      colors from one of the seaborn palettes.\n\n    Examples\n\
+    \    --------\n\n    .. include:: ../docstrings/color_palette.rst\n\n    \"\"\"\
+    \n    if palette is None:\n        palette = get_color_cycle()\n        if n_colors\
+    \ is None:\n            n_colors = len(palette)\n\n    elif not isinstance(palette,\
+    \ str):\n        palette = palette\n        if n_colors is None:\n           \
+    \ n_colors = len(palette)\n    else:\n\n        if n_colors is None:\n       \
+    \     # Use all colors in a qualitative palette or 6 of another kind\n       \
+    \     n_colors = QUAL_PALETTE_SIZES.get(palette, 6)\n\n        if palette in SEABORN_PALETTES:\n\
+    \            # Named \"seaborn variant\" of matplotlib default color cycle\n \
+    \           palette = SEABORN_PALETTES[palette]\n\n        elif palette == \"\
+    hls\":\n            # Evenly spaced colors in cylindrical RGB space\n        \
+    \    palette = hls_palette(n_colors, as_cmap=as_cmap)\n\n        elif palette\
+    \ == \"husl\":\n            # Evenly spaced colors in cylindrical Lab space\n\
+    \            palette = husl_palette(n_colors, as_cmap=as_cmap)\n\n        elif\
+    \ palette.lower() == \"jet\":\n            # Paternalism\n            raise ValueError(\"\
+    No.\")\n\n        elif palette.startswith(\"ch:\"):\n            # Cubehelix palette\
+    \ with params specified in string\n            args, kwargs = _parse_cubehelix_args(palette)\n\
+    \            palette = cubehelix_palette(n_colors, *args, **kwargs, as_cmap=as_cmap)\n\
+    \n        elif palette.startswith(\"light:\"):\n            # light palette to\
+    \ color specified in string\n            _, color = palette.split(\":\")\n   \
+    \         reverse = color.endswith(\"_r\")\n            if reverse:\n        \
+    \        color = color[:-2]\n            palette = light_palette(color, n_colors,\
+    \ reverse=reverse, as_cmap=as_cmap)\n\n        elif palette.startswith(\"dark:\"\
+    ):\n            # light palette to color specified in string\n            _, color\
+    \ = palette.split(\":\")\n            reverse = color.endswith(\"_r\")\n     \
+    \       if reverse:\n                color = color[:-2]\n            palette =\
+    \ dark_palette(color, n_colors, reverse=reverse, as_cmap=as_cmap)\n\n        elif\
+    \ palette.startswith(\"blend:\"):\n            # blend palette between colors\
+    \ specified in string\n            _, colors = palette.split(\":\")\n        \
+    \    colors = colors.split(\",\")\n            palette = blend_palette(colors,\
+    \ n_colors, as_cmap=as_cmap)\n\n        else:\n            try:\n            \
+    \    # Perhaps a named matplotlib colormap?\n                palette = mpl_palette(palette,\
+    \ n_colors, as_cmap=as_cmap)\n            except (ValueError, KeyError):  # Error\
+    \ class changed in mpl36\n                raise ValueError(f\"{palette!r} is not\
+    \ a valid palette name\")\n\n    if desat is not None:\n        palette = [desaturate(c,\
+    \ desat) for c in palette]\n\n    if not as_cmap:\n\n        # Always return as\
+    \ many colors as we asked for\n        pal_cycle = cycle(palette)\n        palette\
+    \ = [next(pal_cycle) for _ in range(n_colors)]\n\n        # Always return in r,\
+    \ g, b tuple format\n        try:\n            palette = map(mpl.colors.colorConverter.to_rgb,\
+    \ palette)\n            palette = _ColorPalette(palette)\n        except ValueError:\n\
+    \            raise ValueError(f\"Could not generate a palette for {palette}\"\
+    )\n\n    return palette\n\n\ndef hls_palette(n_colors=6, h=.01, l=.6, s=.65, as_cmap=False):\
+    \  # noqa\n    \"\"\"\n    Return hues with constant lightness and saturation\
+    \ in the HLS system.\n\n    The hues are evenly sampled along a circular path.\
+    \ The resulting palette will be\n    appropriate for categorical or cyclical data.\n\
+    \n    The `h`, `l`, and `s` values should be between 0 and 1.\n\n    .. note::\n\
+    \        While the separation of the resulting colors will be mathematically\n\
+    \        constant, the HLS system does not construct a perceptually-uniform space,\n\
+    \        so their apparent intensity will vary.\n\n    Parameters\n    ----------\n\
+    \    n_colors : int\n        Number of colors in the palette.\n    h : float\n\
+    \        The value of the first hue.\n    l : float\n        The lightness value.\n\
+    \    s : float\n        The saturation intensity.\n    as_cmap : bool\n      \
+    \  If True, return a matplotlib colormap object.\n\n    Returns\n    -------\n\
+    \    palette\n        list of RGB tuples or :class:`matplotlib.colors.ListedColormap`\n\
+    \n    See Also\n    --------\n    husl_palette : Make a palette using evenly spaced\
+    \ hues in the HUSL system.\n\n    Examples\n    --------\n    .. include:: ../docstrings/hls_palette.rst\n\
+    \n    \"\"\"\n    if as_cmap:\n        n_colors = 256\n    hues = np.linspace(0,\
+    \ 1, int(n_colors) + 1)[:-1]\n    hues += h\n    hues %= 1\n    hues -= hues.astype(int)\n\
+    \    palette = [colorsys.hls_to_rgb(h_i, l, s) for h_i in hues]\n    if as_cmap:\n\
+    \        return mpl.colors.ListedColormap(palette, \"hls\")\n    else:\n     \
+    \   return _ColorPalette(palette)\n\n\ndef husl_palette(n_colors=6, h=.01, s=.9,\
+    \ l=.65, as_cmap=False):  # noqa\n    \"\"\"\n    Return hues with constant lightness\
+    \ and saturation in the HUSL system.\n\n    The hues are evenly sampled along\
+    \ a circular path. The resulting palette will be\n    appropriate for categorical\
+    \ or cyclical data.\n\n    The `h`, `l`, and `s` values should be between 0 and\
+    \ 1.\n\n    This function is similar to :func:`hls_palette`, but it uses a nonlinear\
+    \ color\n    space that is more perceptually uniform.\n\n    Parameters\n    ----------\n\
+    \    n_colors : int\n        Number of colors in the palette.\n    h : float\n\
+    \        The value of the first hue.\n    l : float\n        The lightness value.\n\
+    \    s : float\n        The saturation intensity.\n    as_cmap : bool\n      \
+    \  If True, return a matplotlib colormap object.\n\n    Returns\n    -------\n\
+    \    palette\n        list of RGB tuples or :class:`matplotlib.colors.ListedColormap`\n\
+    \n    See Also\n    --------\n    hls_palette : Make a palette using evenly spaced\
+    \ hues in the HSL system.\n\n    Examples\n    --------\n    .. include:: ../docstrings/husl_palette.rst\n\
+    \n    \"\"\"\n    if as_cmap:\n        n_colors = 256\n    hues = np.linspace(0,\
+    \ 1, int(n_colors) + 1)[:-1]\n    hues += h\n    hues %= 1\n    hues *= 359\n\
+    \    s *= 99\n    l *= 99  # noqa\n    palette = [_color_to_rgb((h_i, s, l), input=\"\
+    husl\") for h_i in hues]\n    if as_cmap:\n        return mpl.colors.ListedColormap(palette,\
+    \ \"hsl\")\n    else:\n        return _ColorPalette(palette)\n\n\ndef mpl_palette(name,\
+    \ n_colors=6, as_cmap=False):\n    \"\"\"\n    Return a palette or colormap from\
+    \ the matplotlib registry.\n\n    For continuous palettes, evenly-spaced discrete\
+    \ samples are chosen while\n    excluding the minimum and maximum value in the\
+    \ colormap to provide better\n    contrast at the extremes.\n\n    For qualitative\
+    \ palettes (e.g. those from colorbrewer), exact values are\n    indexed (rather\
+    \ than interpolated), but fewer than `n_colors` can be returned\n    if the palette\
+    \ does not define that many.\n\n    Parameters\n    ----------\n    name : string\n\
+    \        Name of the palette. This should be a named matplotlib colormap.\n  \
+    \  n_colors : int\n        Number of discrete colors in the palette.\n\n    Returns\n\
+    \    -------\n    list of RGB tuples or :class:`matplotlib.colors.ListedColormap`\n\
+    \n    Examples\n    --------\n    .. include:: ../docstrings/mpl_palette.rst\n\
+    \n    \"\"\"\n    if name.endswith(\"_d\"):\n        sub_name = name[:-2]\n  \
+    \      if sub_name.endswith(\"_r\"):\n            reverse = True\n           \
+    \ sub_name = sub_name[:-2]\n        else:\n            reverse = False\n     \
+    \   pal = color_palette(sub_name, 2) + [\"#333333\"]\n        if reverse:\n  \
+    \          pal = pal[::-1]\n        cmap = blend_palette(pal, n_colors, as_cmap=True)\n\
+    \    else:\n        cmap = get_colormap(name)\n\n    if name in MPL_QUAL_PALS:\n\
+    \        bins = np.linspace(0, 1, MPL_QUAL_PALS[name])[:n_colors]\n    else:\n\
+    \        bins = np.linspace(0, 1, int(n_colors) + 2)[1:-1]\n    palette = list(map(tuple,\
+    \ cmap(bins)[:, :3]))\n\n    if as_cmap:\n        return cmap\n    else:\n   \
+    \     return _ColorPalette(palette)\n\n\ndef _color_to_rgb(color, input):\n  \
+    \  \"\"\"Add some more flexibility to color choices.\"\"\"\n    if input == \"\
+    hls\":\n        color = colorsys.hls_to_rgb(*color)\n    elif input == \"husl\"\
+    :\n        color = husl.husl_to_rgb(*color)\n        color = tuple(np.clip(color,\
+    \ 0, 1))\n    elif input == \"xkcd\":\n        color = xkcd_rgb[color]\n\n   \
+    \ return mpl.colors.to_rgb(color)\n\n\ndef dark_palette(color, n_colors=6, reverse=False,\
+    \ as_cmap=False, input=\"rgb\"):\n    \"\"\"Make a sequential palette that blends\
+    \ from dark to ``color``.\n\n    This kind of palette is good for data that range\
+    \ between relatively\n    uninteresting low values and interesting high values.\n\
+    \n    The ``color`` parameter can be specified in a number of ways, including\n\
+    \    all options for defining a color in matplotlib and several additional\n \
+    \   color spaces that are handled by seaborn. You can also use the database\n\
+    \    of named colors from the XKCD color survey.\n\n    If you are using the IPython\
+    \ notebook, you can also choose this palette\n    interactively with the :func:`choose_dark_palette`\
+    \ function.\n\n    Parameters\n    ----------\n    color : base color for high\
+    \ values\n        hex, rgb-tuple, or html color name\n    n_colors : int, optional\n\
+    \        number of colors in the palette\n    reverse : bool, optional\n     \
+    \   if True, reverse the direction of the blend\n    as_cmap : bool, optional\n\
+    \        If True, return a :class:`matplotlib.colors.ListedColormap`.\n    input\
+    \ : {'rgb', 'hls', 'husl', xkcd'}\n        Color space to interpret the input\
+    \ color. The first three options\n        apply to tuple inputs and the latter\
+    \ applies to string inputs.\n\n    Returns\n    -------\n    palette\n       \
+    \ list of RGB tuples or :class:`matplotlib.colors.ListedColormap`\n\n    See Also\n\
+    \    --------\n    light_palette : Create a sequential palette with bright low\
+    \ values.\n    diverging_palette : Create a diverging palette with two colors.\n\
+    \n    Examples\n    --------\n    .. include:: ../docstrings/dark_palette.rst\n\
+    \n    \"\"\"\n    rgb = _color_to_rgb(color, input)\n    hue, sat, _ = husl.rgb_to_husl(*rgb)\n\
+    \    gray_s, gray_l = .15 * sat, 15\n    gray = _color_to_rgb((hue, gray_s, gray_l),\
+    \ input=\"husl\")\n    colors = [rgb, gray] if reverse else [gray, rgb]\n    return\
+    \ blend_palette(colors, n_colors, as_cmap)\n\n\ndef light_palette(color, n_colors=6,\
+    \ reverse=False, as_cmap=False, input=\"rgb\"):\n    \"\"\"Make a sequential palette\
+    \ that blends from light to ``color``.\n\n    The ``color`` parameter can be specified\
+    \ in a number of ways, including\n    all options for defining a color in matplotlib\
+    \ and several additional\n    color spaces that are handled by seaborn. You can\
+    \ also use the database\n    of named colors from the XKCD color survey.\n\n \
+    \   If you are using a Jupyter notebook, you can also choose this palette\n  \
+    \  interactively with the :func:`choose_light_palette` function.\n\n    Parameters\n\
+    \    ----------\n    color : base color for high values\n        hex code, html\
+    \ color name, or tuple in `input` space.\n    n_colors : int, optional\n     \
+    \   number of colors in the palette\n    reverse : bool, optional\n        if\
+    \ True, reverse the direction of the blend\n    as_cmap : bool, optional\n   \
+    \     If True, return a :class:`matplotlib.colors.ListedColormap`.\n    input\
+    \ : {'rgb', 'hls', 'husl', xkcd'}\n        Color space to interpret the input\
+    \ color. The first three options\n        apply to tuple inputs and the latter\
+    \ applies to string inputs.\n\n    Returns\n    -------\n    palette\n       \
+    \ list of RGB tuples or :class:`matplotlib.colors.ListedColormap`\n\n    See Also\n\
+    \    --------\n    dark_palette : Create a sequential palette with dark low values.\n\
+    \    diverging_palette : Create a diverging palette with two colors.\n\n    Examples\n\
+    \    --------\n    .. include:: ../docstrings/light_palette.rst\n\n    \"\"\"\n\
+    \    rgb = _color_to_rgb(color, input)\n    hue, sat, _ = husl.rgb_to_husl(*rgb)\n\
+    \    gray_s, gray_l = .15 * sat, 95\n    gray = _color_to_rgb((hue, gray_s, gray_l),\
+    \ input=\"husl\")\n    colors = [rgb, gray] if reverse else [gray, rgb]\n    return\
+    \ blend_palette(colors, n_colors, as_cmap)\n\n\ndef diverging_palette(h_neg, h_pos,\
+    \ s=75, l=50, sep=1, n=6,  # noqa\n                      center=\"light\", as_cmap=False):\n\
+    \    \"\"\"Make a diverging palette between two HUSL colors.\n\n    If you are\
+    \ using the IPython notebook, you can also choose this palette\n    interactively\
+    \ with the :func:`choose_diverging_palette` function.\n\n    Parameters\n    ----------\n\
+    \    h_neg, h_pos : float in [0, 359]\n        Anchor hues for negative and positive\
+    \ extents of the map.\n    s : float in [0, 100], optional\n        Anchor saturation\
+    \ for both extents of the map.\n    l : float in [0, 100], optional\n        Anchor\
+    \ lightness for both extents of the map.\n    sep : int, optional\n        Size\
+    \ of the intermediate region.\n    n : int, optional\n        Number of colors\
+    \ in the palette (if not returning a cmap)\n    center : {\"light\", \"dark\"\
+    }, optional\n        Whether the center of the palette is light or dark\n    as_cmap\
+    \ : bool, optional\n        If True, return a :class:`matplotlib.colors.ListedColormap`.\n\
+    \n    Returns\n    -------\n    palette\n        list of RGB tuples or :class:`matplotlib.colors.ListedColormap`\n\
+    \n    See Also\n    --------\n    dark_palette : Create a sequential palette with\
+    \ dark values.\n    light_palette : Create a sequential palette with light values.\n\
+    \n    Examples\n    --------\n    .. include: ../docstrings/diverging_palette.rst\n\
+    \n    \"\"\"\n    palfunc = dict(dark=dark_palette, light=light_palette)[center]\n\
+    \    n_half = int(128 - (sep // 2))\n    neg = palfunc((h_neg, s, l), n_half,\
+    \ reverse=True, input=\"husl\")\n    pos = palfunc((h_pos, s, l), n_half, input=\"\
+    husl\")\n    midpoint = dict(light=[(.95, .95, .95)], dark=[(.133, .133, .133)])[center]\n\
+    \    mid = midpoint * sep\n    pal = blend_palette(np.concatenate([neg, mid, pos]),\
+    \ n, as_cmap=as_cmap)\n    return pal\n\n\ndef blend_palette(colors, n_colors=6,\
+    \ as_cmap=False, input=\"rgb\"):\n    \"\"\"Make a palette that blends between\
+    \ a list of colors.\n\n    Parameters\n    ----------\n    colors : sequence of\
+    \ colors in various formats interpreted by `input`\n        hex code, html color\
+    \ name, or tuple in `input` space.\n    n_colors : int, optional\n        Number\
+    \ of colors in the palette.\n    as_cmap : bool, optional\n        If True, return\
+    \ a :class:`matplotlib.colors.ListedColormap`.\n\n    Returns\n    -------\n \
+    \   palette\n        list of RGB tuples or :class:`matplotlib.colors.ListedColormap`\n\
+    \n    Examples\n    --------\n    .. include: ../docstrings/blend_palette.rst\n\
+    \n    \"\"\"\n    colors = [_color_to_rgb(color, input) for color in colors]\n\
+    \    name = \"blend\"\n    pal = mpl.colors.LinearSegmentedColormap.from_list(name,\
+    \ colors)\n    if not as_cmap:\n        rgb_array = pal(np.linspace(0, 1, int(n_colors)))[:,\
+    \ :3]  # no alpha\n        pal = _ColorPalette(map(tuple, rgb_array))\n    return\
+    \ pal\n\n\ndef xkcd_palette(colors):\n    \"\"\"Make a palette with color names\
+    \ from the xkcd color survey.\n\n    See xkcd for the full list of colors: https://xkcd.com/color/rgb/\n\
+    \n    This is just a simple wrapper around the `seaborn.xkcd_rgb` dictionary.\n\
+    \n    Parameters\n    ----------\n    colors : list of strings\n        List of\
+    \ keys in the `seaborn.xkcd_rgb` dictionary.\n\n    Returns\n    -------\n   \
+    \ palette\n        A list of colors as RGB tuples.\n\n    See Also\n    --------\n\
+    \    crayon_palette : Make a palette with Crayola crayon colors.\n\n    \"\"\"\
+    \n    palette = [xkcd_rgb[name] for name in colors]\n    return color_palette(palette,\
+    \ len(palette))\n\n\ndef crayon_palette(colors):\n    \"\"\"Make a palette with\
+    \ color names from Crayola crayons.\n\n    Colors are taken from here:\n    https://en.wikipedia.org/wiki/List_of_Crayola_crayon_colors\n\
+    \n    This is just a simple wrapper around the `seaborn.crayons` dictionary.\n\
+    \n    Parameters\n    ----------\n    colors : list of strings\n        List of\
+    \ keys in the `seaborn.crayons` dictionary.\n\n    Returns\n    -------\n    palette\n\
+    \        A list of colors as RGB tuples.\n\n    See Also\n    --------\n    xkcd_palette\
+    \ : Make a palette with named colors from the XKCD color survey.\n\n    \"\"\"\
+    \n    palette = [crayons[name] for name in colors]\n    return color_palette(palette,\
+    \ len(palette))\n\n\ndef cubehelix_palette(n_colors=6, start=0, rot=.4, gamma=1.0,\
+    \ hue=0.8,\n                      light=.85, dark=.15, reverse=False, as_cmap=False):\n\
+    \    \"\"\"Make a sequential palette from the cubehelix system.\n\n    This produces\
+    \ a colormap with linearly-decreasing (or increasing)\n    brightness. That means\
+    \ that information will be preserved if printed to\n    black and white or viewed\
+    \ by someone who is colorblind.  \"cubehelix\" is\n    also available as a matplotlib-based\
+    \ palette, but this function gives the\n    user more control over the look of\
+    \ the palette and has a different set of\n    defaults.\n\n    In addition to\
+    \ using this function, it is also possible to generate a\n    cubehelix palette\
+    \ generally in seaborn using a string starting with\n    `ch:` and containing\
+    \ other parameters (e.g. `\"ch:s=.25,r=-.5\"`).\n\n    Parameters\n    ----------\n\
+    \    n_colors : int\n        Number of colors in the palette.\n    start : float,\
+    \ 0 <= start <= 3\n        The hue value at the start of the helix.\n    rot :\
+    \ float\n        Rotations around the hue wheel over the range of the palette.\n\
+    \    gamma : float 0 <= gamma\n        Nonlinearity to emphasize dark (gamma <\
+    \ 1) or light (gamma > 1) colors.\n    hue : float, 0 <= hue <= 1\n        Saturation\
+    \ of the colors.\n    dark : float 0 <= dark <= 1\n        Intensity of the darkest\
+    \ color in the palette.\n    light : float 0 <= light <= 1\n        Intensity\
+    \ of the lightest color in the palette.\n    reverse : bool\n        If True,\
+    \ the palette will go from dark to light.\n    as_cmap : bool\n        If True,\
+    \ return a :class:`matplotlib.colors.ListedColormap`.\n\n    Returns\n    -------\n\
+    \    palette\n        list of RGB tuples or :class:`matplotlib.colors.ListedColormap`\n\
+    \n    See Also\n    --------\n    choose_cubehelix_palette : Launch an interactive\
+    \ widget to select cubehelix\n                               palette parameters.\n\
+    \    dark_palette : Create a sequential palette with dark low values.\n    light_palette\
+    \ : Create a sequential palette with bright low values.\n\n    References\n  \
+    \  ----------\n    Green, D. A. (2011). \"A colour scheme for the display of astronomical\n\
+    \    intensity images\". Bulletin of the Astromical Society of India, Vol. 39,\n\
+    \    p. 289-295.\n\n    Examples\n    --------\n    .. include:: ../docstrings/cubehelix_palette.rst\n\
+    \n    \"\"\"\n    def get_color_function(p0, p1):\n        # Copied from matplotlib\
+    \ because it lives in private module\n        def color(x):\n            # Apply\
+    \ gamma factor to emphasise low or high intensity values\n            xg = x **\
+    \ gamma\n\n            # Calculate amplitude and angle of deviation from the black\n\
+    \            # to white diagonal in the plane of constant\n            # perceived\
+    \ intensity.\n            a = hue * xg * (1 - xg) / 2\n\n            phi = 2 *\
+    \ np.pi * (start / 3 + rot * x)\n\n            return xg + a * (p0 * np.cos(phi)\
+    \ + p1 * np.sin(phi))\n        return color\n\n    cdict = {\n        \"red\"\
+    : get_color_function(-0.14861, 1.78277),\n        \"green\": get_color_function(-0.29227,\
+    \ -0.90649),\n        \"blue\": get_color_function(1.97294, 0.0),\n    }\n\n \
+    \   cmap = mpl.colors.LinearSegmentedColormap(\"cubehelix\", cdict)\n\n    x =\
+    \ np.linspace(light, dark, int(n_colors))\n    pal = cmap(x)[:, :3].tolist()\n\
+    \    if reverse:\n        pal = pal[::-1]\n\n    if as_cmap:\n        x_256 =\
+    \ np.linspace(light, dark, 256)\n        if reverse:\n            x_256 = x_256[::-1]\n\
+    \        pal_256 = cmap(x_256)\n        cmap = mpl.colors.ListedColormap(pal_256,\
+    \ \"seaborn_cubehelix\")\n        return cmap\n    else:\n        return _ColorPalette(pal)\n\
+    \n\ndef _parse_cubehelix_args(argstr):\n    \"\"\"Turn stringified cubehelix params\
+    \ into args/kwargs.\"\"\"\n\n    if argstr.startswith(\"ch:\"):\n        argstr\
+    \ = argstr[3:]\n\n    if argstr.endswith(\"_r\"):\n        reverse = True\n  \
+    \      argstr = argstr[:-2]\n    else:\n        reverse = False\n\n    if not\
+    \ argstr:\n        return [], {\"reverse\": reverse}\n\n    all_args = argstr.split(\"\
+    ,\")\n\n    args = [float(a.strip(\" \")) for a in all_args if \"=\" not in a]\n\
+    \n    kwargs = [a.split(\"=\") for a in all_args if \"=\" in a]\n    kwargs =\
+    \ {k.strip(\" \"): float(v.strip(\" \")) for k, v in kwargs}\n\n    kwarg_map\
+    \ = dict(\n        s=\"start\", r=\"rot\", g=\"gamma\",\n        h=\"hue\", l=\"\
+    light\", d=\"dark\",  # noqa: E741\n    )\n\n    kwargs = {kwarg_map.get(k, k):\
+    \ v for k, v in kwargs.items()}\n\n    if reverse:\n        kwargs[\"reverse\"\
+    ] = True\n\n    return args, kwargs\n\n\ndef set_color_codes(palette=\"deep\"\
+    ):\n    \"\"\"Change how matplotlib color shorthands are interpreted.\n\n    Calling\
+    \ this will change how shorthand codes like \"b\" or \"g\"\n    are interpreted\
+    \ by matplotlib in subsequent plots.\n\n    Parameters\n    ----------\n    palette\
+    \ : {deep, muted, pastel, dark, bright, colorblind}\n        Named seaborn palette\
+    \ to use as the source of colors.\n\n    See Also\n    --------\n    set : Color\
+    \ codes can be set through the high-level seaborn style\n          manager.\n\
+    \    set_palette : Color codes can also be set through the function that\n   \
+    \               sets the matplotlib color cycle.\n\n    \"\"\"\n    if palette\
+    \ == \"reset\":\n        colors = [\n            (0., 0., 1.),\n            (0.,\
+    \ .5, 0.),\n            (1., 0., 0.),\n            (.75, 0., .75),\n         \
+    \   (.75, .75, 0.),\n            (0., .75, .75),\n            (0., 0., 0.)\n \
+    \       ]\n    elif not isinstance(palette, str):\n        err = \"set_color_codes\
+    \ requires a named seaborn palette\"\n        raise TypeError(err)\n    elif palette\
+    \ in SEABORN_PALETTES:\n        if not palette.endswith(\"6\"):\n            palette\
+    \ = palette + \"6\"\n        colors = SEABORN_PALETTES[palette] + [(.1, .1, .1)]\n\
+    \    else:\n        err = f\"Cannot set colors with palette '{palette}'\"\n  \
+    \      raise ValueError(err)\n\n    for code, color in zip(\"bgrmyck\", colors):\n\
+    \        rgb = mpl.colors.colorConverter.to_rgb(color)\n        mpl.colors.colorConverter.colors[code]\
+    \ = rgb\n\n### Source File Dependency Files Content\n### Dependency File: crayons.py\n\
+    crayons = {'Almond': '#EFDECD',\n           'Antique Brass': '#CD9575',\n    \
+    \       'Apricot': '#FDD9B5',\n           'Aquamarine': '#78DBE2',\n         \
+    \  'Asparagus': '#87A96B',\n           'Atomic Tangerine': '#FFA474',\n      \
+    \     'Banana Mania': '#FAE7B5',\n           'Beaver': '#9F8170',\n          \
+    \ 'Bittersweet': '#FD7C6E',\n           'Black': '#000000',\n           'Blue':\
+    \ '#1F75FE',\n           'Blue Bell': '#A2A2D0',\n           'Blue Green': '#0D98BA',\n\
+    \           'Blue Violet': '#7366BD',\n           'Blush': '#DE5D83',\n      \
+    \     'Brick Red': '#CB4154',\n           'Brown': '#B4674D',\n           'Burnt\
+    \ Orange': '#FF7F49',\n           'Burnt Sienna': '#EA7E5D',\n           'Cadet\
+    \ Blue': '#B0B7C6',\n           'Canary': '#FFFF99',\n           'Caribbean Green':\
+    \ '#00CC99',\n           'Carnation Pink': '#FFAACC',\n           'Cerise': '#DD4492',\n\
+    \           'Cerulean': '#1DACD6',\n           'Chestnut': '#BC5D58',\n      \
+    \     'Copper': '#DD9475',\n           'Cornflower': '#9ACEEB',\n           'Cotton\
+    \ Candy': '#FFBCD9',\n           'Dandelion': '#FDDB6D',\n           'Denim':\
+    \ '#2B6CC4',\n           'Desert Sand': '#EFCDB8',\n           'Eggplant': '#6E5160',\n\
+    \           'Electric Lime': '#CEFF1D',\n           'Fern': '#71BC78',\n     \
+    \      'Forest Green': '#6DAE81',\n           'Fuchsia': '#C364C5',\n        \
+    \   'Fuzzy Wuzzy': '#CC6666',\n           'Gold': '#E7C697',\n           'Goldenrod':\
+    \ '#FCD975',\n           'Granny Smith Apple': '#A8E4A0',\n           'Gray':\
+    \ '#95918C',\n           'Green': '#1CAC78',\n           'Green Yellow': '#F0E891',\n\
+    \           'Hot Magenta': '#FF1DCE',\n           'Inchworm': '#B2EC5D',\n   \
+    \        'Indigo': '#5D76CB',\n           'Jazzberry Jam': '#CA3767',\n      \
+    \     'Jungle Green': '#3BB08F',\n           'Laser Lemon': '#FEFE22',\n     \
+    \      'Lavender': '#FCB4D5',\n           'Macaroni and Cheese': '#FFBD88',\n\
+    \           'Magenta': '#F664AF',\n           'Mahogany': '#CD4A4C',\n       \
+    \    'Manatee': '#979AAA',\n           'Mango Tango': '#FF8243',\n           'Maroon':\
+    \ '#C8385A',\n           'Mauvelous': '#EF98AA',\n           'Melon': '#FDBCB4',\n\
+    \           'Midnight Blue': '#1A4876',\n           'Mountain Meadow': '#30BA8F',\n\
+    \           'Navy Blue': '#1974D2',\n           'Neon Carrot': '#FFA343',\n  \
+    \         'Olive Green': '#BAB86C',\n           'Orange': '#FF7538',\n       \
+    \    'Orchid': '#E6A8D7',\n           'Outer Space': '#414A4C',\n           'Outrageous\
+    \ Orange': '#FF6E4A',\n           'Pacific Blue': '#1CA9C9',\n           'Peach':\
+    \ '#FFCFAB',\n           'Periwinkle': '#C5D0E6',\n           'Piggy Pink': '#FDDDE6',\n\
+    \           'Pine Green': '#158078',\n           'Pink Flamingo': '#FC74FD',\n\
+    \           'Pink Sherbert': '#F78FA7',\n           'Plum': '#8E4585',\n     \
+    \      'Purple Heart': '#7442C8',\n           \"Purple Mountains' Majesty\": '#9D81BA',\n\
+    \           'Purple Pizzazz': '#FE4EDA',\n           'Radical Red': '#FF496C',\n\
+    \           'Raw Sienna': '#D68A59',\n           'Razzle Dazzle Rose': '#FF48D0',\n\
+    \           'Razzmatazz': '#E3256B',\n           'Red': '#EE204D',\n         \
+    \  'Red Orange': '#FF5349',\n           'Red Violet': '#C0448F',\n           \"\
+    Robin's Egg Blue\": '#1FCECB',\n           'Royal Purple': '#7851A9',\n      \
+    \     'Salmon': '#FF9BAA',\n           'Scarlet': '#FC2847',\n           \"Screamin'\
+    \ Green\": '#76FF7A',\n           'Sea Green': '#93DFB8',\n           'Sepia':\
+    \ '#A5694F',\n           'Shadow': '#8A795D',\n           'Shamrock': '#45CEA2',\n\
+    \           'Shocking Pink': '#FB7EFD',\n           'Silver': '#CDC5C2',\n   \
+    \        'Sky Blue': '#80DAEB',\n           'Spring Green': '#ECEABE',\n     \
+    \      'Sunglow': '#FFCF48',\n           'Sunset Orange': '#FD5E53',\n       \
+    \    'Tan': '#FAA76C',\n           'Tickle Me Pink': '#FC89AC',\n           'Timberwolf':\
+    \ '#DBD7D2',\n           'Tropical Rain Forest': '#17806D',\n           'Tumbleweed':\
+    \ '#DEAA88',\n           'Turquoise Blue': '#77DDE7',\n           'Unmellow Yellow':\
+    \ '#FFFF66',\n           'Violet (Purple)': '#926EAE',\n           'Violet Red':\
+    \ '#F75394',\n           'Vivid Tangerine': '#FFA089',\n           'Vivid Violet':\
+    \ '#8F509D',\n           'White': '#FFFFFF',\n           'Wild Blue Yonder': '#A2ADD0',\n\
+    \           'Wild Strawberry': '#FF43A4',\n           'Wild Watermelon': '#FC6C85',\n\
+    \           'Wisteria': '#CDA4DE',\n           'Yellow': '#FCE883',\n        \
+    \   'Yellow Green': '#C5E384',\n           'Yellow Orange': '#FFAE42'}\n\n\n###\
+    \ Dependency File: utils.py\n\"\"\"Utility functions, mostly for internal use.\"\
+    \"\"\nimport os\nimport inspect\nimport warnings\nimport colorsys\nfrom contextlib\
+    \ import contextmanager\nfrom urllib.request import urlopen, urlretrieve\nfrom\
+    \ types import ModuleType\n\nimport numpy as np\nimport pandas as pd\nimport matplotlib\
+    \ as mpl\nfrom matplotlib.colors import to_rgb\nimport matplotlib.pyplot as plt\n\
+    from matplotlib.cbook import normalize_kwargs\n\nfrom seaborn._core.typing import\
+    \ deprecated\nfrom seaborn.external.version import Version\nfrom seaborn.external.appdirs\
+    \ import user_cache_dir\n\n__all__ = [\"desaturate\", \"saturate\", \"set_hls_values\"\
+    , \"move_legend\",\n           \"despine\", \"get_dataset_names\", \"get_data_home\"\
+    , \"load_dataset\"]\n\nDATASET_SOURCE = \"https://raw.githubusercontent.com/mwaskom/seaborn-data/master\"\
+    \nDATASET_NAMES_URL = f\"{DATASET_SOURCE}/dataset_names.txt\"\n\n\ndef ci_to_errsize(cis,\
+    \ heights):\n    \"\"\"Convert intervals to error arguments relative to plot heights.\n\
+    \n    Parameters\n    ----------\n    cis : 2 x n sequence\n        sequence of\
+    \ confidence interval limits\n    heights : n sequence\n        sequence of plot\
+    \ heights\n\n    Returns\n    -------\n    errsize : 2 x n array\n        sequence\
+    \ of error size relative to height values in correct\n        format as argument\
+    \ for plt.bar\n\n    \"\"\"\n    cis = np.atleast_2d(cis).reshape(2, -1)\n   \
+    \ heights = np.atleast_1d(heights)\n    errsize = []\n    for i, (low, high) in\
+    \ enumerate(np.transpose(cis)):\n        h = heights[i]\n        elow = h - low\n\
+    \        ehigh = high - h\n        errsize.append([elow, ehigh])\n\n    errsize\
+    \ = np.asarray(errsize).T\n    return errsize\n\n\ndef _draw_figure(fig):\n  \
+    \  \"\"\"Force draw of a matplotlib figure, accounting for back-compat.\"\"\"\n\
+    \    # See https://github.com/matplotlib/matplotlib/issues/19197 for context\n\
+    \    fig.canvas.draw()\n    if fig.stale:\n        try:\n            fig.draw(fig.canvas.get_renderer())\n\
+    \        except AttributeError:\n            pass\n\n\ndef _default_color(method,\
+    \ hue, color, kws, saturation=1):\n    \"\"\"If needed, get a default color by\
+    \ using the matplotlib property cycle.\"\"\"\n\n    if hue is not None:\n    \
+    \    # This warning is probably user-friendly, but it's currently triggered\n\
+    \        # in a FacetGrid context and I don't want to mess with that logic right\
+    \ now\n        #  if color is not None:\n        #      msg = \"`color` is ignored\
+    \ when `hue` is assigned.\"\n        #      warnings.warn(msg)\n        return\
+    \ None\n\n    kws = kws.copy()\n    kws.pop(\"label\", None)\n\n    if color is\
+    \ not None:\n        if saturation < 1:\n            color = desaturate(color,\
+    \ saturation)\n        return color\n\n    elif method.__name__ == \"plot\":\n\
+    \n        color = normalize_kwargs(kws, mpl.lines.Line2D).get(\"color\")\n   \
+    \     scout, = method([], [], scalex=False, scaley=False, color=color)\n     \
+    \   color = scout.get_color()\n        scout.remove()\n\n    elif method.__name__\
+    \ == \"scatter\":\n\n        # Matplotlib will raise if the size of x/y don't\
+    \ match s/c,\n        # and the latter might be in the kws dict\n        scout_size\
+    \ = max(\n            np.atleast_1d(kws.get(key, [])).shape[0]\n            for\
+    \ key in [\"s\", \"c\", \"fc\", \"facecolor\", \"facecolors\"]\n        )\n  \
+    \      scout_x = scout_y = np.full(scout_size, np.nan)\n\n        scout = method(scout_x,\
+    \ scout_y, **kws)\n        facecolors = scout.get_facecolors()\n\n        if not\
+    \ len(facecolors):\n            # Handle bug in matplotlib <= 3.2 (I think)\n\
+    \            # This will limit the ability to use non color= kwargs to specify\n\
+    \            # a color in versions of matplotlib with the bug, but trying to\n\
+    \            # work out what the user wanted by re-implementing the broken logic\n\
+    \            # of inspecting the kwargs is probably too brittle.\n           \
+    \ single_color = False\n        else:\n            single_color = np.unique(facecolors,\
+    \ axis=0).shape[0] == 1\n\n        # Allow the user to specify an array of colors\
+    \ through various kwargs\n        if \"c\" not in kws and single_color:\n    \
+    \        color = to_rgb(facecolors[0])\n\n        scout.remove()\n\n    elif method.__name__\
+    \ == \"bar\":\n\n        # bar() needs masked, not empty data, to generate a patch\n\
+    \        scout, = method([np.nan], [np.nan], **kws)\n        color = to_rgb(scout.get_facecolor())\n\
+    \        scout.remove()\n        # Axes.bar adds both a patch and a container\n\
+    \        method.__self__.containers.pop(-1)\n\n    elif method.__name__ == \"\
+    fill_between\":\n\n        kws = normalize_kwargs(kws, mpl.collections.PolyCollection)\n\
+    \        scout = method([], [], **kws)\n        facecolor = scout.get_facecolor()\n\
+    \        color = to_rgb(facecolor[0])\n        scout.remove()\n\n    if saturation\
+    \ < 1:\n        color = desaturate(color, saturation)\n\n    return color\n\n\n\
+    def desaturate(color, prop):\n    \"\"\"Decrease the saturation channel of a color\
+    \ by some percent.\n\n    Parameters\n    ----------\n    color : matplotlib color\n\
+    \        hex, rgb-tuple, or html color name\n    prop : float\n        saturation\
+    \ channel of color will be multiplied by this value\n\n    Returns\n    -------\n\
+    \    new_color : rgb tuple\n        desaturated color code in RGB tuple representation\n\
+    \n    \"\"\"\n    # Check inputs\n    if not 0 <= prop <= 1:\n        raise ValueError(\"\
+    prop must be between 0 and 1\")\n\n    # Get rgb tuple rep\n    rgb = to_rgb(color)\n\
+    \n    # Short circuit to avoid floating point issues\n    if prop == 1:\n    \
+    \    return rgb\n\n    # Convert to hls\n    h, l, s = colorsys.rgb_to_hls(*rgb)\n\
+    \n    # Desaturate the saturation channel\n    s *= prop\n\n    # Convert back\
+    \ to rgb\n    new_color = colorsys.hls_to_rgb(h, l, s)\n\n    return new_color\n\
+    \n\ndef saturate(color):\n    \"\"\"Return a fully saturated color with the same\
+    \ hue.\n\n    Parameters\n    ----------\n    color : matplotlib color\n     \
+    \   hex, rgb-tuple, or html color name\n\n    Returns\n    -------\n    new_color\
+    \ : rgb tuple\n        saturated color code in RGB tuple representation\n\n  \
+    \  \"\"\"\n    return set_hls_values(color, s=1)\n\n\ndef set_hls_values(color,\
+    \ h=None, l=None, s=None):  # noqa\n    \"\"\"Independently manipulate the h,\
+    \ l, or s channels of a color.\n\n    Parameters\n    ----------\n    color :\
+    \ matplotlib color\n        hex, rgb-tuple, or html color name\n    h, l, s :\
+    \ floats between 0 and 1, or None\n        new values for each channel in hls\
+    \ space\n\n    Returns\n    -------\n    new_color : rgb tuple\n        new color\
+    \ code in RGB tuple representation\n\n    \"\"\"\n    # Get an RGB tuple representation\n\
+    \    rgb = to_rgb(color)\n    vals = list(colorsys.rgb_to_hls(*rgb))\n    for\
+    \ i, val in enumerate([h, l, s]):\n        if val is not None:\n            vals[i]\
+    \ = val\n\n    rgb = colorsys.hls_to_rgb(*vals)\n    return rgb\n\n\ndef axlabel(xlabel,\
+    \ ylabel, **kwargs):\n    \"\"\"Grab current axis and label it.\n\n    DEPRECATED:\
+    \ will be removed in a future version.\n\n    \"\"\"\n    msg = \"This function\
+    \ is deprecated and will be removed in a future version\"\n    warnings.warn(msg,\
+    \ FutureWarning)\n    ax = plt.gca()\n    ax.set_xlabel(xlabel, **kwargs)\n  \
+    \  ax.set_ylabel(ylabel, **kwargs)\n\n\ndef remove_na(vector):\n    \"\"\"Helper\
+    \ method for removing null values from data vectors.\n\n    Parameters\n    ----------\n\
+    \    vector : vector object\n        Must implement boolean masking with [] subscript\
+    \ syntax.\n\n    Returns\n    -------\n    clean_clean : same type as ``vector``\n\
+    \        Vector of data with null values removed. May be a copy or a view.\n\n\
+    \    \"\"\"\n    return vector[pd.notnull(vector)]\n\n\ndef get_color_cycle():\n\
+    \    \"\"\"Return the list of colors in the current matplotlib color cycle\n\n\
+    \    Parameters\n    ----------\n    None\n\n    Returns\n    -------\n    colors\
+    \ : list\n        List of matplotlib colors in the current cycle, or dark gray\
+    \ if\n        the current color cycle is empty.\n    \"\"\"\n    cycler = mpl.rcParams['axes.prop_cycle']\n\
+    \    return cycler.by_key()['color'] if 'color' in cycler.keys else [\".15\"]\n\
+    \n\ndef despine(fig=None, ax=None, top=True, right=True, left=False,\n       \
+    \     bottom=False, offset=None, trim=False):\n    \"\"\"Remove the top and right\
+    \ spines from plot(s).\n\n    fig : matplotlib figure, optional\n        Figure\
+    \ to despine all axes of, defaults to the current figure.\n    ax : matplotlib\
+    \ axes, optional\n        Specific axes object to despine. Ignored if fig is provided.\n\
+    \    top, right, left, bottom : boolean, optional\n        If True, remove that\
+    \ spine.\n    offset : int or dict, optional\n        Absolute distance, in points,\
+    \ spines should be moved away\n        from the axes (negative values move spines\
+    \ inward). A single value\n        applies to all spines; a dict can be used to\
+    \ set offset values per\n        side.\n    trim : bool, optional\n        If\
+    \ True, limit spines to the smallest and largest major tick\n        on each non-despined\
+    \ axis.\n\n    Returns\n    -------\n    None\n\n    \"\"\"\n    # Get references\
+    \ to the axes we want\n    if fig is None and ax is None:\n        axes = plt.gcf().axes\n\
+    \    elif fig is not None:\n        axes = fig.axes\n    elif ax is not None:\n\
+    \        axes = [ax]\n\n    for ax_i in axes:\n        for side in [\"top\", \"\
+    right\", \"left\", \"bottom\"]:\n            # Toggle the spine objects\n    \
+    \        is_visible = not locals()[side]\n            ax_i.spines[side].set_visible(is_visible)\n\
+    \            if offset is not None and is_visible:\n                try:\n   \
+    \                 val = offset.get(side, 0)\n                except AttributeError:\n\
+    \                    val = offset\n                ax_i.spines[side].set_position(('outward',\
+    \ val))\n\n        # Potentially move the ticks\n        if left and not right:\n\
+    \            maj_on = any(\n                t.tick1line.get_visible()\n      \
+    \          for t in ax_i.yaxis.majorTicks\n            )\n            min_on =\
+    \ any(\n                t.tick1line.get_visible()\n                for t in ax_i.yaxis.minorTicks\n\
+    \            )\n            ax_i.yaxis.set_ticks_position(\"right\")\n       \
+    \     for t in ax_i.yaxis.majorTicks:\n                t.tick2line.set_visible(maj_on)\n\
+    \            for t in ax_i.yaxis.minorTicks:\n                t.tick2line.set_visible(min_on)\n\
+    \n        if bottom and not top:\n            maj_on = any(\n                t.tick1line.get_visible()\n\
+    \                for t in ax_i.xaxis.majorTicks\n            )\n            min_on\
+    \ = any(\n                t.tick1line.get_visible()\n                for t in\
+    \ ax_i.xaxis.minorTicks\n            )\n            ax_i.xaxis.set_ticks_position(\"\
+    top\")\n            for t in ax_i.xaxis.majorTicks:\n                t.tick2line.set_visible(maj_on)\n\
+    \            for t in ax_i.xaxis.minorTicks:\n                t.tick2line.set_visible(min_on)\n\
+    \n        if trim:\n            # clip off the parts of the spines that extend\
+    \ past major ticks\n            xticks = np.asarray(ax_i.get_xticks())\n     \
+    \       if xticks.size:\n                firsttick = np.compress(xticks >= min(ax_i.get_xlim()),\n\
+    \                                        xticks)[0]\n                lasttick\
+    \ = np.compress(xticks <= max(ax_i.get_xlim()),\n                            \
+    \           xticks)[-1]\n                ax_i.spines['bottom'].set_bounds(firsttick,\
+    \ lasttick)\n                ax_i.spines['top'].set_bounds(firsttick, lasttick)\n\
+    \                newticks = xticks.compress(xticks <= lasttick)\n            \
+    \    newticks = newticks.compress(newticks >= firsttick)\n                ax_i.set_xticks(newticks)\n\
+    \n            yticks = np.asarray(ax_i.get_yticks())\n            if yticks.size:\n\
+    \                firsttick = np.compress(yticks >= min(ax_i.get_ylim()),\n   \
+    \                                     yticks)[0]\n                lasttick = np.compress(yticks\
+    \ <= max(ax_i.get_ylim()),\n                                       yticks)[-1]\n\
+    \                ax_i.spines['left'].set_bounds(firsttick, lasttick)\n       \
+    \         ax_i.spines['right'].set_bounds(firsttick, lasttick)\n             \
+    \   newticks = yticks.compress(yticks <= lasttick)\n                newticks =\
+    \ newticks.compress(newticks >= firsttick)\n                ax_i.set_yticks(newticks)\n\
+    \n\ndef move_legend(obj, loc, **kwargs):\n    \"\"\"\n    Recreate a plot's legend\
+    \ at a new location.\n\n    The name is a slight misnomer. Matplotlib legends\
+    \ do not expose public\n    control over their position parameters. So this function\
+    \ creates a new legend,\n    copying over the data from the original object, which\
+    \ is then removed.\n\n    Parameters\n    ----------\n    obj : the object with\
+    \ the plot\n        This argument can be either a seaborn or matplotlib object:\n\
+    \n        - :class:`seaborn.FacetGrid` or :class:`seaborn.PairGrid`\n        -\
+    \ :class:`matplotlib.axes.Axes` or :class:`matplotlib.figure.Figure`\n\n    loc\
+    \ : str or int\n        Location argument, as in :meth:`matplotlib.axes.Axes.legend`.\n\
+    \n    kwargs\n        Other keyword arguments are passed to :meth:`matplotlib.axes.Axes.legend`.\n\
+    \n    Examples\n    --------\n\n    .. include:: ../docstrings/move_legend.rst\n\
+    \n    \"\"\"\n    # This is a somewhat hackish solution that will hopefully be\
+    \ obviated by\n    # upstream improvements to matplotlib legends that make them\
+    \ easier to\n    # modify after creation.\n\n    from seaborn.axisgrid import\
+    \ Grid  # Avoid circular import\n\n    # Locate the legend object and a method\
+    \ to recreate the legend\n    if isinstance(obj, Grid):\n        old_legend =\
+    \ obj.legend\n        legend_func = obj.figure.legend\n    elif isinstance(obj,\
+    \ mpl.axes.Axes):\n        old_legend = obj.legend_\n        legend_func = obj.legend\n\
+    \    elif isinstance(obj, mpl.figure.Figure):\n        if obj.legends:\n     \
+    \       old_legend = obj.legends[-1]\n        else:\n            old_legend =\
+    \ None\n        legend_func = obj.legend\n    else:\n        err = \"`obj` must\
+    \ be a seaborn Grid or matplotlib Axes or Figure instance.\"\n        raise TypeError(err)\n\
+    \n    if old_legend is None:\n        err = f\"{obj} has no legend attached.\"\
+    \n        raise ValueError(err)\n\n    # Extract the components of the legend\
+    \ we need to reuse\n    # Import here to avoid a circular import\n    from seaborn._compat\
+    \ import get_legend_handles\n    handles = get_legend_handles(old_legend)\n  \
+    \  labels = [t.get_text() for t in old_legend.get_texts()]\n\n    # Handle the\
+    \ case where the user is trying to override the labels\n    if (new_labels :=\
+    \ kwargs.pop(\"labels\", None)) is not None:\n        if len(new_labels) != len(labels):\n\
+    \            err = \"Length of new labels does not match existing legend.\"\n\
+    \            raise ValueError(err)\n        labels = new_labels\n\n    # Extract\
+    \ legend properties that can be passed to the recreation method\n    # (Vexingly,\
+    \ these don't all round-trip)\n    legend_kws = inspect.signature(mpl.legend.Legend).parameters\n\
+    \    props = {k: v for k, v in old_legend.properties().items() if k in legend_kws}\n\
+    \n    # Delegate default bbox_to_anchor rules to matplotlib\n    props.pop(\"\
+    bbox_to_anchor\")\n\n    # Try to propagate the existing title and font properties;\
+    \ respect new ones too\n    title = props.pop(\"title\")\n    if \"title\" in\
+    \ kwargs:\n        title.set_text(kwargs.pop(\"title\"))\n    title_kwargs = {k:\
+    \ v for k, v in kwargs.items() if k.startswith(\"title_\")}\n    for key, val\
+    \ in title_kwargs.items():\n        title.set(**{key[6:]: val})\n        kwargs.pop(key)\n\
+    \n    # Try to respect the frame visibility\n    kwargs.setdefault(\"frameon\"\
+    , old_legend.legendPatch.get_visible())\n\n    # Remove the old legend and create\
+    \ the new one\n    props.update(kwargs)\n    old_legend.remove()\n    new_legend\
+    \ = legend_func(handles, labels, loc=loc, **props)\n    new_legend.set_title(title.get_text(),\
+    \ title.get_fontproperties())\n\n    # Let the Grid object continue to track the\
+    \ correct legend object\n    if isinstance(obj, Grid):\n        obj._legend =\
+    \ new_legend\n\n\ndef _kde_support(data, bw, gridsize, cut, clip):\n    \"\"\"\
+    Establish support for a kernel density estimate.\"\"\"\n    support_min = max(data.min()\
+    \ - bw * cut, clip[0])\n    support_max = min(data.max() + bw * cut, clip[1])\n\
+    \    support = np.linspace(support_min, support_max, gridsize)\n\n    return support\n\
+    \n\ndef ci(a, which=95, axis=None):\n    \"\"\"Return a percentile range from\
+    \ an array of values.\"\"\"\n    p = 50 - which / 2, 50 + which / 2\n    return\
+    \ np.nanpercentile(a, p, axis)\n\n\ndef get_dataset_names():\n    \"\"\"Report\
+    \ available example datasets, useful for reporting issues.\n\n    Requires an\
+    \ internet connection.\n\n    \"\"\"\n    with urlopen(DATASET_NAMES_URL) as resp:\n\
+    \        txt = resp.read()\n\n    dataset_names = [name.strip() for name in txt.decode().split(\"\
+    \\n\")]\n    return list(filter(None, dataset_names))\n\n\ndef get_data_home(data_home=None):\n\
+    \    \"\"\"Return a path to the cache directory for example datasets.\n\n    This\
+    \ directory is used by :func:`load_dataset`.\n\n    If the ``data_home`` argument\
+    \ is not provided, it will use a directory\n    specified by the `SEABORN_DATA`\
+    \ environment variable (if it exists)\n    or otherwise default to an OS-appropriate\
+    \ user cache location.\n\n    \"\"\"\n    if data_home is None:\n        data_home\
+    \ = os.environ.get(\"SEABORN_DATA\", user_cache_dir(\"seaborn\"))\n    data_home\
+    \ = os.path.expanduser(data_home)\n    if not os.path.exists(data_home):\n   \
+    \     os.makedirs(data_home)\n    return data_home\n\n\ndef load_dataset(name,\
+    \ cache=True, data_home=None, **kws):\n    \"\"\"Load an example dataset from\
+    \ the online repository (requires internet).\n\n    This function provides quick\
+    \ access to a small number of example datasets\n    that are useful for documenting\
+    \ seaborn or generating reproducible examples\n    for bug reports. It is not\
+    \ necessary for normal usage.\n\n    Note that some of the datasets have a small\
+    \ amount of preprocessing applied\n    to define a proper ordering for categorical\
+    \ variables.\n\n    Use :func:`get_dataset_names` to see a list of available datasets.\n\
+    \n    Parameters\n    ----------\n    name : str\n        Name of the dataset\
+    \ (``{name}.csv`` on\n        https://github.com/mwaskom/seaborn-data).\n    cache\
+    \ : boolean, optional\n        If True, try to load from the local cache first,\
+    \ and save to the cache\n        if a download is required.\n    data_home : string,\
+    \ optional\n        The directory in which to cache data; see :func:`get_data_home`.\n\
+    \    kws : keys and values, optional\n        Additional keyword arguments are\
+    \ passed to passed through to\n        :func:`pandas.read_csv`.\n\n    Returns\n\
+    \    -------\n    df : :class:`pandas.DataFrame`\n        Tabular data, possibly\
+    \ with some preprocessing applied.\n\n    \"\"\"\n    # A common beginner mistake\
+    \ is to assume that one's personal data needs\n    # to be passed through this\
+    \ function to be usable with seaborn.\n    # Let's provide a more helpful error\
+    \ than you would otherwise get.\n    if isinstance(name, pd.DataFrame):\n    \
+    \    err = (\n            \"This function accepts only strings (the name of an\
+    \ example dataset). \"\n            \"You passed a pandas DataFrame. If you have\
+    \ your own dataset, \"\n            \"it is not necessary to use this function\
+    \ before plotting.\"\n        )\n        raise TypeError(err)\n\n    url = f\"\
+    {DATASET_SOURCE}/{name}.csv\"\n\n    if cache:\n        cache_path = os.path.join(get_data_home(data_home),\
+    \ os.path.basename(url))\n        if not os.path.exists(cache_path):\n       \
+    \     if name not in get_dataset_names():\n                raise ValueError(f\"\
+    '{name}' is not one of the example datasets.\")\n            urlretrieve(url,\
+    \ cache_path)\n        full_path = cache_path\n    else:\n        full_path =\
+    \ url\n\n    df = pd.read_csv(full_path, **kws)\n\n    if df.iloc[-1].isnull().all():\n\
+    \        df = df.iloc[:-1]\n\n    # Set some columns as a categorical type with\
+    \ ordered levels\n\n    if name == \"tips\":\n        df[\"day\"] = pd.Categorical(df[\"\
+    day\"], [\"Thur\", \"Fri\", \"Sat\", \"Sun\"])\n        df[\"sex\"] = pd.Categorical(df[\"\
+    sex\"], [\"Male\", \"Female\"])\n        df[\"time\"] = pd.Categorical(df[\"time\"\
+    ], [\"Lunch\", \"Dinner\"])\n        df[\"smoker\"] = pd.Categorical(df[\"smoker\"\
+    ], [\"Yes\", \"No\"])\n\n    elif name == \"flights\":\n        months = df[\"\
+    month\"].str[:3]\n        df[\"month\"] = pd.Categorical(months, months.unique())\n\
+    \n    elif name == \"exercise\":\n        df[\"time\"] = pd.Categorical(df[\"\
+    time\"], [\"1 min\", \"15 min\", \"30 min\"])\n        df[\"kind\"] = pd.Categorical(df[\"\
+    kind\"], [\"rest\", \"walking\", \"running\"])\n        df[\"diet\"] = pd.Categorical(df[\"\
+    diet\"], [\"no fat\", \"low fat\"])\n\n    elif name == \"titanic\":\n       \
+    \ df[\"class\"] = pd.Categorical(df[\"class\"], [\"First\", \"Second\", \"Third\"\
+    ])\n        df[\"deck\"] = pd.Categorical(df[\"deck\"], list(\"ABCDEFG\"))\n\n\
+    \    elif name == \"penguins\":\n        df[\"sex\"] = df[\"sex\"].str.title()\n\
+    \n    elif name == \"diamonds\":\n        df[\"color\"] = pd.Categorical(\n  \
+    \          df[\"color\"], [\"D\", \"E\", \"F\", \"G\", \"H\", \"I\", \"J\"],\n\
+    \        )\n        df[\"clarity\"] = pd.Categorical(\n            df[\"clarity\"\
+    ], [\"IF\", \"VVS1\", \"VVS2\", \"VS1\", \"VS2\", \"SI1\", \"SI2\", \"I1\"],\n\
+    \        )\n        df[\"cut\"] = pd.Categorical(\n            df[\"cut\"], [\"\
+    Ideal\", \"Premium\", \"Very Good\", \"Good\", \"Fair\"],\n        )\n\n    elif\
+    \ name == \"taxis\":\n        df[\"pickup\"] = pd.to_datetime(df[\"pickup\"])\n\
+    \        df[\"dropoff\"] = pd.to_datetime(df[\"dropoff\"])\n\n    elif name ==\
+    \ \"seaice\":\n        df[\"Date\"] = pd.to_datetime(df[\"Date\"])\n\n    elif\
+    \ name == \"dowjones\":\n        df[\"Date\"] = pd.to_datetime(df[\"Date\"])\n\
+    \n    return df\n\n\ndef axis_ticklabels_overlap(labels):\n    \"\"\"Return a\
+    \ boolean for whether the list of ticklabels have overlaps.\n\n    Parameters\n\
+    \    ----------\n    labels : list of matplotlib ticklabels\n\n    Returns\n \
+    \   -------\n    overlap : boolean\n        True if any of the labels overlap.\n\
+    \n    \"\"\"\n    if not labels:\n        return False\n    try:\n        bboxes\
+    \ = [l.get_window_extent() for l in labels]\n        overlaps = [b.count_overlaps(bboxes)\
+    \ for b in bboxes]\n        return max(overlaps) > 1\n    except RuntimeError:\n\
+    \        # Issue on macos backend raises an error in the above code\n        return\
+    \ False\n\n\ndef axes_ticklabels_overlap(ax):\n    \"\"\"Return booleans for whether\
+    \ the x and y ticklabels on an Axes overlap.\n\n    Parameters\n    ----------\n\
+    \    ax : matplotlib Axes\n\n    Returns\n    -------\n    x_overlap, y_overlap\
+    \ : booleans\n        True when the labels on that axis overlap.\n\n    \"\"\"\
+    \n    return (axis_ticklabels_overlap(ax.get_xticklabels()),\n            axis_ticklabels_overlap(ax.get_yticklabels()))\n\
+    \n\ndef locator_to_legend_entries(locator, limits, dtype):\n    \"\"\"Return levels\
+    \ and formatted levels for brief numeric legends.\"\"\"\n    raw_levels = locator.tick_values(*limits).astype(dtype)\n\
+    \n    # The locator can return ticks outside the limits, clip them here\n    raw_levels\
+    \ = [l for l in raw_levels if l >= limits[0] and l <= limits[1]]\n\n    class\
+    \ dummy_axis:\n        def get_view_interval(self):\n            return limits\n\
+    \n    if isinstance(locator, mpl.ticker.LogLocator):\n        formatter = mpl.ticker.LogFormatter()\n\
+    \    else:\n        formatter = mpl.ticker.ScalarFormatter()\n        # Avoid\
+    \ having an offset/scientific notation which we don't currently\n        # have\
+    \ any way of representing in the legend\n        formatter.set_useOffset(False)\n\
+    \        formatter.set_scientific(False)\n    formatter.axis = dummy_axis()\n\n\
+    \    formatted_levels = formatter.format_ticks(raw_levels)\n\n    return raw_levels,\
+    \ formatted_levels\n\n\ndef relative_luminance(color):\n    \"\"\"Calculate the\
+    \ relative luminance of a color according to W3C standards\n\n    Parameters\n\
+    \    ----------\n    color : matplotlib color or sequence of matplotlib colors\n\
+    \        Hex code, rgb-tuple, or html color name.\n\n    Returns\n    -------\n\
+    \    luminance : float(s) between 0 and 1\n\n    \"\"\"\n    rgb = mpl.colors.colorConverter.to_rgba_array(color)[:,\
+    \ :3]\n    rgb = np.where(rgb <= .03928, rgb / 12.92, ((rgb + .055) / 1.055) **\
+    \ 2.4)\n    lum = rgb.dot([.2126, .7152, .0722])\n    try:\n        return lum.item()\n\
+    \    except ValueError:\n        return lum\n\n\ndef to_utf8(obj):\n    \"\"\"\
+    Return a string representing a Python object.\n\n    Strings (i.e. type ``str``)\
+    \ are returned unchanged.\n\n    Byte strings (i.e. type ``bytes``) are returned\
+    \ as UTF-8-decoded strings.\n\n    For other objects, the method ``__str__()``\
+    \ is called, and the result is\n    returned as a string.\n\n    Parameters\n\
+    \    ----------\n    obj : object\n        Any Python object\n\n    Returns\n\
+    \    -------\n    s : str\n        UTF-8-decoded string representation of ``obj``\n\
+    \n    \"\"\"\n    if isinstance(obj, str):\n        return obj\n    try:\n   \
+    \     return obj.decode(encoding=\"utf-8\")\n    except AttributeError:  # obj\
+    \ is not bytes-like\n        return str(obj)\n\n\ndef _check_argument(param, options,\
+    \ value, prefix=False):\n    \"\"\"Raise if value for param is not in options.\"\
+    \"\"\n    if prefix and value is not None:\n        failure = not any(value.startswith(p)\
+    \ for p in options if isinstance(p, str))\n    else:\n        failure = value\
+    \ not in options\n    if failure:\n        raise ValueError(\n            f\"\
+    The value for `{param}` must be one of {options}, \"\n            f\"but {repr(value)}\
+    \ was passed.\"\n        )\n    return value\n\n\ndef _assign_default_kwargs(kws,\
+    \ call_func, source_func):\n    \"\"\"Assign default kwargs for call_func using\
+    \ values from source_func.\"\"\"\n    # This exists so that axes-level functions\
+    \ and figure-level functions can\n    # both call a Plotter method while having\
+    \ the default kwargs be defined in\n    # the signature of the axes-level function.\n\
+    \    # An alternative would be to have a decorator on the method that sets its\n\
+    \    # defaults based on those defined in the axes-level function.\n    # Then\
+    \ the figure-level function would not need to worry about defaults.\n    # I am\
+    \ not sure which is better.\n    needed = inspect.signature(call_func).parameters\n\
+    \    defaults = inspect.signature(source_func).parameters\n\n    for param in\
+    \ needed:\n        if param in defaults and param not in kws:\n            kws[param]\
+    \ = defaults[param].default\n\n    return kws\n\n\ndef adjust_legend_subtitles(legend):\n\
+    \    \"\"\"\n    Make invisible-handle \"subtitles\" entries look more like titles.\n\
+    \n    Note: This function is not part of the public API and may be changed or\
+    \ removed.\n\n    \"\"\"\n    # Legend title not in rcParams until 3.0\n    font_size\
+    \ = plt.rcParams.get(\"legend.title_fontsize\", None)\n    hpackers = legend.findobj(mpl.offsetbox.VPacker)[0].get_children()\n\
+    \    for hpack in hpackers:\n        draw_area, text_area = hpack.get_children()\n\
+    \        handles = draw_area.get_children()\n        if not all(artist.get_visible()\
+    \ for artist in handles):\n            draw_area.set_width(0)\n            for\
+    \ text in text_area.get_children():\n                if font_size is not None:\n\
+    \                    text.set_size(font_size)\n\n\ndef _deprecate_ci(errorbar,\
+    \ ci):\n    \"\"\"\n    Warn on usage of ci= and convert to appropriate errorbar=\
+    \ arg.\n\n    ci was deprecated when errorbar was added in 0.12. It should not\
+    \ be removed\n    completely for some time, but it can be moved out of function\
+    \ definitions\n    (and extracted from kwargs) after one cycle.\n\n    \"\"\"\n\
+    \    if ci is not deprecated and ci != \"deprecated\":\n        if ci is None:\n\
+    \            errorbar = None\n        elif ci == \"sd\":\n            errorbar\
+    \ = \"sd\"\n        else:\n            errorbar = (\"ci\", ci)\n        msg =\
+    \ (\n            \"\\n\\nThe `ci` parameter is deprecated. \"\n            f\"\
+    Use `errorbar={repr(errorbar)}` for the same effect.\\n\"\n        )\n       \
+    \ warnings.warn(msg, FutureWarning, stacklevel=3)\n\n    return errorbar\n\n\n\
+    def _get_transform_functions(ax, axis):\n    \"\"\"Return the forward and inverse\
+    \ transforms for a given axis.\"\"\"\n    axis_obj = getattr(ax, f\"{axis}axis\"\
+    )\n    transform = axis_obj.get_transform()\n    return transform.transform, transform.inverted().transform\n\
+    \n\n@contextmanager\ndef _disable_autolayout():\n    \"\"\"Context manager for\
+    \ preventing rc-controlled auto-layout behavior.\"\"\"\n    # This is a workaround\
+    \ for an issue in matplotlib, for details see\n    # https://github.com/mwaskom/seaborn/issues/2914\n\
+    \    # The only affect of this rcParam is to set the default value for\n    #\
+    \ layout= in plt.figure, so we could just do that instead.\n    # But then we\
+    \ would need to own the complexity of the transition\n    # from tight_layout=True\
+    \ -> layout=\"tight\". This seems easier,\n    # but can be removed when (if)\
+    \ that is simpler on the matplotlib side,\n    # or if the layout algorithms are\
+    \ improved to handle figure legends.\n    orig_val = mpl.rcParams[\"figure.autolayout\"\
+    ]\n    try:\n        mpl.rcParams[\"figure.autolayout\"] = False\n        yield\n\
+    \    finally:\n        mpl.rcParams[\"figure.autolayout\"] = orig_val\n\n\ndef\
+    \ _version_predates(lib: ModuleType, version: str) -> bool:\n    \"\"\"Helper\
+    \ function for checking version compatibility.\"\"\"\n    return Version(lib.__version__)\
+    \ < Version(version)\n\n\ndef _scatter_legend_artist(**kws):\n\n    kws = normalize_kwargs(kws,\
+    \ mpl.collections.PathCollection)\n\n    edgecolor = kws.pop(\"edgecolor\", None)\n\
+    \    rc = mpl.rcParams\n    line_kws = {\n        \"linestyle\": \"\",\n     \
+    \   \"marker\": kws.pop(\"marker\", \"o\"),\n        \"markersize\": np.sqrt(kws.pop(\"\
+    s\", rc[\"lines.markersize\"] ** 2)),\n        \"markerfacecolor\": kws.pop(\"\
+    facecolor\", kws.get(\"color\")),\n        \"markeredgewidth\": kws.pop(\"linewidth\"\
+    , 0),\n        **kws,\n    }\n\n    if edgecolor is not None:\n        if edgecolor\
+    \ == \"face\":\n            line_kws[\"markeredgecolor\"] = line_kws[\"markerfacecolor\"\
+    ]\n        else:\n            line_kws[\"markeredgecolor\"] = edgecolor\n\n  \
+    \  return mpl.lines.Line2D([], [], **line_kws)\n\n\ndef _get_patch_legend_artist(fill):\n\
+    \n    def legend_artist(**kws):\n\n        color = kws.pop(\"color\", None)\n\
+    \        if color is not None:\n            if fill:\n                kws[\"facecolor\"\
+    ] = color\n            else:\n                kws[\"edgecolor\"] = color\n   \
+    \             kws[\"facecolor\"] = \"none\"\n\n        return mpl.patches.Rectangle((0,\
+    \ 0), 0, 0, **kws)\n\n    return legend_artist\n\n\n### Dependency File: xkcd_rgb.py\n\
+    xkcd_rgb = {'acid green': '#8ffe09',\n            'adobe': '#bd6c48',\n      \
+    \      'algae': '#54ac68',\n            'algae green': '#21c36f',\n          \
+    \  'almost black': '#070d0d',\n            'amber': '#feb308',\n            'amethyst':\
+    \ '#9b5fc0',\n            'apple': '#6ecb3c',\n            'apple green': '#76cd26',\n\
+    \            'apricot': '#ffb16d',\n            'aqua': '#13eac9',\n         \
+    \   'aqua blue': '#02d8e9',\n            'aqua green': '#12e193',\n          \
+    \  'aqua marine': '#2ee8bb',\n            'aquamarine': '#04d8b2',\n         \
+    \   'army green': '#4b5d16',\n            'asparagus': '#77ab56',\n          \
+    \  'aubergine': '#3d0734',\n            'auburn': '#9a3001',\n            'avocado':\
+    \ '#90b134',\n            'avocado green': '#87a922',\n            'azul': '#1d5dec',\n\
+    \            'azure': '#069af3',\n            'baby blue': '#a2cffe',\n      \
+    \      'baby green': '#8cff9e',\n            'baby pink': '#ffb7ce',\n       \
+    \     'baby poo': '#ab9004',\n            'baby poop': '#937c00',\n          \
+    \  'baby poop green': '#8f9805',\n            'baby puke green': '#b6c406',\n\
+    \            'baby purple': '#ca9bf7',\n            'baby shit brown': '#ad900d',\n\
+    \            'baby shit green': '#889717',\n            'banana': '#ffff7e',\n\
+    \            'banana yellow': '#fafe4b',\n            'barbie pink': '#fe46a5',\n\
+    \            'barf green': '#94ac02',\n            'barney': '#ac1db8',\n    \
+    \        'barney purple': '#a00498',\n            'battleship grey': '#6b7c85',\n\
+    \            'beige': '#e6daa6',\n            'berry': '#990f4b',\n          \
+    \  'bile': '#b5c306',\n            'black': '#000000',\n            'bland': '#afa88b',\n\
+    \            'blood': '#770001',\n            'blood orange': '#fe4b03',\n   \
+    \         'blood red': '#980002',\n            'blue': '#0343df',\n          \
+    \  'blue blue': '#2242c7',\n            'blue green': '#137e6d',\n           \
+    \ 'blue grey': '#607c8e',\n            'blue purple': '#5729ce',\n           \
+    \ 'blue violet': '#5d06e9',\n            'blue with a hint of purple': '#533cc6',\n\
+    \            'blue/green': '#0f9b8e',\n            'blue/grey': '#758da3',\n \
+    \           'blue/purple': '#5a06ef',\n            'blueberry': '#464196',\n \
+    \           'bluegreen': '#017a79',\n            'bluegrey': '#85a3b2',\n    \
+    \        'bluey green': '#2bb179',\n            'bluey grey': '#89a0b0',\n   \
+    \         'bluey purple': '#6241c7',\n            'bluish': '#2976bb',\n     \
+    \       'bluish green': '#10a674',\n            'bluish grey': '#748b97',\n  \
+    \          'bluish purple': '#703be7',\n            'blurple': '#5539cc',\n  \
+    \          'blush': '#f29e8e',\n            'blush pink': '#fe828c',\n       \
+    \     'booger': '#9bb53c',\n            'booger green': '#96b403',\n         \
+    \   'bordeaux': '#7b002c',\n            'boring green': '#63b365',\n         \
+    \   'bottle green': '#044a05',\n            'brick': '#a03623',\n            'brick\
+    \ orange': '#c14a09',\n            'brick red': '#8f1402',\n            'bright\
+    \ aqua': '#0bf9ea',\n            'bright blue': '#0165fc',\n            'bright\
+    \ cyan': '#41fdfe',\n            'bright green': '#01ff07',\n            'bright\
+    \ lavender': '#c760ff',\n            'bright light blue': '#26f7fd',\n       \
+    \     'bright light green': '#2dfe54',\n            'bright lilac': '#c95efb',\n\
+    \            'bright lime': '#87fd05',\n            'bright lime green': '#65fe08',\n\
+    \            'bright magenta': '#ff08e8',\n            'bright olive': '#9cbb04',\n\
+    \            'bright orange': '#ff5b00',\n            'bright pink': '#fe01b1',\n\
+    \            'bright purple': '#be03fd',\n            'bright red': '#ff000d',\n\
+    \            'bright sea green': '#05ffa6',\n            'bright sky blue': '#02ccfe',\n\
+    \            'bright teal': '#01f9c6',\n            'bright turquoise': '#0ffef9',\n\
+    \            'bright violet': '#ad0afd',\n            'bright yellow': '#fffd01',\n\
+    \            'bright yellow green': '#9dff00',\n            'british racing green':\
+    \ '#05480d',\n            'bronze': '#a87900',\n            'brown': '#653700',\n\
+    \            'brown green': '#706c11',\n            'brown grey': '#8d8468',\n\
+    \            'brown orange': '#b96902',\n            'brown red': '#922b05',\n\
+    \            'brown yellow': '#b29705',\n            'brownish': '#9c6d57',\n\
+    \            'brownish green': '#6a6e09',\n            'brownish grey': '#86775f',\n\
+    \            'brownish orange': '#cb7723',\n            'brownish pink': '#c27e79',\n\
+    \            'brownish purple': '#76424e',\n            'brownish red': '#9e3623',\n\
+    \            'brownish yellow': '#c9b003',\n            'browny green': '#6f6c0a',\n\
+    \            'browny orange': '#ca6b02',\n            'bruise': '#7e4071',\n \
+    \           'bubble gum pink': '#ff69af',\n            'bubblegum': '#ff6cb5',\n\
+    \            'bubblegum pink': '#fe83cc',\n            'buff': '#fef69e',\n  \
+    \          'burgundy': '#610023',\n            'burnt orange': '#c04e01',\n  \
+    \          'burnt red': '#9f2305',\n            'burnt siena': '#b75203',\n  \
+    \          'burnt sienna': '#b04e0f',\n            'burnt umber': '#a0450e',\n\
+    \            'burnt yellow': '#d5ab09',\n            'burple': '#6832e3',\n  \
+    \          'butter': '#ffff81',\n            'butter yellow': '#fffd74',\n   \
+    \         'butterscotch': '#fdb147',\n            'cadet blue': '#4e7496',\n \
+    \           'camel': '#c69f59',\n            'camo': '#7f8f4e',\n            'camo\
+    \ green': '#526525',\n            'camouflage green': '#4b6113',\n           \
+    \ 'canary': '#fdff63',\n            'canary yellow': '#fffe40',\n            'candy\
+    \ pink': '#ff63e9',\n            'caramel': '#af6f09',\n            'carmine':\
+    \ '#9d0216',\n            'carnation': '#fd798f',\n            'carnation pink':\
+    \ '#ff7fa7',\n            'carolina blue': '#8ab8fe',\n            'celadon':\
+    \ '#befdb7',\n            'celery': '#c1fd95',\n            'cement': '#a5a391',\n\
+    \            'cerise': '#de0c62',\n            'cerulean': '#0485d1',\n      \
+    \      'cerulean blue': '#056eee',\n            'charcoal': '#343837',\n     \
+    \       'charcoal grey': '#3c4142',\n            'chartreuse': '#c1f80a',\n  \
+    \          'cherry': '#cf0234',\n            'cherry red': '#f7022a',\n      \
+    \      'chestnut': '#742802',\n            'chocolate': '#3d1c02',\n         \
+    \   'chocolate brown': '#411900',\n            'cinnamon': '#ac4f06',\n      \
+    \      'claret': '#680018',\n            'clay': '#b66a50',\n            'clay\
+    \ brown': '#b2713d',\n            'clear blue': '#247afd',\n            'cloudy\
+    \ blue': '#acc2d9',\n            'cobalt': '#1e488f',\n            'cobalt blue':\
+    \ '#030aa7',\n            'cocoa': '#875f42',\n            'coffee': '#a6814c',\n\
+    \            'cool blue': '#4984b8',\n            'cool green': '#33b864',\n \
+    \           'cool grey': '#95a3a6',\n            'copper': '#b66325',\n      \
+    \      'coral': '#fc5a50',\n            'coral pink': '#ff6163',\n           \
+    \ 'cornflower': '#6a79f7',\n            'cornflower blue': '#5170d7',\n      \
+    \      'cranberry': '#9e003a',\n            'cream': '#ffffc2',\n            'creme':\
+    \ '#ffffb6',\n            'crimson': '#8c000f',\n            'custard': '#fffd78',\n\
+    \            'cyan': '#00ffff',\n            'dandelion': '#fedf08',\n       \
+    \     'dark': '#1b2431',\n            'dark aqua': '#05696b',\n            'dark\
+    \ aquamarine': '#017371',\n            'dark beige': '#ac9362',\n            'dark\
+    \ blue': '#00035b',\n            'dark blue green': '#005249',\n            'dark\
+    \ blue grey': '#1f3b4d',\n            'dark brown': '#341c02',\n            'dark\
+    \ coral': '#cf524e',\n            'dark cream': '#fff39a',\n            'dark\
+    \ cyan': '#0a888a',\n            'dark forest green': '#002d04',\n           \
+    \ 'dark fuchsia': '#9d0759',\n            'dark gold': '#b59410',\n          \
+    \  'dark grass green': '#388004',\n            'dark green': '#033500',\n    \
+    \        'dark green blue': '#1f6357',\n            'dark grey': '#363737',\n\
+    \            'dark grey blue': '#29465b',\n            'dark hot pink': '#d90166',\n\
+    \            'dark indigo': '#1f0954',\n            'dark khaki': '#9b8f55',\n\
+    \            'dark lavender': '#856798',\n            'dark lilac': '#9c6da5',\n\
+    \            'dark lime': '#84b701',\n            'dark lime green': '#7ebd01',\n\
+    \            'dark magenta': '#960056',\n            'dark maroon': '#3c0008',\n\
+    \            'dark mauve': '#874c62',\n            'dark mint': '#48c072',\n \
+    \           'dark mint green': '#20c073',\n            'dark mustard': '#a88905',\n\
+    \            'dark navy': '#000435',\n            'dark navy blue': '#00022e',\n\
+    \            'dark olive': '#373e02',\n            'dark olive green': '#3c4d03',\n\
+    \            'dark orange': '#c65102',\n            'dark pastel green': '#56ae57',\n\
+    \            'dark peach': '#de7e5d',\n            'dark periwinkle': '#665fd1',\n\
+    \            'dark pink': '#cb416b',\n            'dark plum': '#3f012c',\n  \
+    \          'dark purple': '#35063e',\n            'dark red': '#840000',\n   \
+    \         'dark rose': '#b5485d',\n            'dark royal blue': '#02066f',\n\
+    \            'dark sage': '#598556',\n            'dark salmon': '#c85a53',\n\
+    \            'dark sand': '#a88f59',\n            'dark sea green': '#11875d',\n\
+    \            'dark seafoam': '#1fb57a',\n            'dark seafoam green': '#3eaf76',\n\
+    \            'dark sky blue': '#448ee4',\n            'dark slate blue': '#214761',\n\
+    \            'dark tan': '#af884a',\n            'dark taupe': '#7f684e',\n  \
+    \          'dark teal': '#014d4e',\n            'dark turquoise': '#045c5a',\n\
+    \            'dark violet': '#34013f',\n            'dark yellow': '#d5b60a',\n\
+    \            'dark yellow green': '#728f02',\n            'darkblue': '#030764',\n\
+    \            'darkgreen': '#054907',\n            'darkish blue': '#014182',\n\
+    \            'darkish green': '#287c37',\n            'darkish pink': '#da467d',\n\
+    \            'darkish purple': '#751973',\n            'darkish red': '#a90308',\n\
+    \            'deep aqua': '#08787f',\n            'deep blue': '#040273',\n  \
+    \          'deep brown': '#410200',\n            'deep green': '#02590f',\n  \
+    \          'deep lavender': '#8d5eb7',\n            'deep lilac': '#966ebd',\n\
+    \            'deep magenta': '#a0025c',\n            'deep orange': '#dc4d01',\n\
+    \            'deep pink': '#cb0162',\n            'deep purple': '#36013f',\n\
+    \            'deep red': '#9a0200',\n            'deep rose': '#c74767',\n   \
+    \         'deep sea blue': '#015482',\n            'deep sky blue': '#0d75f8',\n\
+    \            'deep teal': '#00555a',\n            'deep turquoise': '#017374',\n\
+    \            'deep violet': '#490648',\n            'denim': '#3b638c',\n    \
+    \        'denim blue': '#3b5b92',\n            'desert': '#ccad60',\n        \
+    \    'diarrhea': '#9f8303',\n            'dirt': '#8a6e45',\n            'dirt\
+    \ brown': '#836539',\n            'dirty blue': '#3f829d',\n            'dirty\
+    \ green': '#667e2c',\n            'dirty orange': '#c87606',\n            'dirty\
+    \ pink': '#ca7b80',\n            'dirty purple': '#734a65',\n            'dirty\
+    \ yellow': '#cdc50a',\n            'dodger blue': '#3e82fc',\n            'drab':\
+    \ '#828344',\n            'drab green': '#749551',\n            'dried blood':\
+    \ '#4b0101',\n            'duck egg blue': '#c3fbf4',\n            'dull blue':\
+    \ '#49759c',\n            'dull brown': '#876e4b',\n            'dull green':\
+    \ '#74a662',\n            'dull orange': '#d8863b',\n            'dull pink':\
+    \ '#d5869d',\n            'dull purple': '#84597e',\n            'dull red': '#bb3f3f',\n\
+    \            'dull teal': '#5f9e8f',\n            'dull yellow': '#eedc5b',\n\
+    \            'dusk': '#4e5481',\n            'dusk blue': '#26538d',\n       \
+    \     'dusky blue': '#475f94',\n            'dusky pink': '#cc7a8b',\n       \
+    \     'dusky purple': '#895b7b',\n            'dusky rose': '#ba6873',\n     \
+    \       'dust': '#b2996e',\n            'dusty blue': '#5a86ad',\n           \
+    \ 'dusty green': '#76a973',\n            'dusty lavender': '#ac86a8',\n      \
+    \      'dusty orange': '#f0833a',\n            'dusty pink': '#d58a94',\n    \
+    \        'dusty purple': '#825f87',\n            'dusty red': '#b9484e',\n   \
+    \         'dusty rose': '#c0737a',\n            'dusty teal': '#4c9085',\n   \
+    \         'earth': '#a2653e',\n            'easter green': '#8cfd7e',\n      \
+    \      'easter purple': '#c071fe',\n            'ecru': '#feffca',\n         \
+    \   'egg shell': '#fffcc4',\n            'eggplant': '#380835',\n            'eggplant\
+    \ purple': '#430541',\n            'eggshell': '#ffffd4',\n            'eggshell\
+    \ blue': '#c4fff7',\n            'electric blue': '#0652ff',\n            'electric\
+    \ green': '#21fc0d',\n            'electric lime': '#a8ff04',\n            'electric\
+    \ pink': '#ff0490',\n            'electric purple': '#aa23ff',\n            'emerald':\
+    \ '#01a049',\n            'emerald green': '#028f1e',\n            'evergreen':\
+    \ '#05472a',\n            'faded blue': '#658cbb',\n            'faded green':\
+    \ '#7bb274',\n            'faded orange': '#f0944d',\n            'faded pink':\
+    \ '#de9dac',\n            'faded purple': '#916e99',\n            'faded red':\
+    \ '#d3494e',\n            'faded yellow': '#feff7f',\n            'fawn': '#cfaf7b',\n\
+    \            'fern': '#63a950',\n            'fern green': '#548d44',\n      \
+    \      'fire engine red': '#fe0002',\n            'flat blue': '#3c73a8',\n  \
+    \          'flat green': '#699d4c',\n            'fluorescent green': '#08ff08',\n\
+    \            'fluro green': '#0aff02',\n            'foam green': '#90fda9',\n\
+    \            'forest': '#0b5509',\n            'forest green': '#06470c',\n  \
+    \          'forrest green': '#154406',\n            'french blue': '#436bad',\n\
+    \            'fresh green': '#69d84f',\n            'frog green': '#58bc08',\n\
+    \            'fuchsia': '#ed0dd9',\n            'gold': '#dbb40c',\n         \
+    \   'golden': '#f5bf03',\n            'golden brown': '#b27a01',\n           \
+    \ 'golden rod': '#f9bc08',\n            'golden yellow': '#fec615',\n        \
+    \    'goldenrod': '#fac205',\n            'grape': '#6c3461',\n            'grape\
+    \ purple': '#5d1451',\n            'grapefruit': '#fd5956',\n            'grass':\
+    \ '#5cac2d',\n            'grass green': '#3f9b0b',\n            'grassy green':\
+    \ '#419c03',\n            'green': '#15b01a',\n            'green apple': '#5edc1f',\n\
+    \            'green blue': '#06b48b',\n            'green brown': '#544e03',\n\
+    \            'green grey': '#77926f',\n            'green teal': '#0cb577',\n\
+    \            'green yellow': '#c9ff27',\n            'green/blue': '#01c08d',\n\
+    \            'green/yellow': '#b5ce08',\n            'greenblue': '#23c48b',\n\
+    \            'greenish': '#40a368',\n            'greenish beige': '#c9d179',\n\
+    \            'greenish blue': '#0b8b87',\n            'greenish brown': '#696112',\n\
+    \            'greenish cyan': '#2afeb7',\n            'greenish grey': '#96ae8d',\n\
+    \            'greenish tan': '#bccb7a',\n            'greenish teal': '#32bf84',\n\
+    \            'greenish turquoise': '#00fbb0',\n            'greenish yellow':\
+    \ '#cdfd02',\n            'greeny blue': '#42b395',\n            'greeny brown':\
+    \ '#696006',\n            'greeny grey': '#7ea07a',\n            'greeny yellow':\
+    \ '#c6f808',\n            'grey': '#929591',\n            'grey blue': '#6b8ba4',\n\
+    \            'grey brown': '#7f7053',\n            'grey green': '#789b73',\n\
+    \            'grey pink': '#c3909b',\n            'grey purple': '#826d8c',\n\
+    \            'grey teal': '#5e9b8a',\n            'grey/blue': '#647d8e',\n  \
+    \          'grey/green': '#86a17d',\n            'greyblue': '#77a1b5',\n    \
+    \        'greyish': '#a8a495',\n            'greyish blue': '#5e819d',\n     \
+    \       'greyish brown': '#7a6a4f',\n            'greyish green': '#82a67d',\n\
+    \            'greyish pink': '#c88d94',\n            'greyish purple': '#887191',\n\
+    \            'greyish teal': '#719f91',\n            'gross green': '#a0bf16',\n\
+    \            'gunmetal': '#536267',\n            'hazel': '#8e7618',\n       \
+    \     'heather': '#a484ac',\n            'heliotrope': '#d94ff5',\n          \
+    \  'highlighter green': '#1bfc06',\n            'hospital green': '#9be5aa',\n\
+    \            'hot green': '#25ff29',\n            'hot magenta': '#f504c9',\n\
+    \            'hot pink': '#ff028d',\n            'hot purple': '#cb00f5',\n  \
+    \          'hunter green': '#0b4008',\n            'ice': '#d6fffa',\n       \
+    \     'ice blue': '#d7fffe',\n            'icky green': '#8fae22',\n         \
+    \   'indian red': '#850e04',\n            'indigo': '#380282',\n            'indigo\
+    \ blue': '#3a18b1',\n            'iris': '#6258c4',\n            'irish green':\
+    \ '#019529',\n            'ivory': '#ffffcb',\n            'jade': '#1fa774',\n\
+    \            'jade green': '#2baf6a',\n            'jungle green': '#048243',\n\
+    \            'kelley green': '#009337',\n            'kelly green': '#02ab2e',\n\
+    \            'kermit green': '#5cb200',\n            'key lime': '#aeff6e',\n\
+    \            'khaki': '#aaa662',\n            'khaki green': '#728639',\n    \
+    \        'kiwi': '#9cef43',\n            'kiwi green': '#8ee53f',\n          \
+    \  'lavender': '#c79fef',\n            'lavender blue': '#8b88f8',\n         \
+    \   'lavender pink': '#dd85d7',\n            'lawn green': '#4da409',\n      \
+    \      'leaf': '#71aa34',\n            'leaf green': '#5ca904',\n            'leafy\
+    \ green': '#51b73b',\n            'leather': '#ac7434',\n            'lemon':\
+    \ '#fdff52',\n            'lemon green': '#adf802',\n            'lemon lime':\
+    \ '#bffe28',\n            'lemon yellow': '#fdff38',\n            'lichen': '#8fb67b',\n\
+    \            'light aqua': '#8cffdb',\n            'light aquamarine': '#7bfdc7',\n\
+    \            'light beige': '#fffeb6',\n            'light blue': '#95d0fc',\n\
+    \            'light blue green': '#7efbb3',\n            'light blue grey': '#b7c9e2',\n\
+    \            'light bluish green': '#76fda8',\n            'light bright green':\
+    \ '#53fe5c',\n            'light brown': '#ad8150',\n            'light burgundy':\
+    \ '#a8415b',\n            'light cyan': '#acfffc',\n            'light eggplant':\
+    \ '#894585',\n            'light forest green': '#4f9153',\n            'light\
+    \ gold': '#fddc5c',\n            'light grass green': '#9af764',\n           \
+    \ 'light green': '#96f97b',\n            'light green blue': '#56fca2',\n    \
+    \        'light greenish blue': '#63f7b4',\n            'light grey': '#d8dcd6',\n\
+    \            'light grey blue': '#9dbcd4',\n            'light grey green': '#b7e1a1',\n\
+    \            'light indigo': '#6d5acf',\n            'light khaki': '#e6f2a2',\n\
+    \            'light lavendar': '#efc0fe',\n            'light lavender': '#dfc5fe',\n\
+    \            'light light blue': '#cafffb',\n            'light light green':\
+    \ '#c8ffb0',\n            'light lilac': '#edc8ff',\n            'light lime':\
+    \ '#aefd6c',\n            'light lime green': '#b9ff66',\n            'light magenta':\
+    \ '#fa5ff7',\n            'light maroon': '#a24857',\n            'light mauve':\
+    \ '#c292a1',\n            'light mint': '#b6ffbb',\n            'light mint green':\
+    \ '#a6fbb2',\n            'light moss green': '#a6c875',\n            'light mustard':\
+    \ '#f7d560',\n            'light navy': '#155084',\n            'light navy blue':\
+    \ '#2e5a88',\n            'light neon green': '#4efd54',\n            'light olive':\
+    \ '#acbf69',\n            'light olive green': '#a4be5c',\n            'light\
+    \ orange': '#fdaa48',\n            'light pastel green': '#b2fba5',\n        \
+    \    'light pea green': '#c4fe82',\n            'light peach': '#ffd8b1',\n  \
+    \          'light periwinkle': '#c1c6fc',\n            'light pink': '#ffd1df',\n\
+    \            'light plum': '#9d5783',\n            'light purple': '#bf77f6',\n\
+    \            'light red': '#ff474c',\n            'light rose': '#ffc5cb',\n \
+    \           'light royal blue': '#3a2efe',\n            'light sage': '#bcecac',\n\
+    \            'light salmon': '#fea993',\n            'light sea green': '#98f6b0',\n\
+    \            'light seafoam': '#a0febf',\n            'light seafoam green': '#a7ffb5',\n\
+    \            'light sky blue': '#c6fcff',\n            'light tan': '#fbeeac',\n\
+    \            'light teal': '#90e4c1',\n            'light turquoise': '#7ef4cc',\n\
+    \            'light urple': '#b36ff6',\n            'light violet': '#d6b4fc',\n\
+    \            'light yellow': '#fffe7a',\n            'light yellow green': '#ccfd7f',\n\
+    \            'light yellowish green': '#c2ff89',\n            'lightblue': '#7bc8f6',\n\
+    \            'lighter green': '#75fd63',\n            'lighter purple': '#a55af4',\n\
+    \            'lightgreen': '#76ff7b',\n            'lightish blue': '#3d7afd',\n\
+    \            'lightish green': '#61e160',\n            'lightish purple': '#a552e6',\n\
+    \            'lightish red': '#fe2f4a',\n            'lilac': '#cea2fd',\n   \
+    \         'liliac': '#c48efd',\n            'lime': '#aaff32',\n            'lime\
+    \ green': '#89fe05',\n            'lime yellow': '#d0fe1d',\n            'lipstick':\
+    \ '#d5174e',\n            'lipstick red': '#c0022f',\n            'macaroni and\
+    \ cheese': '#efb435',\n            'magenta': '#c20078',\n            'mahogany':\
+    \ '#4a0100',\n            'maize': '#f4d054',\n            'mango': '#ffa62b',\n\
+    \            'manilla': '#fffa86',\n            'marigold': '#fcc006',\n     \
+    \       'marine': '#042e60',\n            'marine blue': '#01386a',\n        \
+    \    'maroon': '#650021',\n            'mauve': '#ae7181',\n            'medium\
+    \ blue': '#2c6fbb',\n            'medium brown': '#7f5112',\n            'medium\
+    \ green': '#39ad48',\n            'medium grey': '#7d7f7c',\n            'medium\
+    \ pink': '#f36196',\n            'medium purple': '#9e43a2',\n            'melon':\
+    \ '#ff7855',\n            'merlot': '#730039',\n            'metallic blue': '#4f738e',\n\
+    \            'mid blue': '#276ab3',\n            'mid green': '#50a747',\n   \
+    \         'midnight': '#03012d',\n            'midnight blue': '#020035',\n  \
+    \          'midnight purple': '#280137',\n            'military green': '#667c3e',\n\
+    \            'milk chocolate': '#7f4e1e',\n            'mint': '#9ffeb0',\n  \
+    \          'mint green': '#8fff9f',\n            'minty green': '#0bf77d',\n \
+    \           'mocha': '#9d7651',\n            'moss': '#769958',\n            'moss\
+    \ green': '#658b38',\n            'mossy green': '#638b27',\n            'mud':\
+    \ '#735c12',\n            'mud brown': '#60460f',\n            'mud green': '#606602',\n\
+    \            'muddy brown': '#886806',\n            'muddy green': '#657432',\n\
+    \            'muddy yellow': '#bfac05',\n            'mulberry': '#920a4e',\n\
+    \            'murky green': '#6c7a0e',\n            'mushroom': '#ba9e88',\n \
+    \           'mustard': '#ceb301',\n            'mustard brown': '#ac7e04',\n \
+    \           'mustard green': '#a8b504',\n            'mustard yellow': '#d2bd0a',\n\
+    \            'muted blue': '#3b719f',\n            'muted green': '#5fa052',\n\
+    \            'muted pink': '#d1768f',\n            'muted purple': '#805b87',\n\
+    \            'nasty green': '#70b23f',\n            'navy': '#01153e',\n     \
+    \       'navy blue': '#001146',\n            'navy green': '#35530a',\n      \
+    \      'neon blue': '#04d9ff',\n            'neon green': '#0cff0c',\n       \
+    \     'neon pink': '#fe019a',\n            'neon purple': '#bc13fe',\n       \
+    \     'neon red': '#ff073a',\n            'neon yellow': '#cfff04',\n        \
+    \    'nice blue': '#107ab0',\n            'night blue': '#040348',\n         \
+    \   'ocean': '#017b92',\n            'ocean blue': '#03719c',\n            'ocean\
+    \ green': '#3d9973',\n            'ocher': '#bf9b0c',\n            'ochre': '#bf9005',\n\
+    \            'ocre': '#c69c04',\n            'off blue': '#5684ae',\n        \
+    \    'off green': '#6ba353',\n            'off white': '#ffffe4',\n          \
+    \  'off yellow': '#f1f33f',\n            'old pink': '#c77986',\n            'old\
+    \ rose': '#c87f89',\n            'olive': '#6e750e',\n            'olive brown':\
+    \ '#645403',\n            'olive drab': '#6f7632',\n            'olive green':\
+    \ '#677a04',\n            'olive yellow': '#c2b709',\n            'orange': '#f97306',\n\
+    \            'orange brown': '#be6400',\n            'orange pink': '#ff6f52',\n\
+    \            'orange red': '#fd411e',\n            'orange yellow': '#ffad01',\n\
+    \            'orangeish': '#fd8d49',\n            'orangered': '#fe420f',\n  \
+    \          'orangey brown': '#b16002',\n            'orangey red': '#fa4224',\n\
+    \            'orangey yellow': '#fdb915',\n            'orangish': '#fc824a',\n\
+    \            'orangish brown': '#b25f03',\n            'orangish red': '#f43605',\n\
+    \            'orchid': '#c875c4',\n            'pale': '#fff9d0',\n          \
+    \  'pale aqua': '#b8ffeb',\n            'pale blue': '#d0fefe',\n            'pale\
+    \ brown': '#b1916e',\n            'pale cyan': '#b7fffa',\n            'pale gold':\
+    \ '#fdde6c',\n            'pale green': '#c7fdb5',\n            'pale grey': '#fdfdfe',\n\
+    \            'pale lavender': '#eecffe',\n            'pale light green': '#b1fc99',\n\
+    \            'pale lilac': '#e4cbff',\n            'pale lime': '#befd73',\n \
+    \           'pale lime green': '#b1ff65',\n            'pale magenta': '#d767ad',\n\
+    \            'pale mauve': '#fed0fc',\n            'pale olive': '#b9cc81',\n\
+    \            'pale olive green': '#b1d27b',\n            'pale orange': '#ffa756',\n\
+    \            'pale peach': '#ffe5ad',\n            'pale pink': '#ffcfdc',\n \
+    \           'pale purple': '#b790d4',\n            'pale red': '#d9544d',\n  \
+    \          'pale rose': '#fdc1c5',\n            'pale salmon': '#ffb19a',\n  \
+    \          'pale sky blue': '#bdf6fe',\n            'pale teal': '#82cbb2',\n\
+    \            'pale turquoise': '#a5fbd5',\n            'pale violet': '#ceaefa',\n\
+    \            'pale yellow': '#ffff84',\n            'parchment': '#fefcaf',\n\
+    \            'pastel blue': '#a2bffe',\n            'pastel green': '#b0ff9d',\n\
+    \            'pastel orange': '#ff964f',\n            'pastel pink': '#ffbacd',\n\
+    \            'pastel purple': '#caa0ff',\n            'pastel red': '#db5856',\n\
+    \            'pastel yellow': '#fffe71',\n            'pea': '#a4bf20',\n    \
+    \        'pea green': '#8eab12',\n            'pea soup': '#929901',\n       \
+    \     'pea soup green': '#94a617',\n            'peach': '#ffb07c',\n        \
+    \    'peachy pink': '#ff9a8a',\n            'peacock blue': '#016795',\n     \
+    \       'pear': '#cbf85f',\n            'periwinkle': '#8e82fe',\n           \
+    \ 'periwinkle blue': '#8f99fb',\n            'perrywinkle': '#8f8ce7',\n     \
+    \       'petrol': '#005f6a',\n            'pig pink': '#e78ea5',\n           \
+    \ 'pine': '#2b5d34',\n            'pine green': '#0a481e',\n            'pink':\
+    \ '#ff81c0',\n            'pink purple': '#db4bda',\n            'pink red': '#f5054f',\n\
+    \            'pink/purple': '#ef1de7',\n            'pinkish': '#d46a7e',\n  \
+    \          'pinkish brown': '#b17261',\n            'pinkish grey': '#c8aca9',\n\
+    \            'pinkish orange': '#ff724c',\n            'pinkish purple': '#d648d7',\n\
+    \            'pinkish red': '#f10c45',\n            'pinkish tan': '#d99b82',\n\
+    \            'pinky': '#fc86aa',\n            'pinky purple': '#c94cbe',\n   \
+    \         'pinky red': '#fc2647',\n            'piss yellow': '#ddd618',\n   \
+    \         'pistachio': '#c0fa8b',\n            'plum': '#580f41',\n          \
+    \  'plum purple': '#4e0550',\n            'poison green': '#40fd14',\n       \
+    \     'poo': '#8f7303',\n            'poo brown': '#885f01',\n            'poop':\
+    \ '#7f5e00',\n            'poop brown': '#7a5901',\n            'poop green':\
+    \ '#6f7c00',\n            'powder blue': '#b1d1fc',\n            'powder pink':\
+    \ '#ffb2d0',\n            'primary blue': '#0804f9',\n            'prussian blue':\
+    \ '#004577',\n            'puce': '#a57e52',\n            'puke': '#a5a502',\n\
+    \            'puke brown': '#947706',\n            'puke green': '#9aae07',\n\
+    \            'puke yellow': '#c2be0e',\n            'pumpkin': '#e17701',\n  \
+    \          'pumpkin orange': '#fb7d07',\n            'pure blue': '#0203e2',\n\
+    \            'purple': '#7e1e9c',\n            'purple blue': '#632de9',\n   \
+    \         'purple brown': '#673a3f',\n            'purple grey': '#866f85',\n\
+    \            'purple pink': '#e03fd8',\n            'purple red': '#990147',\n\
+    \            'purple/blue': '#5d21d0',\n            'purple/pink': '#d725de',\n\
+    \            'purpleish': '#98568d',\n            'purpleish blue': '#6140ef',\n\
+    \            'purpleish pink': '#df4ec8',\n            'purpley': '#8756e4',\n\
+    \            'purpley blue': '#5f34e7',\n            'purpley grey': '#947e94',\n\
+    \            'purpley pink': '#c83cb9',\n            'purplish': '#94568c',\n\
+    \            'purplish blue': '#601ef9',\n            'purplish brown': '#6b4247',\n\
+    \            'purplish grey': '#7a687f',\n            'purplish pink': '#ce5dae',\n\
+    \            'purplish red': '#b0054b',\n            'purply': '#983fb2',\n  \
+    \          'purply blue': '#661aee',\n            'purply pink': '#f075e6',\n\
+    \            'putty': '#beae8a',\n            'racing green': '#014600',\n   \
+    \         'radioactive green': '#2cfa1f',\n            'raspberry': '#b00149',\n\
+    \            'raw sienna': '#9a6200',\n            'raw umber': '#a75e09',\n \
+    \           'really light blue': '#d4ffff',\n            'red': '#e50000',\n \
+    \           'red brown': '#8b2e16',\n            'red orange': '#fd3c06',\n  \
+    \          'red pink': '#fa2a55',\n            'red purple': '#820747',\n    \
+    \        'red violet': '#9e0168',\n            'red wine': '#8c0034',\n      \
+    \      'reddish': '#c44240',\n            'reddish brown': '#7f2b0a',\n      \
+    \      'reddish grey': '#997570',\n            'reddish orange': '#f8481c',\n\
+    \            'reddish pink': '#fe2c54',\n            'reddish purple': '#910951',\n\
+    \            'reddy brown': '#6e1005',\n            'rich blue': '#021bf9',\n\
+    \            'rich purple': '#720058',\n            'robin egg blue': '#8af1fe',\n\
+    \            \"robin's egg\": '#6dedfd',\n            \"robin's egg blue\": '#98eff9',\n\
+    \            'rosa': '#fe86a4',\n            'rose': '#cf6275',\n            'rose\
+    \ pink': '#f7879a',\n            'rose red': '#be013c',\n            'rosy pink':\
+    \ '#f6688e',\n            'rouge': '#ab1239',\n            'royal': '#0c1793',\n\
+    \            'royal blue': '#0504aa',\n            'royal purple': '#4b006e',\n\
+    \            'ruby': '#ca0147',\n            'russet': '#a13905',\n          \
+    \  'rust': '#a83c09',\n            'rust brown': '#8b3103',\n            'rust\
+    \ orange': '#c45508',\n            'rust red': '#aa2704',\n            'rusty\
+    \ orange': '#cd5909',\n            'rusty red': '#af2f0d',\n            'saffron':\
+    \ '#feb209',\n            'sage': '#87ae73',\n            'sage green': '#88b378',\n\
+    \            'salmon': '#ff796c',\n            'salmon pink': '#fe7b7c',\n   \
+    \         'sand': '#e2ca76',\n            'sand brown': '#cba560',\n         \
+    \   'sand yellow': '#fce166',\n            'sandstone': '#c9ae74',\n         \
+    \   'sandy': '#f1da7a',\n            'sandy brown': '#c4a661',\n            'sandy\
+    \ yellow': '#fdee73',\n            'sap green': '#5c8b15',\n            'sapphire':\
+    \ '#2138ab',\n            'scarlet': '#be0119',\n            'sea': '#3c9992',\n\
+    \            'sea blue': '#047495',\n            'sea green': '#53fca1',\n   \
+    \         'seafoam': '#80f9ad',\n            'seafoam blue': '#78d1b6',\n    \
+    \        'seafoam green': '#7af9ab',\n            'seaweed': '#18d17b',\n    \
+    \        'seaweed green': '#35ad6b',\n            'sepia': '#985e2b',\n      \
+    \      'shamrock': '#01b44c',\n            'shamrock green': '#02c14d',\n    \
+    \        'shit': '#7f5f00',\n            'shit brown': '#7b5804',\n          \
+    \  'shit green': '#758000',\n            'shocking pink': '#fe02a2',\n       \
+    \     'sick green': '#9db92c',\n            'sickly green': '#94b21c',\n     \
+    \       'sickly yellow': '#d0e429',\n            'sienna': '#a9561e',\n      \
+    \      'silver': '#c5c9c7',\n            'sky': '#82cafc',\n            'sky blue':\
+    \ '#75bbfd',\n            'slate': '#516572',\n            'slate blue': '#5b7c99',\n\
+    \            'slate green': '#658d6d',\n            'slate grey': '#59656d',\n\
+    \            'slime green': '#99cc04',\n            'snot': '#acbb0d',\n     \
+    \       'snot green': '#9dc100',\n            'soft blue': '#6488ea',\n      \
+    \      'soft green': '#6fc276',\n            'soft pink': '#fdb0c0',\n       \
+    \     'soft purple': '#a66fb5',\n            'spearmint': '#1ef876',\n       \
+    \     'spring green': '#a9f971',\n            'spruce': '#0a5f38',\n         \
+    \   'squash': '#f2ab15',\n            'steel': '#738595',\n            'steel\
+    \ blue': '#5a7d9a',\n            'steel grey': '#6f828a',\n            'stone':\
+    \ '#ada587',\n            'stormy blue': '#507b9c',\n            'straw': '#fcf679',\n\
+    \            'strawberry': '#fb2943',\n            'strong blue': '#0c06f7',\n\
+    \            'strong pink': '#ff0789',\n            'sun yellow': '#ffdf22',\n\
+    \            'sunflower': '#ffc512',\n            'sunflower yellow': '#ffda03',\n\
+    \            'sunny yellow': '#fff917',\n            'sunshine yellow': '#fffd37',\n\
+    \            'swamp': '#698339',\n            'swamp green': '#748500',\n    \
+    \        'tan': '#d1b26f',\n            'tan brown': '#ab7e4c',\n            'tan\
+    \ green': '#a9be70',\n            'tangerine': '#ff9408',\n            'taupe':\
+    \ '#b9a281',\n            'tea': '#65ab7c',\n            'tea green': '#bdf8a3',\n\
+    \            'teal': '#029386',\n            'teal blue': '#01889f',\n       \
+    \     'teal green': '#25a36f',\n            'tealish': '#24bca8',\n          \
+    \  'tealish green': '#0cdc73',\n            'terra cotta': '#c9643b',\n      \
+    \      'terracota': '#cb6843',\n            'terracotta': '#ca6641',\n       \
+    \     'tiffany blue': '#7bf2da',\n            'tomato': '#ef4026',\n         \
+    \   'tomato red': '#ec2d01',\n            'topaz': '#13bbaf',\n            'toupe':\
+    \ '#c7ac7d',\n            'toxic green': '#61de2a',\n            'tree green':\
+    \ '#2a7e19',\n            'true blue': '#010fcc',\n            'true green': '#089404',\n\
+    \            'turquoise': '#06c2ac',\n            'turquoise blue': '#06b1c4',\n\
+    \            'turquoise green': '#04f489',\n            'turtle green': '#75b84f',\n\
+    \            'twilight': '#4e518b',\n            'twilight blue': '#0a437a',\n\
+    \            'ugly blue': '#31668a',\n            'ugly brown': '#7d7103',\n \
+    \           'ugly green': '#7a9703',\n            'ugly pink': '#cd7584',\n  \
+    \          'ugly purple': '#a442a0',\n            'ugly yellow': '#d0c101',\n\
+    \            'ultramarine': '#2000b1',\n            'ultramarine blue': '#1805db',\n\
+    \            'umber': '#b26400',\n            'velvet': '#750851',\n         \
+    \   'vermillion': '#f4320c',\n            'very dark blue': '#000133',\n     \
+    \       'very dark brown': '#1d0200',\n            'very dark green': '#062e03',\n\
+    \            'very dark purple': '#2a0134',\n            'very light blue': '#d5ffff',\n\
+    \            'very light brown': '#d3b683',\n            'very light green': '#d1ffbd',\n\
+    \            'very light pink': '#fff4f2',\n            'very light purple': '#f6cefc',\n\
+    \            'very pale blue': '#d6fffe',\n            'very pale green': '#cffdbc',\n\
+    \            'vibrant blue': '#0339f8',\n            'vibrant green': '#0add08',\n\
+    \            'vibrant purple': '#ad03de',\n            'violet': '#9a0eea',\n\
+    \            'violet blue': '#510ac9',\n            'violet pink': '#fb5ffc',\n\
+    \            'violet red': '#a50055',\n            'viridian': '#1e9167',\n  \
+    \          'vivid blue': '#152eff',\n            'vivid green': '#2fef10',\n \
+    \           'vivid purple': '#9900fa',\n            'vomit': '#a2a415',\n    \
+    \        'vomit green': '#89a203',\n            'vomit yellow': '#c7c10c',\n \
+    \           'warm blue': '#4b57db',\n            'warm brown': '#964e02',\n  \
+    \          'warm grey': '#978a84',\n            'warm pink': '#fb5581',\n    \
+    \        'warm purple': '#952e8f',\n            'washed out green': '#bcf5a6',\n\
+    \            'water blue': '#0e87cc',\n            'watermelon': '#fd4659',\n\
+    \            'weird green': '#3ae57f',\n            'wheat': '#fbdd7e',\n    \
+    \        'white': '#ffffff',\n            'windows blue': '#3778bf',\n       \
+    \     'wine': '#80013f',\n            'wine red': '#7b0323',\n            'wintergreen':\
+    \ '#20f986',\n            'wisteria': '#a87dc2',\n            'yellow': '#ffff14',\n\
+    \            'yellow brown': '#b79400',\n            'yellow green': '#c0fb2d',\n\
+    \            'yellow ochre': '#cb9d06',\n            'yellow orange': '#fcb001',\n\
+    \            'yellow tan': '#ffe36e',\n            'yellow/green': '#c8fd3d',\n\
+    \            'yellowgreen': '#bbf90f',\n            'yellowish': '#faee66',\n\
+    \            'yellowish brown': '#9b7a01',\n            'yellowish green': '#b0dd16',\n\
+    \            'yellowish orange': '#ffab0f',\n            'yellowish tan': '#fcfc81',\n\
+    \            'yellowy brown': '#ae8b0c',\n            'yellowy green': '#bff128'}\n\
+    \n\n### Dependency File: _compat.py\nfrom __future__ import annotations\nfrom\
+    \ typing import Literal\n\nimport numpy as np\nimport pandas as pd\nimport matplotlib\
+    \ as mpl\nfrom matplotlib.figure import Figure\nfrom seaborn.utils import _version_predates\n\
+    \n\ndef norm_from_scale(scale, norm):\n    \"\"\"Produce a Normalize object given\
+    \ a Scale and min/max domain limits.\"\"\"\n    # This is an internal maplotlib\
+    \ function that simplifies things to access\n    # It is likely to become part\
+    \ of the matplotlib API at some point:\n    # https://github.com/matplotlib/matplotlib/issues/20329\n\
+    \    if isinstance(norm, mpl.colors.Normalize):\n        return norm\n\n    if\
+    \ scale is None:\n        return None\n\n    if norm is None:\n        vmin =\
+    \ vmax = None\n    else:\n        vmin, vmax = norm  # TODO more helpful error\
+    \ if this fails?\n\n    class ScaledNorm(mpl.colors.Normalize):\n\n        def\
+    \ __call__(self, value, clip=None):\n            # From github.com/matplotlib/matplotlib/blob/v3.4.2/lib/matplotlib/colors.py\n\
+    \            # See github.com/matplotlib/matplotlib/tree/v3.4.2/LICENSE\n    \
+    \        value, is_scalar = self.process_value(value)\n            self.autoscale_None(value)\n\
+    \            if self.vmin > self.vmax:\n                raise ValueError(\"vmin\
+    \ must be less or equal to vmax\")\n            if self.vmin == self.vmax:\n \
+    \               return np.full_like(value, 0)\n            if clip is None:\n\
+    \                clip = self.clip\n            if clip:\n                value\
+    \ = np.clip(value, self.vmin, self.vmax)\n            # ***** Seaborn changes\
+    \ start ****\n            t_value = self.transform(value).reshape(np.shape(value))\n\
+    \            t_vmin, t_vmax = self.transform([self.vmin, self.vmax])\n       \
+    \     # ***** Seaborn changes end *****\n            if not np.isfinite([t_vmin,\
+    \ t_vmax]).all():\n                raise ValueError(\"Invalid vmin or vmax\")\n\
+    \            t_value -= t_vmin\n            t_value /= (t_vmax - t_vmin)\n   \
+    \         t_value = np.ma.masked_invalid(t_value, copy=False)\n            return\
+    \ t_value[0] if is_scalar else t_value\n\n    new_norm = ScaledNorm(vmin, vmax)\n\
+    \    new_norm.transform = scale.get_transform().transform\n\n    return new_norm\n\
+    \n\ndef get_colormap(name):\n    \"\"\"Handle changes to matplotlib colormap interface\
+    \ in 3.6.\"\"\"\n    try:\n        return mpl.colormaps[name]\n    except AttributeError:\n\
+    \        return mpl.cm.get_cmap(name)\n\n\ndef register_colormap(name, cmap):\n\
+    \    \"\"\"Handle changes to matplotlib colormap interface in 3.6.\"\"\"\n   \
+    \ try:\n        if name not in mpl.colormaps:\n            mpl.colormaps.register(cmap,\
+    \ name=name)\n    except AttributeError:\n        mpl.cm.register_cmap(name, cmap)\n\
+    \n\ndef set_layout_engine(\n    fig: Figure,\n    engine: Literal[\"constrained\"\
+    , \"compressed\", \"tight\", \"none\"],\n) -> None:\n    \"\"\"Handle changes\
+    \ to auto layout engine interface in 3.6\"\"\"\n    if hasattr(fig, \"set_layout_engine\"\
+    ):\n        fig.set_layout_engine(engine)\n    else:\n        # _version_predates(mpl,\
+    \ 3.6)\n        if engine == \"tight\":\n            fig.set_tight_layout(True)\
+    \  # type: ignore  # predates typing\n        elif engine == \"constrained\":\n\
+    \            fig.set_constrained_layout(True)  # type: ignore\n        elif engine\
+    \ == \"none\":\n            fig.set_tight_layout(False)  # type: ignore\n    \
+    \        fig.set_constrained_layout(False)  # type: ignore\n\n\ndef get_layout_engine(fig:\
+    \ Figure) -> mpl.layout_engine.LayoutEngine | None:\n    \"\"\"Handle changes\
+    \ to auto layout engine interface in 3.6\"\"\"\n    if hasattr(fig, \"get_layout_engine\"\
+    ):\n        return fig.get_layout_engine()\n    else:\n        # _version_predates(mpl,\
+    \ 3.6)\n        return None\n\n\ndef share_axis(ax0, ax1, which):\n    \"\"\"\
+    Handle changes to post-hoc axis sharing.\"\"\"\n    if _version_predates(mpl,\
+    \ \"3.5\"):\n        group = getattr(ax0, f\"get_shared_{which}_axes\")()\n  \
+    \      group.join(ax1, ax0)\n    else:\n        getattr(ax1, f\"share{which}\"\
+    )(ax0)\n\n\ndef get_legend_handles(legend):\n    \"\"\"Handle legendHandles attribute\
+    \ rename.\"\"\"\n    if _version_predates(mpl, \"3.7\"):\n        return legend.legendHandles\n\
+    \    else:\n        return legend.legend_handles\n\n\ndef groupby_apply_include_groups(val):\n\
+    \    if _version_predates(pd, \"2.2.0\"):\n        return {}\n    return {\"include_groups\"\
+    : val}\n\n\ndef get_converter(axis):\n    if _version_predates(mpl, \"3.10.0\"\
+    ):\n        return axis.converter\n    return axis.get_converter()\n\nOutput the\
+    \ complete test file, code only, no explanations.\n### Time\nCurrent time: 2025-03-14\
+    \ 17:27:07\n"
+  role: user

@@ -1,0 +1,117 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: seaborn\nTest File Path: seaborn\\test_regression\\\
+    test_regression.py\nProject Programming Language: Python\nTesting Framework: pytest\n\
+    ### Source File Content\n### Source File Content:\nfrom __future__ import annotations\n\
+    from dataclasses import dataclass\n\nimport numpy as np\nimport pandas as pd\n\
+    \nfrom seaborn._stats.base import Stat\n\n\n@dataclass\nclass PolyFit(Stat):\n\
+    \    \"\"\"\n    Fit a polynomial of the given order and resample data onto predicted\
+    \ curve.\n    \"\"\"\n    # This is a provisional class that is useful for building\
+    \ out functionality.\n    # It may or may not change substantially in form or\
+    \ dissappear as we think\n    # through the organization of the stats subpackage.\n\
+    \n    order: int = 2\n    gridsize: int = 100\n\n    def _fit_predict(self, data):\n\
+    \n        x = data[\"x\"]\n        y = data[\"y\"]\n        if x.nunique() <=\
+    \ self.order:\n            # TODO warn?\n            xx = yy = []\n        else:\n\
+    \            p = np.polyfit(x, y, self.order)\n            xx = np.linspace(x.min(),\
+    \ x.max(), self.gridsize)\n            yy = np.polyval(p, xx)\n\n        return\
+    \ pd.DataFrame(dict(x=xx, y=yy))\n\n    # TODO we should have a way of identifying\
+    \ the method that will be applied\n    # and then only define __call__ on a base-class\
+    \ of stats with this pattern\n\n    def __call__(self, data, groupby, orient,\
+    \ scales):\n\n        return (\n            groupby\n            .apply(data.dropna(subset=[\"\
+    x\", \"y\"]), self._fit_predict)\n        )\n\n\n@dataclass\nclass OLSFit(Stat):\n\
+    \n    ...\n\n### Source File Dependency Files Content\n### Dependency File: algorithms.py\n\
+    \"\"\"Algorithms to support fitting routines in seaborn plotting functions.\"\"\
+    \"\nimport numpy as np\nimport warnings\n\n\ndef bootstrap(*args, **kwargs):\n\
+    \    \"\"\"Resample one or more arrays with replacement and store aggregate values.\n\
+    \n    Positional arguments are a sequence of arrays to bootstrap along the first\n\
+    \    axis and pass to a summary function.\n\n    Keyword arguments:\n        n_boot\
+    \ : int, default=10000\n            Number of iterations\n        axis : int,\
+    \ default=None\n            Will pass axis to ``func`` as a keyword argument.\n\
+    \        units : array, default=None\n            Array of sampling unit IDs.\
+    \ When used the bootstrap resamples units\n            and then observations within\
+    \ units instead of individual\n            datapoints.\n        func : string\
+    \ or callable, default=\"mean\"\n            Function to call on the args that\
+    \ are passed in. If string, uses as\n            name of function in the numpy\
+    \ namespace. If nans are present in the\n            data, will try to use nan-aware\
+    \ version of named function.\n        seed : Generator | SeedSequence | RandomState\
+    \ | int | None\n            Seed for the random number generator; useful if you\
+    \ want\n            reproducible resamples.\n\n    Returns\n    -------\n    boot_dist:\
+    \ array\n        array of bootstrapped statistic values\n\n    \"\"\"\n    # Ensure\
+    \ list of arrays are same length\n    if len(np.unique(list(map(len, args))))\
+    \ > 1:\n        raise ValueError(\"All input arrays must have the same length\"\
+    )\n    n = len(args[0])\n\n    # Default keyword arguments\n    n_boot = kwargs.get(\"\
+    n_boot\", 10000)\n    func = kwargs.get(\"func\", \"mean\")\n    axis = kwargs.get(\"\
+    axis\", None)\n    units = kwargs.get(\"units\", None)\n    random_seed = kwargs.get(\"\
+    random_seed\", None)\n    if random_seed is not None:\n        msg = \"`random_seed`\
+    \ has been renamed to `seed` and will be removed\"\n        warnings.warn(msg)\n\
+    \    seed = kwargs.get(\"seed\", random_seed)\n    if axis is None:\n        func_kwargs\
+    \ = dict()\n    else:\n        func_kwargs = dict(axis=axis)\n\n    # Initialize\
+    \ the resampler\n    if isinstance(seed, np.random.RandomState):\n        rng\
+    \ = seed\n    else:\n        rng = np.random.default_rng(seed)\n\n    # Coerce\
+    \ to arrays\n    args = list(map(np.asarray, args))\n    if units is not None:\n\
+    \        units = np.asarray(units)\n\n    if isinstance(func, str):\n\n      \
+    \  # Allow named numpy functions\n        f = getattr(np, func)\n\n        # Try\
+    \ to use nan-aware version of function if necessary\n        missing_data = np.isnan(np.sum(np.column_stack(args)))\n\
+    \n        if missing_data and not func.startswith(\"nan\"):\n            nanf\
+    \ = getattr(np, f\"nan{func}\", None)\n            if nanf is None:\n        \
+    \        msg = f\"Data contain nans but no nan-aware version of `{func}` found\"\
+    \n                warnings.warn(msg, UserWarning)\n            else:\n       \
+    \         f = nanf\n\n    else:\n        f = func\n\n    # Handle numpy changes\n\
+    \    try:\n        integers = rng.integers\n    except AttributeError:\n     \
+    \   integers = rng.randint\n\n    # Do the bootstrap\n    if units is not None:\n\
+    \        return _structured_bootstrap(args, n_boot, units, f,\n              \
+    \                       func_kwargs, integers)\n\n    boot_dist = []\n    for\
+    \ i in range(int(n_boot)):\n        resampler = integers(0, n, n, dtype=np.intp)\
+    \  # intp is indexing dtype\n        sample = [a.take(resampler, axis=0) for a\
+    \ in args]\n        boot_dist.append(f(*sample, **func_kwargs))\n    return np.array(boot_dist)\n\
+    \n\ndef _structured_bootstrap(args, n_boot, units, func, func_kwargs, integers):\n\
+    \    \"\"\"Resample units instead of datapoints.\"\"\"\n    unique_units = np.unique(units)\n\
+    \    n_units = len(unique_units)\n\n    args = [[a[units == unit] for unit in\
+    \ unique_units] for a in args]\n\n    boot_dist = []\n    for i in range(int(n_boot)):\n\
+    \        resampler = integers(0, n_units, n_units, dtype=np.intp)\n        sample\
+    \ = [[a[i] for i in resampler] for a in args]\n        lengths = map(len, sample[0])\n\
+    \        resampler = [integers(0, n, n, dtype=np.intp) for n in lengths]\n   \
+    \     sample = [[c.take(r, axis=0) for c, r in zip(a, resampler)] for a in sample]\n\
+    \        sample = list(map(np.concatenate, sample))\n        boot_dist.append(func(*sample,\
+    \ **func_kwargs))\n    return np.array(boot_dist)\n\n\n### Dependency File: base.py\n\
+    \"\"\"Base module for statistical transformations.\"\"\"\nfrom __future__ import\
+    \ annotations\nfrom collections.abc import Iterable\nfrom dataclasses import dataclass\n\
+    from typing import ClassVar, Any\nimport warnings\n\nfrom typing import TYPE_CHECKING\n\
+    if TYPE_CHECKING:\n    from pandas import DataFrame\n    from seaborn._core.groupby\
+    \ import GroupBy\n    from seaborn._core.scales import Scale\n\n\n@dataclass\n\
+    class Stat:\n    \"\"\"Base class for objects that apply statistical transformations.\"\
+    \"\"\n\n    # The class supports a partial-function application pattern. The object\
+    \ is\n    # initialized with desired parameters and the result is a callable that\n\
+    \    # accepts and returns dataframes.\n\n    # The statistical transformation\
+    \ logic should not add any state to the instance\n    # beyond what is defined\
+    \ with the initialization parameters.\n\n    # Subclasses can declare whether\
+    \ the orient dimension should be used in grouping\n    # TODO consider whether\
+    \ this should be a parameter. Motivating example:\n    # use the same KDE class\
+    \ violin plots and univariate density estimation.\n    # In the former case, we\
+    \ would expect separate densities for each unique\n    # value on the orient axis,\
+    \ but we would not in the latter case.\n    group_by_orient: ClassVar[bool] =\
+    \ False\n\n    def _check_param_one_of(self, param: str, options: Iterable[Any])\
+    \ -> None:\n        \"\"\"Raise when parameter value is not one of a specified\
+    \ set.\"\"\"\n        value = getattr(self, param)\n        if value not in options:\n\
+    \            *most, last = options\n            option_str = \", \".join(f\"{x!r}\"\
+    \ for x in most[:-1]) + f\" or {last!r}\"\n            err = \" \".join([\n  \
+    \              f\"The `{param}` parameter for `{self.__class__.__name__}` must\
+    \ be\",\n                f\"one of {option_str}; not {value!r}.\",\n         \
+    \   ])\n            raise ValueError(err)\n\n    def _check_grouping_vars(\n \
+    \       self, param: str, data_vars: list[str], stacklevel: int = 2,\n    ) ->\
+    \ None:\n        \"\"\"Warn if vars are named in parameter without being present\
+    \ in the data.\"\"\"\n        param_vars = getattr(self, param)\n        undefined\
+    \ = set(param_vars) - set(data_vars)\n        if undefined:\n            param\
+    \ = f\"{self.__class__.__name__}.{param}\"\n            names = \", \".join(f\"\
+    {x!r}\" for x in undefined)\n            msg = f\"Undefined variable(s) passed\
+    \ for {param}: {names}.\"\n            warnings.warn(msg, stacklevel=stacklevel)\n\
+    \n    def __call__(\n        self,\n        data: DataFrame,\n        groupby:\
+    \ GroupBy,\n        orient: str,\n        scales: dict[str, Scale],\n    ) ->\
+    \ DataFrame:\n        \"\"\"Apply statistical transform to data subgroups and\
+    \ return combined result.\"\"\"\n        return data\n\nOutput the complete test\
+    \ file, code only, no explanations.\n### Time\nCurrent time: 2025-03-14 17:28:50\n"
+  role: user

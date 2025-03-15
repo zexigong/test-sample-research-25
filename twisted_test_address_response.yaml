@@ -1,0 +1,99 @@
+response: "```python\n# Copyright (c) Twisted Matrix Laboratories.\n# See LICENSE\
+  \ for details.\n\n\"\"\"\nTest cases for L{twisted.internet.address} module.\n\"\
+  \"\"\n\nfrom twisted.trial.unittest import SynchronousTestCase\nfrom twisted.internet.address\
+  \ import (\n    IPv4Address,\n    IPv6Address,\n    UNIXAddress,\n    HostnameAddress,\n\
+  \    _ServerFactoryIPv4Address,\n)\nfrom twisted.python.runtime import platform\n\
+  \n\nclass HostnameAddressTests(SynchronousTestCase):\n    \"\"\"\n    Tests for\
+  \ L{HostnameAddress}.\n    \"\"\"\n\n    def test_hash(self) -> None:\n        \"\
+  \"\"\n        L{HostnameAddress} can be used as a key in a dictionary.\n       \
+  \ \"\"\"\n        a = HostnameAddress(b\"example.com\", 80)\n        b = HostnameAddress(b\"\
+  example.com\", 80)\n        c = HostnameAddress(b\"another.com\", 80)\n        self.assertEqual(hash(a),\
+  \ hash(b))\n        self.assertNotEqual(hash(a), hash(c))\n\n    def test_equality(self)\
+  \ -> None:\n        \"\"\"\n        L{HostnameAddress} compares equal to other L{HostnameAddress}\
+  \ instances\n        with the same host and port values.\n        \"\"\"\n     \
+  \   a = HostnameAddress(b\"example.com\", 80)\n        b = HostnameAddress(b\"example.com\"\
+  , 80)\n        c = HostnameAddress(b\"another.com\", 80)\n        self.assertEqual(a,\
+  \ b)\n        self.assertNotEqual(a, c)\n\n\nclass IPv4AddressTests(SynchronousTestCase):\n\
+  \    \"\"\"\n    Tests for L{IPv4Address}.\n    \"\"\"\n\n    def test_hash(self)\
+  \ -> None:\n        \"\"\"\n        L{IPv4Address} can be used as a key in a dictionary.\n\
+  \        \"\"\"\n        a = IPv4Address(\"TCP\", \"127.0.0.1\", 80)\n        b\
+  \ = IPv4Address(\"TCP\", \"127.0.0.1\", 80)\n        c = IPv4Address(\"UDP\", \"\
+  127.0.0.1\", 80)\n        d = IPv4Address(\"TCP\", \"127.0.0.1\", 88)\n        e\
+  \ = IPv4Address(\"TCP\", \"127.0.0.2\", 80)\n        self.assertEqual(hash(a), hash(b))\n\
+  \        self.assertNotEqual(hash(a), hash(c))\n        self.assertNotEqual(hash(a),\
+  \ hash(d))\n        self.assertNotEqual(hash(a), hash(e))\n\n    def test_equality(self)\
+  \ -> None:\n        \"\"\"\n        L{IPv4Address} compares equal to other L{IPv4Address}\
+  \ instances with\n        the same type, host, and port values.\n        \"\"\"\n\
+  \        a = IPv4Address(\"TCP\", \"127.0.0.1\", 80)\n        b = IPv4Address(\"\
+  TCP\", \"127.0.0.1\", 80)\n        c = IPv4Address(\"UDP\", \"127.0.0.1\", 80)\n\
+  \        d = IPv4Address(\"TCP\", \"127.0.0.1\", 88)\n        e = IPv4Address(\"\
+  TCP\", \"127.0.0.2\", 80)\n        self.assertEqual(a, b)\n        self.assertNotEqual(a,\
+  \ c)\n        self.assertNotEqual(a, d)\n        self.assertNotEqual(a, e)\n\n\n\
+  class IPv6AddressTests(SynchronousTestCase):\n    \"\"\"\n    Tests for L{IPv6Address}.\n\
+  \    \"\"\"\n\n    def test_hash(self) -> None:\n        \"\"\"\n        L{IPv6Address}\
+  \ can be used as a key in a dictionary.\n        \"\"\"\n        a = IPv6Address(\"\
+  TCP\", \"::1\", 80)\n        b = IPv6Address(\"TCP\", \"::1\", 80)\n        c =\
+  \ IPv6Address(\"UDP\", \"::1\", 80)\n        d = IPv6Address(\"TCP\", \"::1\", 88)\n\
+  \        e = IPv6Address(\"TCP\", \"::2\", 80)\n        self.assertEqual(hash(a),\
+  \ hash(b))\n        self.assertNotEqual(hash(a), hash(c))\n        self.assertNotEqual(hash(a),\
+  \ hash(d))\n        self.assertNotEqual(hash(a), hash(e))\n\n    def test_equality(self)\
+  \ -> None:\n        \"\"\"\n        L{IPv6Address} compares equal to other L{IPv6Address}\
+  \ instances with\n        the same type, host, port, flowInfo, and scopeID values.\n\
+  \        \"\"\"\n        a = IPv6Address(\"TCP\", \"::1\", 80)\n        b = IPv6Address(\"\
+  TCP\", \"::1\", 80)\n        c = IPv6Address(\"UDP\", \"::1\", 80)\n        d =\
+  \ IPv6Address(\"TCP\", \"::1\", 88)\n        e = IPv6Address(\"TCP\", \"::2\", 80)\n\
+  \        self.assertEqual(a, b)\n        self.assertNotEqual(a, c)\n        self.assertNotEqual(a,\
+  \ d)\n        self.assertNotEqual(a, e)\n\n    def test_equalityFlowInfo(self) ->\
+  \ None:\n        \"\"\"\n        L{IPv6Address} compares equal to other L{IPv6Address}\
+  \ instances with\n        the same type, host, port, flowInfo, and scopeID values.\n\
+  \        \"\"\"\n        a = IPv6Address(\"TCP\", \"::1\", 80, flowInfo=1)\n   \
+  \     b = IPv6Address(\"TCP\", \"::1\", 80, flowInfo=1)\n        c = IPv6Address(\"\
+  TCP\", \"::1\", 80, flowInfo=2)\n        self.assertEqual(a, b)\n        self.assertNotEqual(a,\
+  \ c)\n\n    def test_equalityScopeID(self) -> None:\n        \"\"\"\n        L{IPv6Address}\
+  \ compares equal to other L{IPv6Address} instances with\n        the same type,\
+  \ host, port, flowInfo, and scopeID values.\n        \"\"\"\n        a = IPv6Address(\"\
+  TCP\", \"::1\", 80, scopeID=1)\n        b = IPv6Address(\"TCP\", \"::1\", 80, scopeID=1)\n\
+  \        c = IPv6Address(\"TCP\", \"::1\", 80, scopeID=2)\n        self.assertEqual(a,\
+  \ b)\n        self.assertNotEqual(a, c)\n\n\nclass UNIXAddressTests(SynchronousTestCase):\n\
+  \    \"\"\"\n    Tests for L{UNIXAddress}.\n    \"\"\"\n\n    def test_hash(self)\
+  \ -> None:\n        \"\"\"\n        L{UNIXAddress} can be used as a key in a dictionary.\n\
+  \        \"\"\"\n        a = UNIXAddress(b\"/var/run/socket\")\n        b = UNIXAddress(b\"\
+  /var/run/socket\")\n        c = UNIXAddress(b\"/var/run/other\")\n        d = UNIXAddress(None)\n\
+  \        e = UNIXAddress(None)\n        self.assertEqual(hash(a), hash(b))\n   \
+  \     self.assertNotEqual(hash(a), hash(c))\n        self.assertEqual(hash(d), hash(e))\n\
+  \n    def test_equality(self) -> None:\n        \"\"\"\n        L{UNIXAddress} compares\
+  \ equal to other L{UNIXAddress} instances with\n        the same name values.\n\
+  \        \"\"\"\n        a = UNIXAddress(b\"/var/run/socket\")\n        b = UNIXAddress(b\"\
+  /var/run/socket\")\n        c = UNIXAddress(b\"/var/run/other\")\n        d = UNIXAddress(None)\n\
+  \        e = UNIXAddress(None)\n        self.assertEqual(a, b)\n        self.assertNotEqual(a,\
+  \ c)\n        self.assertEqual(d, e)\n\n    def test_samefile(self) -> None:\n \
+  \       \"\"\"\n        L{UNIXAddress} compares equal to other L{UNIXAddress} instances\
+  \ with\n        names that point to the same file, if the platform supports\n  \
+  \      L{os.path.samefile}.\n        \"\"\"\n        if getattr(os.path, \"samefile\"\
+  , None) is None:\n            raise self.skipTest(\n                \"Platform does\
+  \ not support os.path.samefile, cannot run test.\"\n            )\n        tmp =\
+  \ self.mktemp()\n        a = UNIXAddress(tmp)\n        b = UNIXAddress(tmp)\n  \
+  \      c = UNIXAddress(tmp + \".other\")\n        with open(tmp, \"w\"):\n     \
+  \       pass\n        os.link(tmp, tmp + \".other\")\n        self.assertEqual(a,\
+  \ b)\n        self.assertEqual(a, c)\n\n    def test_samefileAbstractNamespace(self)\
+  \ -> None:\n        \"\"\"\n        L{UNIXAddress} compares equal to other L{UNIXAddress}\
+  \ instances with\n        names that point to the same abstract namespace UNIX socket,\
+  \ if the\n        platform supports L{os.path.samefile}. Abstract namespace UNIX\
+  \ sockets\n        are supported on Linux only.\n        \"\"\"\n        if not\
+  \ platform.isLinux():\n            raise self.skipTest(\n                \"Platform\
+  \ does not support abstract namespace UNIX sockets, \"\n                \"cannot\
+  \ run test.\"\n            )\n        a = UNIXAddress(b\"\\0foo\")\n        b =\
+  \ UNIXAddress(b\"\\0foo\")\n        c = UNIXAddress(b\"\\0bar\")\n        self.assertEqual(a,\
+  \ b)\n        self.assertNotEqual(a, c)\n\n    def test_repr(self) -> None:\n  \
+  \      \"\"\"\n        L{repr} of L{UNIXAddress} uses the L{name} attribute.\n \
+  \       \"\"\"\n        a = UNIXAddress(b\"/var/run/socket\")\n        self.assertEqual(repr(a),\
+  \ \"UNIXAddress('/var/run/socket')\")\n        a = UNIXAddress(None)\n        self.assertEqual(repr(a),\
+  \ \"UNIXAddress(None)\")\n\n\nclass _ServerFactoryIPv4AddressTests(SynchronousTestCase):\n\
+  \    \"\"\"\n    Tests for L{_ServerFactoryIPv4Address}.\n    \"\"\"\n\n    def\
+  \ test_deprecated(self) -> None:\n        \"\"\"\n        L{_ServerFactoryIPv4Address.__eq__}\
+  \ with a L{tuple} issues a\n        L{DeprecationWarning}.\n        \"\"\"\n   \
+  \     a = _ServerFactoryIPv4Address(\"TCP\", \"127.0.0.1\", 80)\n        b = (\"\
+  127.0.0.1\", 80)\n        self.assertWarns(\n            DeprecationWarning,\n \
+  \           \"IPv4Address.__getitem__ is deprecated.  Use attributes instead.\"\
+  ,\n            __file__,\n            lambda: self.assertEqual(a, b),\n        )\n\
+  ```"

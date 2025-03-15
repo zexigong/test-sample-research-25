@@ -1,0 +1,2248 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: twisted\nTest File Path: twisted\\test_address\\\
+    test_address.py\nProject Programming Language: Python\nTesting Framework: pytest\n\
+    ### Source File Content\n### Source File Content:\n# Copyright (c) Twisted Matrix\
+    \ Laboratories.\n# See LICENSE for details.\n\n\"\"\"\nAddress objects for network\
+    \ connections.\n\"\"\"\n\n\nimport os\nfrom typing import Optional, Union\nfrom\
+    \ warnings import warn\n\nfrom zope.interface import implementer\n\nimport attr\n\
+    from typing_extensions import Literal\n\nfrom twisted.internet.interfaces import\
+    \ IAddress\nfrom twisted.python.filepath import _asFilesystemBytes, _coerceToFilesystemEncoding\n\
+    from twisted.python.runtime import platform\n\n\n@implementer(IAddress)\n@attr.s(unsafe_hash=True,\
+    \ auto_attribs=True)\nclass IPv4Address:\n    \"\"\"\n    An L{IPv4Address} represents\
+    \ the address of an IPv4 socket endpoint.\n\n    @ivar type: A string describing\
+    \ the type of transport, either 'TCP' or\n        'UDP'.\n\n    @ivar host: A\
+    \ string containing a dotted-quad IPv4 address; for example,\n        \"127.0.0.1\"\
+    .\n    @type host: C{str}\n\n    @ivar port: An integer representing the port\
+    \ number.\n    @type port: C{int}\n    \"\"\"\n\n    type: Union[Literal[\"TCP\"\
+    ], Literal[\"UDP\"]] = attr.ib(\n        validator=attr.validators.in_([\"TCP\"\
+    , \"UDP\"])\n    )\n    host: str\n    port: int\n\n\n@implementer(IAddress)\n\
+    @attr.s(unsafe_hash=True, auto_attribs=True)\nclass IPv6Address:\n    \"\"\"\n\
+    \    An L{IPv6Address} represents the address of an IPv6 socket endpoint.\n\n\
+    \    @ivar type: A string describing the type of transport, either 'TCP' or\n\
+    \        'UDP'.\n\n    @ivar host: A string containing a colon-separated, hexadecimal\
+    \ formatted\n        IPv6 address; for example, \"::1\".\n    @type host: C{str}\n\
+    \n    @ivar port: An integer representing the port number.\n    @type port: C{int}\n\
+    \n    @ivar flowInfo: the IPv6 flow label.  This can be used by QoS routers to\n\
+    \        identify flows of traffic; you may generally safely ignore it.\n    @type\
+    \ flowInfo: L{int}\n\n    @ivar scopeID: the IPv6 scope identifier - roughly analagous\
+    \ to what\n        interface traffic destined for this address must be transmitted\
+    \ over.\n    @type scopeID: L{int} or L{str}\n    \"\"\"\n\n    type: Union[Literal[\"\
+    TCP\"], Literal[\"UDP\"]] = attr.ib(\n        validator=attr.validators.in_([\"\
+    TCP\", \"UDP\"])\n    )\n    host: str\n    port: int\n    flowInfo: int = 0\n\
+    \    scopeID: Union[str, int] = 0\n\n\n@implementer(IAddress)\nclass _ProcessAddress:\n\
+    \    \"\"\"\n    An L{interfaces.IAddress} provider for process transports.\n\
+    \    \"\"\"\n\n\n@attr.s(unsafe_hash=True, auto_attribs=True)\n@implementer(IAddress)\n\
+    class HostnameAddress:\n    \"\"\"\n    A L{HostnameAddress} represents the address\
+    \ of a L{HostnameEndpoint}.\n\n    @ivar hostname: A hostname byte string; for\
+    \ example, b\"example.com\".\n    @type hostname: L{bytes}\n\n    @ivar port:\
+    \ An integer representing the port number.\n    @type port: L{int}\n    \"\"\"\
+    \n\n    hostname: bytes\n    port: int\n\n\n@attr.s(unsafe_hash=False, repr=False,\
+    \ eq=False, auto_attribs=True)\n@implementer(IAddress)\nclass UNIXAddress:\n \
+    \   \"\"\"\n    Object representing a UNIX socket endpoint.\n\n    @ivar name:\
+    \ The filename associated with this socket.\n    @type name: C{bytes}\n    \"\"\
+    \"\n\n    name: Optional[bytes] = attr.ib(\n        converter=attr.converters.optional(_asFilesystemBytes)\n\
+    \    )\n\n    if getattr(os.path, \"samefile\", None) is not None:\n\n       \
+    \ def __eq__(self, other: object) -> bool:\n            \"\"\"\n            Overriding\
+    \ C{attrs} to ensure the os level samefile\n            check is done if the name\
+    \ attributes do not match.\n            \"\"\"\n            if not isinstance(other,\
+    \ self.__class__):\n                return NotImplemented\n            res = self.name\
+    \ == other.name\n            if not res and self.name and other.name:\n      \
+    \          try:\n                    return os.path.samefile(self.name, other.name)\n\
+    \                except OSError:\n                    pass\n                except\
+    \ (TypeError, ValueError) as e:\n                    # On Linux, abstract namespace\
+    \ UNIX sockets start with a\n                    # \\0, which os.path doesn't\
+    \ like.\n                    if not platform.isLinux():\n                    \
+    \    raise e\n            return res\n\n    else:\n\n        def __eq__(self,\
+    \ other: object) -> bool:\n            if isinstance(other, self.__class__):\n\
+    \                return self.name == other.name\n            return NotImplemented\n\
+    \n    def __repr__(self) -> str:\n        name = self.name\n        show = _coerceToFilesystemEncoding(\"\
+    \", name) if name is not None else None\n        return f\"UNIXAddress({show!r})\"\
+    \n\n    def __hash__(self):\n        if self.name is None:\n            return\
+    \ hash((self.__class__, None))\n        try:\n            s1 = os.stat(self.name)\n\
+    \            return hash((s1.st_ino, s1.st_dev))\n        except OSError:\n  \
+    \          return hash(self.name)\n\n\n# These are for buildFactory backwards\
+    \ compatibility due to\n# stupidity-induced inconsistency.\n\n\nclass _ServerFactoryIPv4Address(IPv4Address):\n\
+    \    \"\"\"Backwards compatibility hack. Just like IPv4Address in practice.\"\"\
+    \"\n\n    def __eq__(self, other: object) -> bool:\n        if isinstance(other,\
+    \ tuple):\n            warn(\n                \"IPv4Address.__getitem__ is deprecated.\
+    \  \" \"Use attributes instead.\",\n                category=DeprecationWarning,\n\
+    \                stacklevel=2,\n            )\n            return (self.host,\
+    \ self.port) == other\n        elif isinstance(other, IPv4Address):\n        \
+    \    a = (self.type, self.host, self.port)\n            b = (other.type, other.host,\
+    \ other.port)\n            return a == b\n        return NotImplemented\n\n###\
+    \ Source File Dependency Files Content\n### Dependency File: filepath.py\n# -*-\
+    \ test-case-name: twisted.test.test_paths -*-\n# Copyright (c) Twisted Matrix\
+    \ Laboratories.\n# See LICENSE for details.\n\n\"\"\"\nObject-oriented filesystem\
+    \ path representation.\n\"\"\"\n\nfrom __future__ import annotations\n\nimport\
+    \ base64\nimport errno\nimport os\nimport sys\nfrom os import listdir, stat, utime\n\
+    from os.path import (\n    abspath,\n    basename,\n    dirname,\n    exists,\n\
+    \    isabs,\n    islink,\n    join as joinpath,\n    normpath,\n    splitext,\n\
+    )\nfrom stat import (\n    S_IMODE,\n    S_IRGRP,\n    S_IROTH,\n    S_IRUSR,\n\
+    \    S_ISBLK,\n    S_ISDIR,\n    S_ISREG,\n    S_ISSOCK,\n    S_IWGRP,\n    S_IWOTH,\n\
+    \    S_IWUSR,\n    S_IXGRP,\n    S_IXOTH,\n    S_IXUSR,\n)\nfrom typing import\
+    \ (\n    IO,\n    TYPE_CHECKING,\n    Any,\n    AnyStr,\n    Callable,\n    Dict,\n\
+    \    Generic,\n    Iterable,\n    List,\n    Optional,\n    Sequence,\n    Tuple,\n\
+    \    TypeVar,\n    Union,\n    cast,\n    overload,\n)\n\nfrom zope.interface\
+    \ import Attribute, Interface, implementer\n\nfrom typing_extensions import Literal\n\
+    \nfrom twisted.python.compat import cmp, comparable\nfrom twisted.python.runtime\
+    \ import platform\nfrom twisted.python.util import FancyEqMixin\nfrom twisted.python.win32\
+    \ import (\n    ERROR_DIRECTORY,\n    ERROR_FILE_NOT_FOUND,\n    ERROR_INVALID_NAME,\n\
+    \    ERROR_PATH_NOT_FOUND,\n    O_BINARY,\n)\n\n# Please keep this as light as\
+    \ possible on other Twisted imports; many, many\n# things import this module,\
+    \ and it would be good if it could easily be\n# modified for inclusion in the\
+    \ standard library.  --glyph\n\n\n_CREATE_FLAGS = os.O_EXCL | os.O_CREAT | os.O_RDWR\
+    \ | O_BINARY\n_Self = TypeVar(\"_Self\", bound=\"AbstractFilePath[Any]\")\n\n\n\
+    randomBytes = os.urandom\narmor = base64.urlsafe_b64encode\n\n\nclass IFilePath(Interface):\n\
+    \    \"\"\"\n    File path object.\n\n    A file path represents a location for\
+    \ a file-like-object and can be\n    organized into a hierarchy; a file path can\
+    \ can children which are\n    themselves file paths.\n\n    A file path has a\
+    \ name which unique identifies it in the context of its\n    parent (if it has\
+    \ one); a file path can not have two children with the same\n    name.  This name\
+    \ is referred to as the file path's \"base name\".\n\n    A series of such names\
+    \ can be used to locate nested children of a file\n    path; such a series is\
+    \ referred to as the child's \"path\", relative to the\n    parent.  In this case,\
+    \ each name in the path is referred to as a \"path\n    segment\"; the child's\
+    \ base name is the segment in the path.\n\n    When representing a file path as\
+    \ a string, a \"path separator\" is used to\n    delimit the path segments within\
+    \ the string.  For a file system path, that\n    would be C{os.sep}.\n\n    Note\
+    \ that the values of child names may be restricted.  For example, a file\n   \
+    \ system path will not allow the use of the path separator in a name, and\n  \
+    \  certain names (e.g. C{\".\"} and C{\"..\"}) may be reserved or have special\n\
+    \    meanings.\n\n    @since: 12.1\n    \"\"\"\n\n    sep = Attribute(\"The path\
+    \ separator to use in string representations\")\n\n    def child(name: AnyStr)\
+    \ -> IFilePath:\n        \"\"\"\n        Obtain a direct child of this file path.\
+    \  The child may or may not\n        exist.\n\n        @param name: the name of\
+    \ a child of this path. C{name} must be a direct\n            child of this path\
+    \ and may not contain a path separator.\n        @return: the child of this path\
+    \ with the given C{name}.\n        @raise InsecurePath: if C{name} describes a\
+    \ file path that is not a\n            direct child of this file path.\n     \
+    \   \"\"\"\n\n    def open(mode: FileMode = \"r\") -> IO[bytes]:\n        \"\"\
+    \"\n        Opens this file path with the given mode.\n\n        @return: a file-like\
+    \ object.\n        @raise Exception: if this file path cannot be opened.\n   \
+    \     \"\"\"\n\n    def changed() -> None:\n        \"\"\"\n        Clear any\
+    \ cached information about the state of this path on disk.\n        \"\"\"\n\n\
+    \    def getsize() -> int:\n        \"\"\"\n        Retrieve the size of this\
+    \ file in bytes.\n\n        @return: the size of the file at this file path in\
+    \ bytes.\n        @raise Exception: if the size cannot be obtained.\n        \"\
+    \"\"\n\n    def getModificationTime() -> float:\n        \"\"\"\n        Retrieve\
+    \ the time of last access from this file.\n\n        @return: a number of seconds\
+    \ from the epoch.\n        @rtype: L{float}\n        \"\"\"\n\n    def getStatusChangeTime()\
+    \ -> float:\n        \"\"\"\n        Retrieve the time of the last status change\
+    \ for this file.\n\n        @return: a number of seconds from the epoch.\n   \
+    \     @rtype: L{float}\n        \"\"\"\n\n    def getAccessTime() -> float:\n\
+    \        \"\"\"\n        Retrieve the time that this file was last accessed.\n\
+    \n        @return: a number of seconds from the epoch.\n        @rtype: L{float}\n\
+    \        \"\"\"\n\n    def exists() -> bool:\n        \"\"\"\n        Check if\
+    \ this file path exists.\n\n        @return: C{True} if the file at this file\
+    \ path exists, C{False}\n            otherwise.\n        @rtype: L{bool}\n   \
+    \     \"\"\"\n\n    def isdir() -> bool:\n        \"\"\"\n        Check if this\
+    \ file path refers to a directory.\n\n        @return: C{True} if the file at\
+    \ this file path is a directory, C{False}\n            otherwise.\n        \"\"\
+    \"\n\n    def isfile() -> bool:\n        \"\"\"\n        Check if this file path\
+    \ refers to a regular file.\n\n        @return: C{True} if the file at this file\
+    \ path is a regular file,\n            C{False} otherwise.\n        \"\"\"\n\n\
+    \    def children() -> Iterable[IFilePath]:\n        \"\"\"\n        List the\
+    \ children of this path object.\n\n        @return: a sequence of the children\
+    \ of the directory at this file path.\n        @raise Exception: if the file at\
+    \ this file path is not a directory.\n        \"\"\"\n\n    def basename() ->\
+    \ Union[str, bytes]:\n        \"\"\"\n        Retrieve the final component of\
+    \ the file path's path (everything after\n        the final path separator).\n\
+    \n        @note: In implementors, the return type should be generic, i.e.\n  \
+    \          C{AbstractFilePath[str].basename()} is a C{str}.  However,\n      \
+    \      L{Interface} objects cannot be generic as of this writing.\n\n        @return:\
+    \ the base name of this file path.\n        \"\"\"\n\n    def parent() -> IFilePath:\n\
+    \        \"\"\"\n        A file path for the directory containing the file at\
+    \ this file path.\n        \"\"\"\n\n    def sibling(name: AnyStr) -> IFilePath:\n\
+    \        \"\"\"\n        A file path for the directory containing the file at\
+    \ this file path.\n\n        @param name: the name of a sibling of this path.\
+    \  C{name} must be a\n            direct sibling of this path and may not contain\
+    \ a path separator.\n\n        @return: a sibling file path of this one.\n   \
+    \     \"\"\"\n\n\nclass InsecurePath(Exception):\n    \"\"\"\n    Error that is\
+    \ raised when the path provided to L{FilePath} is invalid.\n    \"\"\"\n\n\nclass\
+    \ LinkError(Exception):\n    \"\"\"\n    An error with symlinks - either that\
+    \ there are cyclical symlinks or that\n    symlink are not supported on this platform.\n\
+    \    \"\"\"\n\n\nclass UnlistableError(OSError):\n    \"\"\"\n    An exception\
+    \ which is used to distinguish between errors which mean 'this\n    is not a directory\
+    \ you can list' and other, more catastrophic errors.\n\n    This error will try\
+    \ to look as much like the original error as possible,\n    while still being\
+    \ catchable as an independent type.\n\n    @ivar originalException: the actual\
+    \ original exception instance.\n    \"\"\"\n\n    def __init__(self, originalException:\
+    \ OSError):\n        \"\"\"\n        Create an UnlistableError exception.\n\n\
+    \        @param originalException: an instance of OSError.\n        \"\"\"\n \
+    \       self.__dict__.update(originalException.__dict__)\n        self.originalException\
+    \ = originalException\n\n\ndef _secureEnoughString(path: AnyStr) -> AnyStr:\n\
+    \    \"\"\"\n    Compute a string usable as a new, temporary filename.\n\n   \
+    \ @param path: The path that the new temporary filename should be able to be\n\
+    \        concatenated with.\n\n    @return: A pseudorandom, 16 byte string for\
+    \ use in secure filenames.\n    @rtype: the type of C{path}\n    \"\"\"\n    secureishString\
+    \ = armor(randomBytes(16))[:16]\n    return _coerceToFilesystemEncoding(path,\
+    \ secureishString)\n\n\nOtherAnyStr = TypeVar(\"OtherAnyStr\", str, bytes)\nFileMode\
+    \ = Literal[\"r\", \"w\", \"a\", \"r+\", \"w+\", \"a+\"]\n\n\nclass AbstractFilePath(Generic[AnyStr]):\n\
+    \    \"\"\"\n    Abstract implementation of an L{IFilePath}; must be completed\
+    \ by a\n    subclass.\n\n    This class primarily exists to provide common implementations\
+    \ of certain\n    methods in L{IFilePath}. It is *not* a required parent class\
+    \ for\n    L{IFilePath} implementations, just a useful starting point.\n\n   \
+    \ @ivar path: Subclasses must set this variable.\n    \"\"\"\n\n    Selfish =\
+    \ TypeVar(\"Selfish\", bound=\"AbstractFilePath[AnyStr]\")\n\n    path: AnyStr\n\
+    \n    def getAccessTime(self) -> float:\n        \"\"\"\n        Subclasses must\
+    \ implement this.\n\n        @see: L{FilePath.getAccessTime}\n        \"\"\"\n\
+    \        raise NotImplementedError()\n\n    def getModificationTime(self) -> float:\n\
+    \        \"\"\"\n        Subclasses must implement this.\n\n        @see: L{FilePath.getModificationTime}\n\
+    \        \"\"\"\n        raise NotImplementedError()\n\n    def getStatusChangeTime(self)\
+    \ -> float:\n        \"\"\"\n        Subclasses must implement this.\n\n     \
+    \   @see: L{FilePath.getStatusChangeTime}\n        \"\"\"\n        raise NotImplementedError()\n\
+    \n    def open(self, mode: FileMode = \"r\") -> IO[bytes]:\n        \"\"\"\n \
+    \       Subclasses must implement this.\n        \"\"\"\n        raise NotImplementedError()\n\
+    \n    def isdir(self) -> bool:\n        \"\"\"\n        Subclasses must implement\
+    \ this.\n        \"\"\"\n        raise NotImplementedError()\n\n    def basename(self)\
+    \ -> AnyStr:\n        \"\"\"\n        Subclasses must implement this.\n      \
+    \  \"\"\"\n        raise NotImplementedError()\n\n    def parent(self) -> AbstractFilePath[AnyStr]:\n\
+    \        \"\"\"\n        Subclasses must implement this.\n        \"\"\"\n   \
+    \     raise NotImplementedError()\n\n    def listdir(self) -> List[AnyStr]:\n\
+    \        \"\"\"\n        Subclasses must implement this.\n        \"\"\"\n   \
+    \     raise NotImplementedError()\n\n    def child(self, path: OtherAnyStr) ->\
+    \ AbstractFilePath[OtherAnyStr]:\n        \"\"\"\n        Subclasses must implement\
+    \ this.\n        \"\"\"\n        raise NotImplementedError()\n\n    def getContent(self)\
+    \ -> bytes:\n        \"\"\"\n        Retrieve the contents of the file at this\
+    \ path.\n\n        @return: the contents of the file\n        @rtype: L{bytes}\n\
+    \        \"\"\"\n        with self.open() as fp:\n            return fp.read()\n\
+    \n    def parents(self) -> Iterable[AbstractFilePath[AnyStr]]:\n        \"\"\"\
+    \n        Retrieve an iterator of all the ancestors of this path.\n\n        @return:\
+    \ an iterator of all the ancestors of this path, from the most\n        recent\
+    \ (its immediate parent) to the root of its filesystem.\n        \"\"\"\n    \
+    \    path = self\n        parent = path.parent()\n        # root.parent() == root,\
+    \ so this means \"are we the root\"\n        while path != parent:\n         \
+    \   yield parent\n            path = parent\n            parent = parent.parent()\n\
+    \n    def children(self: _Self) -> Iterable[_Self]:\n        \"\"\"\n        List\
+    \ the children of this path object.\n\n        @raise OSError: If an error occurs\
+    \ while listing the directory.  If the\n        error is 'serious', meaning that\
+    \ the operation failed due to an access\n        violation, exhaustion of some\
+    \ kind of resource (file descriptors or\n        memory), OSError or a platform-specific\
+    \ variant will be raised.\n\n        @raise UnlistableError: If the inability\
+    \ to list the directory is due\n        to this path not existing or not being\
+    \ a directory, the more specific\n        OSError subclass L{UnlistableError}\
+    \ is raised instead.\n\n        @return: an iterable of all currently-existing\
+    \ children of this object.\n        \"\"\"\n        try:\n            subnames:\
+    \ List[AnyStr] = self.listdir()\n        except OSError as ose:\n            #\
+    \ Under Python 3.3 and higher on Windows, WindowsError is an\n            # alias\
+    \ for OSError.  OSError has a winerror attribute and an\n            # errno attribute.\n\
+    \            #\n            # The winerror attribute is bound to the Windows error\
+    \ code while\n            # the errno attribute is bound to a translation of that\
+    \ code to a\n            # perhaps equivalent POSIX error number.\n          \
+    \  #\n            # For further details, refer to:\n            # https://docs.python.org/3/library/exceptions.html#OSError\n\
+    \            if getattr(ose, \"winerror\", None) in (\n                ERROR_PATH_NOT_FOUND,\n\
+    \                ERROR_FILE_NOT_FOUND,\n                ERROR_INVALID_NAME,\n\
+    \                ERROR_DIRECTORY,\n            ):\n                raise UnlistableError(ose)\n\
+    \            if ose.errno in (errno.ENOENT, errno.ENOTDIR):\n                raise\
+    \ UnlistableError(ose)\n            # Other possible errors here, according to\
+    \ linux manpages:\n            # EACCES, EMIFLE, ENFILE, ENOMEM.  None of these\
+    \ seem like the\n            # sort of thing which should be handled normally.\
+    \ -glyph\n            raise\n        result = []\n        for name in subnames:\n\
+    \            # It's not possible to tell mypy that child/clone etc must be\n \
+    \           # overridden to return respecializable forms of _Self, but they\n\
+    \            # must, so we will say that they are.\n            child: _Self =\
+    \ self.child(name)  # type:ignore[assignment]\n            result.append(child)\n\
+    \        return result\n\n    def walk(\n        self: _Self,\n        descend:\
+    \ Optional[Callable[[_Self], bool]] = None,\n    ) -> Iterable[_Self]:\n     \
+    \   \"\"\"\n        Yield myself, then each of my children, and each of those\
+    \ children's\n        children in turn.\n\n        The optional argument C{descend}\
+    \ is a predicate that takes a FilePath,\n        and determines whether or not\
+    \ that FilePath is traversed/descended\n        into.  It will be called with\
+    \ each path for which C{isdir} returns\n        C{True}.  If C{descend} is not\
+    \ specified, all directories will be\n        traversed (including symbolic links\
+    \ which refer to directories).\n\n        @param descend: A one-argument callable\
+    \ that will return True for\n            FilePaths that should be traversed, False\
+    \ otherwise.\n\n        @return: a generator yielding FilePath-like objects.\n\
+    \        \"\"\"\n        yield self\n        if self.isdir():\n            for\
+    \ c in self.children():\n                # we should first see if it's what we\
+    \ want, then we\n                # can walk through the directory\n          \
+    \      if descend is None or descend(c):\n                    for subc in c.walk(descend):\n\
+    \                        if os.path.realpath(self.path).startswith(\n        \
+    \                    os.path.realpath(subc.path)\n                        ):\n\
+    \                            raise LinkError(\"Cycle in file graph.\")\n     \
+    \                   yield subc\n                else:\n                    yield\
+    \ c\n\n    def sibling(self: _Self, path: OtherAnyStr) -> AbstractFilePath[OtherAnyStr]:\n\
+    \        \"\"\"\n        Return a L{FilePath} with the same directory as this\
+    \ instance but with\n        a basename of C{path}.\n\n        @note: for type-checking,\
+    \ subclasses should override this signature to\n            make it clear that\
+    \ it returns the subclass and not\n            L{AbstractFilePath}.\n\n      \
+    \  @param path: The basename of the L{FilePath} to return.\n        @type path:\
+    \ L{str}\n\n        @return: The sibling path.\n        @rtype: L{FilePath}\n\
+    \        \"\"\"\n        return self.parent().child(path)\n\n    def descendant(\n\
+    \        self, segments: Sequence[OtherAnyStr]\n    ) -> AbstractFilePath[OtherAnyStr]:\n\
+    \        \"\"\"\n        Retrieve a child or child's child of this path.\n\n \
+    \       @note: for type-checking, subclasses should override this signature to\n\
+    \            make it clear that it returns the subclass and not\n            L{AbstractFilePath}.\n\
+    \n        @param segments: A sequence of path segments as L{str} instances.\n\n\
+    \        @return: A L{FilePath} constructed by looking up the C{segments[0]}\n\
+    \            child of this path, the C{segments[1]} child of that path, and so\n\
+    \            on.\n\n        @since: 10.2\n        \"\"\"\n        path: AbstractFilePath[OtherAnyStr]\
+    \ = self  # type:ignore[assignment]\n        for name in segments:\n         \
+    \   path = path.child(name)\n        return path\n\n    def segmentsFrom(self:\
+    \ _Self, ancestor: _Self) -> List[AnyStr]:\n        \"\"\"\n        Return a list\
+    \ of segments between a child and its ancestor.\n\n        For example, in the\
+    \ case of a path X representing /a/b/c/d and a path Y\n        representing /a/b,\
+    \ C{Y.segmentsFrom(X)} will return C{['c',\n        'd']}.\n\n        @param ancestor:\
+    \ an instance of the same class as self, ostensibly an\n        ancestor of self.\n\
+    \n        @raise ValueError: If the C{ancestor} parameter is not actually an\n\
+    \        ancestor, i.e. a path for /x/y/z is passed as an ancestor for /a/b/c/d.\n\
+    \n        @return: a list of strs\n        \"\"\"\n        # this might be an\
+    \ unnecessarily inefficient implementation but it will\n        # work on win32\
+    \ and for zipfiles; later I will deterimine if the\n        # obvious fast implemenation\
+    \ does the right thing too\n        f = self\n        p: _Self = f.parent()  #\
+    \ type:ignore[assignment]\n        segments: List[AnyStr] = []\n        while\
+    \ f != ancestor and p != f:\n            segments[0:0] = [f.basename()]\n    \
+    \        f = p\n            p = p.parent()  # type:ignore[assignment]\n      \
+    \  if f == ancestor and segments:\n            return segments\n        raise\
+    \ ValueError(f\"{ancestor!r} not parent of {self!r}\")\n\n    # new in 8.0\n \
+    \   def __hash__(self) -> int:\n        \"\"\"\n        Hash the same as another\
+    \ L{AbstractFilePath} with the same path as mine.\n        \"\"\"\n        return\
+    \ hash((self.__class__, self.path))\n\n    # pending deprecation in 8.0\n    def\
+    \ getmtime(self) -> int:\n        \"\"\"\n        Deprecated.  Use getModificationTime\
+    \ instead.\n        \"\"\"\n        return int(self.getModificationTime())\n\n\
+    \    def getatime(self) -> int:\n        \"\"\"\n        Deprecated.  Use getAccessTime\
+    \ instead.\n        \"\"\"\n        return int(self.getAccessTime())\n\n    def\
+    \ getctime(self) -> int:\n        \"\"\"\n        Deprecated.  Use getStatusChangeTime\
+    \ instead.\n        \"\"\"\n        return int(self.getStatusChangeTime())\n\n\
+    \nclass RWX(FancyEqMixin):\n    \"\"\"\n    A class representing read/write/execute\
+    \ permissions for a single user\n    category (i.e. user/owner, group, or other/world).\
+    \  Instantiate with\n    three boolean values: readable? writable? executable?.\n\
+    \n    @type read: C{bool}\n    @ivar read: Whether permission to read is given\n\
+    \n    @type write: C{bool}\n    @ivar write: Whether permission to write is given\n\
+    \n    @type execute: C{bool}\n    @ivar execute: Whether permission to execute\
+    \ is given\n\n    @since: 11.1\n    \"\"\"\n\n    compareAttributes = (\"read\"\
+    , \"write\", \"execute\")\n\n    def __init__(self, readable: bool, writable:\
+    \ bool, executable: bool) -> None:\n        self.read = readable\n        self.write\
+    \ = writable\n        self.execute = executable\n\n    def __repr__(self) -> str:\n\
+    \        return \"RWX(read={}, write={}, execute={})\".format(\n            self.read,\n\
+    \            self.write,\n            self.execute,\n        )\n\n    def shorthand(self)\
+    \ -> str:\n        \"\"\"\n        Returns a short string representing the permission\
+    \ bits.  Looks like\n        part of what is printed by command line utilities\
+    \ such as 'ls -l'\n        (e.g. 'rwx')\n\n        @return: The shorthand string.\n\
+    \        @rtype: L{str}\n        \"\"\"\n        returnval = [\"r\", \"w\", \"\
+    x\"]\n        i = 0\n        for val in (self.read, self.write, self.execute):\n\
+    \            if not val:\n                returnval[i] = \"-\"\n            i\
+    \ += 1\n        return \"\".join(returnval)\n\n\nclass Permissions(FancyEqMixin):\n\
+    \    \"\"\"\n    A class representing read/write/execute permissions.  Instantiate\
+    \ with any\n    portion of the file's mode that includes the permission bits.\n\
+    \n    @type user: L{RWX}\n    @ivar user: User/Owner permissions\n\n    @type\
+    \ group: L{RWX}\n    @ivar group: Group permissions\n\n    @type other: L{RWX}\n\
+    \    @ivar other: Other/World permissions\n\n    @since: 11.1\n    \"\"\"\n\n\
+    \    compareAttributes = (\"user\", \"group\", \"other\")\n\n    def __init__(self,\
+    \ statModeInt: int) -> None:\n        self.user, self.group, self.other = (\n\
+    \            RWX(*(statModeInt & bit > 0 for bit in bitGroup))\n            for\
+    \ bitGroup in [\n                [S_IRUSR, S_IWUSR, S_IXUSR],\n              \
+    \  [S_IRGRP, S_IWGRP, S_IXGRP],\n                [S_IROTH, S_IWOTH, S_IXOTH],\n\
+    \            ]\n        )\n\n    def __repr__(self) -> str:\n        return f\"\
+    [{str(self.user)} | {str(self.group)} | {str(self.other)}]\"\n\n    def shorthand(self)\
+    \ -> str:\n        \"\"\"\n        Returns a short string representing the permission\
+    \ bits.  Looks like\n        what is printed by command line utilities such as\
+    \ 'ls -l'\n        (e.g. 'rwx-wx--x')\n\n        @return: The shorthand string.\n\
+    \        @rtype: L{str}\n        \"\"\"\n        return \"\".join([x.shorthand()\
+    \ for x in (self.user, self.group, self.other)])\n\n\ndef _asFilesystemBytes(path:\
+    \ Union[bytes, str], encoding: Optional[str] = \"\") -> bytes:\n    \"\"\"\n \
+    \   Return C{path} as a string of L{bytes} suitable for use on this system's\n\
+    \    filesystem.\n\n    @param path: The path to be made suitable.\n    @type\
+    \ path: L{bytes} or L{unicode}\n    @param encoding: The encoding to use if coercing\
+    \ to L{bytes}. If none is\n        given, L{sys.getfilesystemencoding} is used.\n\
+    \n    @return: L{bytes}\n    \"\"\"\n    if isinstance(path, bytes):\n       \
+    \ return path\n    else:\n        if not encoding:\n            encoding = sys.getfilesystemencoding()\n\
+    \        return path.encode(encoding, errors=\"surrogateescape\")\n\n\ndef _asFilesystemText(path:\
+    \ Union[bytes, str], encoding: Optional[str] = None) -> str:\n    \"\"\"\n   \
+    \ Return C{path} as a string of L{unicode} suitable for use on this system's\n\
+    \    filesystem.\n\n    @param path: The path to be made suitable.\n    @type\
+    \ path: L{bytes} or L{unicode}\n\n    @param encoding: The encoding to use if\
+    \ coercing to L{unicode}. If none\n        is given, L{sys.getfilesystemencoding}\
+    \ is used.\n\n    @return: L{unicode}\n    \"\"\"\n    if isinstance(path, str):\n\
+    \        return path\n    else:\n        if encoding is None:\n            encoding\
+    \ = sys.getfilesystemencoding()\n        return path.decode(encoding, errors=\"\
+    surrogateescape\")\n\n\ndef _coerceToFilesystemEncoding(\n    path: AnyStr, newpath:\
+    \ Union[bytes, str], encoding: Optional[str] = None\n) -> AnyStr:\n    \"\"\"\n\
+    \    Return a C{newpath} that is suitable for joining to C{path}.\n\n    @param\
+    \ path: The path that it should be suitable for joining to.\n    @param newpath:\
+    \ The new portion of the path to be coerced if needed.\n    @param encoding: If\
+    \ coerced, the encoding that will be used.\n    \"\"\"\n    if isinstance(path,\
+    \ bytes):\n        return _asFilesystemBytes(newpath, encoding=encoding)\n   \
+    \ else:\n        return _asFilesystemText(newpath, encoding=encoding)\n\n\n@comparable\n\
+    @implementer(IFilePath)\nclass FilePath(AbstractFilePath[AnyStr]):\n    \"\"\"\
+    \n    I am a path on the filesystem that only permits 'downwards' access.\n\n\
+    \    Instantiate me with a pathname (for example,\n    FilePath('/home/myuser/public_html'))\
+    \ and I will attempt to only provide\n    access to files which reside inside\
+    \ that path.  I may be a path to a file,\n    a directory, or a file which does\
+    \ not exist.\n\n    The correct way to use me is to instantiate me, and then do\
+    \ ALL filesystem\n    access through me.  In other words, do not import the 'os'\
+    \ module; if you\n    need to open a file, call my 'open' method.  If you need\
+    \ to list a\n    directory, call my 'path' method.\n\n    Even if you pass me\
+    \ a relative path, I will convert that to an absolute\n    path internally.\n\n\
+    \    The type of C{path} when instantiating decides the mode of the L{FilePath}.\n\
+    \    That is, C{FilePath(b\"/\")} will return a L{bytes} mode L{FilePath}, and\n\
+    \    C{FilePath(u\"/\")} will return a L{unicode} mode L{FilePath}.\n    C{FilePath(\"\
+    /\")} will return a L{bytes} mode L{FilePath} on Python 2, and a\n    L{unicode}\
+    \ mode L{FilePath} on Python 3.\n\n    Methods that return a new L{FilePath} use\
+    \ the type of the given subpath to\n    decide its mode. For example, C{FilePath(b\"\
+    /\").child(u\"tmp\")} will return a\n    L{unicode} mode L{FilePath}.\n\n    @type\
+    \ alwaysCreate: L{bool}\n    @ivar alwaysCreate: When opening this file, only\
+    \ succeed if the file does\n        not already exist.\n\n    @ivar path: The\
+    \ path from which 'downward' traversal is permitted.\n    \"\"\"\n\n    _statinfo\
+    \ = None\n    path: AnyStr\n\n    def __init__(self, path: AnyStr, alwaysCreate:\
+    \ bool = False) -> None:\n        \"\"\"\n        Convert a path string to an\
+    \ absolute path if necessary and initialize\n        the L{FilePath} with the\
+    \ result.\n        \"\"\"\n        self.path = abspath(path)\n        self.alwaysCreate\
+    \ = alwaysCreate\n\n    if TYPE_CHECKING:\n\n        def sibling(self: _Self,\
+    \ path: OtherAnyStr) -> FilePath[OtherAnyStr]:\n            ...\n\n        def\
+    \ descendant(self, segments: Sequence[OtherAnyStr]) -> FilePath[OtherAnyStr]:\n\
+    \            ...\n\n        def parents(self) -> Iterable[FilePath[AnyStr]]:\n\
+    \            ...\n\n        # provided by @comparable\n        def __gt__(self,\
+    \ other: object) -> bool:\n            ...\n\n        def __ge__(self, other:\
+    \ object) -> bool:\n            ...\n\n        def __lt__(self, other: object)\
+    \ -> bool:\n            ...\n\n        def __le__(self, other: object) -> bool:\n\
+    \            ...\n\n        def __eq__(self, other: object) -> bool:\n       \
+    \     ...\n\n        def __ne__(self, other: object) -> bool:\n            ...\n\
+    \n    def clonePath(\n        self, path: OtherAnyStr, alwaysCreate: bool = False\n\
+    \    ) -> FilePath[OtherAnyStr]:\n        \"\"\"\n        Make an object of the\
+    \ same type as this FilePath, but with path of\n        C{path}.\n        \"\"\
+    \"\n        return FilePath(path)\n\n    def __getstate__(self) -> Dict[str, object]:\n\
+    \        \"\"\"\n        Support serialization by discarding cached L{os.stat}\
+    \ results and\n        returning everything else.\n        \"\"\"\n        d =\
+    \ self.__dict__.copy()\n        if \"_statinfo\" in d:\n            del d[\"_statinfo\"\
+    ]\n        return d\n\n    @property\n    def sep(self) -> AnyStr:\n        \"\
+    \"\"\n        Return a filesystem separator.\n\n        @return: The native filesystem\
+    \ separator.\n        @returntype: The same type as C{self.path}.\n        \"\"\
+    \"\n        return _coerceToFilesystemEncoding(self.path, os.sep)\n\n    def _asBytesPath(self,\
+    \ encoding: Optional[str] = None) -> bytes:\n        \"\"\"\n        Return the\
+    \ path of this L{FilePath} as bytes.\n\n        @param encoding: The encoding\
+    \ to use if coercing to L{bytes}. If none is\n            given, L{sys.getfilesystemencoding}\
+    \ is used.\n\n        @return: L{bytes}\n        \"\"\"\n        return _asFilesystemBytes(self.path,\
+    \ encoding=encoding)\n\n    def _asTextPath(self, encoding: Optional[str] = None)\
+    \ -> str:\n        \"\"\"\n        Return the path of this L{FilePath} as text.\n\
+    \n        @param encoding: The encoding to use if coercing to L{unicode}. If none\n\
+    \            is given, L{sys.getfilesystemencoding} is used.\n\n        @return:\
+    \ L{unicode}\n        \"\"\"\n        return _asFilesystemText(self.path, encoding=encoding)\n\
+    \n    def asBytesMode(self, encoding: Optional[str] = None) -> FilePath[bytes]:\n\
+    \        \"\"\"\n        Return this L{FilePath} in L{bytes}-mode.\n\n       \
+    \ @param encoding: The encoding to use if coercing to L{bytes}. If none is\n \
+    \           given, L{sys.getfilesystemencoding} is used.\n\n        @return: L{bytes}\
+    \ mode L{FilePath}\n        \"\"\"\n        if isinstance(self.path, str):\n \
+    \           return self.clonePath(self._asBytesPath(encoding=encoding))\n    \
+    \    return self\n\n    def asTextMode(self, encoding: Optional[str] = None) ->\
+    \ FilePath[str]:\n        \"\"\"\n        Return this L{FilePath} in L{unicode}-mode.\n\
+    \n        @param encoding: The encoding to use if coercing to L{unicode}. If none\n\
+    \            is given, L{sys.getfilesystemencoding} is used.\n\n        @return:\
+    \ L{unicode} mode L{FilePath}\n        \"\"\"\n        if isinstance(self.path,\
+    \ bytes):\n            return self.clonePath(self._asTextPath(encoding=encoding))\n\
+    \        return self\n\n    def _getPathAsSameTypeAs(self, pattern: OtherAnyStr)\
+    \ -> OtherAnyStr:\n        \"\"\"\n        If C{pattern} is C{bytes}, return L{FilePath.path}\
+    \ as L{bytes}.\n        Otherwise, return L{FilePath.path} as L{unicode}.\n\n\
+    \        @param pattern: The new element of the path that L{FilePath.path} may\n\
+    \            need to be coerced to match.\n        \"\"\"\n        if isinstance(pattern,\
+    \ bytes):\n            return self._asBytesPath()\n        else:\n           \
+    \ return self._asTextPath()\n\n    def child(self, path: OtherAnyStr) -> FilePath[OtherAnyStr]:\n\
+    \        \"\"\"\n        Create and return a new L{FilePath} representing a path\
+    \ contained by\n        C{self}.\n\n        @param path: The base name of the\
+    \ new L{FilePath}.  If this contains\n            directory separators or parent\
+    \ references it will be rejected.\n        @type path: L{bytes} or L{unicode}\n\
+    \n        @raise InsecurePath: If the result of combining this path with C{path}\n\
+    \            would result in a path which is not a direct child of this path.\n\
+    \n        @return: The child path.\n        @rtype: L{FilePath} with a mode equal\
+    \ to the type of C{path}.\n        \"\"\"\n        colon = _coerceToFilesystemEncoding(path,\
+    \ \":\")\n        sep = _coerceToFilesystemEncoding(path, os.sep)\n        ourPath\
+    \ = self._getPathAsSameTypeAs(path)\n\n        if platform.isWindows() and path.count(colon):\n\
+    \            # Catch paths like C:blah that don't have a slash\n            raise\
+    \ InsecurePath(f\"{path!r} contains a colon.\")\n\n        norm = normpath(path)\n\
+    \        if sep in norm:\n            raise InsecurePath(f\"{path!r} contains\
+    \ one or more directory separators\")\n\n        newpath = abspath(joinpath(ourPath,\
+    \ norm))\n        if not newpath.startswith(ourPath):\n            raise InsecurePath(f\"\
+    {newpath!r} is not a child of {ourPath!r}\")\n        return self.clonePath(newpath)\n\
+    \n    def preauthChild(self, path: OtherAnyStr) -> FilePath[OtherAnyStr]:\n  \
+    \      \"\"\"\n        Use me if C{path} might have slashes in it, but you know\
+    \ they're safe.\n\n        @param path: A relative path (ie, a path not starting\
+    \ with C{\"/\"})\n            which will be interpreted as a child or descendant\
+    \ of this path.\n        @type path: L{bytes} or L{unicode}\n\n        @return:\
+    \ The child path.\n        @rtype: L{FilePath} with a mode equal to the type of\
+    \ C{path}.\n        \"\"\"\n        ourPath = self._getPathAsSameTypeAs(path)\n\
+    \n        newpath = abspath(joinpath(ourPath, normpath(path)))\n        if not\
+    \ newpath.startswith(ourPath):\n            raise InsecurePath(f\"{newpath!r}\
+    \ is not a child of {ourPath!r}\")\n        return self.clonePath(newpath)\n\n\
+    \    def childSearchPreauth(\n        self, *paths: OtherAnyStr\n    ) -> Optional[FilePath[OtherAnyStr]]:\n\
+    \        \"\"\"\n        Return my first existing child with a name in C{paths}.\n\
+    \n        C{paths} is expected to be a list of *pre-secured* path fragments;\n\
+    \        in most cases this will be specified by a system administrator and not\n\
+    \        an arbitrary user.\n\n        If no appropriately-named children exist,\
+    \ this will return L{None}.\n\n        @return: L{None} or the child path.\n \
+    \       @rtype: L{None} or L{FilePath}\n        \"\"\"\n        for child in paths:\n\
+    \            p = self._getPathAsSameTypeAs(child)\n            jp = joinpath(p,\
+    \ child)\n            if exists(jp):\n                return self.clonePath(jp)\n\
+    \        return None\n\n    def siblingExtensionSearch(\n        self, *exts:\
+    \ OtherAnyStr\n    ) -> Optional[FilePath[OtherAnyStr]]:\n        \"\"\"\n   \
+    \     Attempt to return a path with my name, given multiple possible\n       \
+    \ extensions.\n\n        Each extension in C{exts} will be tested and the first\
+    \ path which\n        exists will be returned.  If no path exists, L{None} will\
+    \ be returned.\n        If C{''} is in C{exts}, then if the file referred to by\
+    \ this path\n        exists, C{self} will be returned.\n\n        The extension\
+    \ '*' has a magic meaning, which means \"any path that\n        begins with C{self.path\
+    \ + '.'} is acceptable\".\n        \"\"\"\n        for ext in exts:\n        \
+    \    if not ext and self.exists():\n                return self.clonePath(self._getPathAsSameTypeAs(ext))\n\
+    \n            p = self._getPathAsSameTypeAs(ext)\n            star = _coerceToFilesystemEncoding(ext,\
+    \ \"*\")\n            dot = _coerceToFilesystemEncoding(ext, \".\")\n\n      \
+    \      if ext == star:\n                basedot = basename(p) + dot\n        \
+    \        for fn in listdir(dirname(p)):\n                    if fn.startswith(basedot):\n\
+    \                        return self.clonePath(joinpath(dirname(p), fn))\n   \
+    \         p2 = p + ext\n            if exists(p2):\n                return self.clonePath(p2)\n\
+    \        return None\n\n    def realpath(self) -> FilePath[AnyStr]:\n        \"\
+    \"\"\n        Returns the absolute target as a L{FilePath} if self is a link,\
+    \ self\n        otherwise.\n\n        The absolute link is the ultimate file or\
+    \ directory the\n        link refers to (for instance, if the link refers to another\
+    \ link, and\n        another...).  If the filesystem does not support symlinks,\
+    \ or\n        if the link is cyclical, raises a L{LinkError}.\n\n        Behaves\
+    \ like L{os.path.realpath} in that it does not resolve link\n        names in\
+    \ the middle (ex. /x/y/z, y is a link to w - realpath on z\n        will return\
+    \ /x/y/z, not /x/w/z).\n\n        @return: L{FilePath} of the target path.\n \
+    \       @rtype: L{FilePath}\n        @raises LinkError: if links are not supported\
+    \ or links are cyclical.\n        \"\"\"\n        if self.islink():\n        \
+    \    result = os.path.realpath(self.path)\n            if result == self.path:\n\
+    \                raise LinkError(\"Cyclical link - will loop forever\")\n    \
+    \        return self.clonePath(result)\n        return self\n\n    def siblingExtension(self,\
+    \ ext: OtherAnyStr) -> FilePath[OtherAnyStr]:\n        \"\"\"\n        Attempt\
+    \ to return a path with my name, given the extension at C{ext}.\n\n        @param\
+    \ ext: File-extension to search for.\n        @type ext: L{bytes} or L{unicode}\n\
+    \n        @return: The sibling path.\n        @rtype: L{FilePath} with the same\
+    \ mode as the type of C{ext}.\n        \"\"\"\n        ourPath = self._getPathAsSameTypeAs(ext)\n\
+    \        return self.clonePath(ourPath + ext)\n\n    def linkTo(self, linkFilePath:\
+    \ FilePath[AnyStr]) -> None:\n        \"\"\"\n        Creates a symlink to self\
+    \ to at the path in the L{FilePath}\n        C{linkFilePath}.\n\n        Only\
+    \ works on posix systems due to its dependence on\n        L{os.symlink}.  Propagates\
+    \ L{OSError}s up from L{os.symlink} if\n        C{linkFilePath.parent()} does\
+    \ not exist, or C{linkFilePath} already\n        exists.\n\n        @param linkFilePath:\
+    \ a FilePath representing the link to be created.\n        @type linkFilePath:\
+    \ L{FilePath}\n        \"\"\"\n        os.symlink(self.path, linkFilePath.path)\n\
+    \n    def open(self, mode: FileMode = \"r\") -> IO[bytes]:\n        \"\"\"\n \
+    \       Open this file using C{mode} or for writing if C{alwaysCreate} is\n  \
+    \      C{True}.\n\n        In all cases the file is opened in binary mode, so\
+    \ it is not necessary\n        to include C{\"b\"} in C{mode}.\n\n        @param\
+    \ mode: The mode to open the file in.  Default is C{\"r\"}.\n        @raises AssertionError:\
+    \ If C{\"a\"} is included in the mode and\n            C{alwaysCreate} is C{True}.\n\
+    \        @return: An open file-like object.\n        \"\"\"\n        if self.alwaysCreate:\n\
+    \            assert \"a\" not in mode, (\n                \"Appending not supported\
+    \ when \" \"alwaysCreate == True\"\n            )\n            return self.create()\n\
+    \        # Make sure we open with exactly one \"b\" in the mode.\n        return\
+    \ open(self.path, mode.replace(\"b\", \"\") + \"b\")\n\n    # stat methods below\n\
+    \n    def restat(self, reraise: bool = True) -> None:\n        \"\"\"\n      \
+    \  Re-calculate cached effects of 'stat'.  To refresh information on this\n  \
+    \      path after you know the filesystem may have changed, call this method.\n\
+    \n        @param reraise: a boolean.  If true, re-raise exceptions from\n    \
+    \        L{os.stat}; otherwise, mark this path as not existing, and remove\n \
+    \           any cached stat information.\n\n        @raise Exception: If C{reraise}\
+    \ is C{True} and an exception occurs\n            while reloading metadata.\n\
+    \        \"\"\"\n        try:\n            self._statinfo = stat(self.path)\n\
+    \        except OSError:\n            self._statinfo = None\n            if reraise:\n\
+    \                raise\n\n    def changed(self) -> None:\n        \"\"\"\n   \
+    \     Clear any cached information about the state of this path on disk.\n\n \
+    \       @since: 10.1.0\n        \"\"\"\n        self._statinfo = None\n\n    def\
+    \ chmod(self, mode: int) -> None:\n        \"\"\"\n        Changes the permissions\
+    \ on self, if possible.  Propagates errors from\n        L{os.chmod} up.\n\n \
+    \       @param mode: integer representing the new permissions desired (same as\n\
+    \            the command line chmod)\n        @type mode: L{int}\n        \"\"\
+    \"\n        os.chmod(self.path, mode)\n\n    def getsize(self) -> int:\n     \
+    \   \"\"\"\n        Retrieve the size of this file in bytes.\n\n        @return:\
+    \ The size of the file at this file path in bytes.\n        @raise Exception:\
+    \ if the size cannot be obtained.\n        @rtype: L{int}\n        \"\"\"\n  \
+    \      st = self._statinfo\n        if not st:\n            self.restat()\n  \
+    \          st = self._statinfo\n        assert st is not None\n        return\
+    \ st.st_size\n\n    def getModificationTime(self) -> float:\n        \"\"\"\n\
+    \        Retrieve the time of last access from this file.\n\n        @return:\
+    \ a number of seconds from the epoch.\n        @rtype: L{float}\n        \"\"\"\
+    \n        st = self._statinfo\n        if not st:\n            self.restat()\n\
+    \            st = self._statinfo\n        assert st is not None\n        return\
+    \ float(st.st_mtime)\n\n    def getStatusChangeTime(self) -> float:\n        \"\
+    \"\"\n        Retrieve the time of the last status change for this file.\n\n \
+    \       @return: a number of seconds from the epoch.\n        @rtype: L{float}\n\
+    \        \"\"\"\n        st = self._statinfo\n        if not st:\n           \
+    \ self.restat()\n            st = self._statinfo\n        assert st is not None\n\
+    \        return float(st.st_ctime)\n\n    def getAccessTime(self) -> float:\n\
+    \        \"\"\"\n        Retrieve the time that this file was last accessed.\n\
+    \n        @return: a number of seconds from the epoch.\n        @rtype: L{float}\n\
+    \        \"\"\"\n        st = self._statinfo\n        if not st:\n           \
+    \ self.restat()\n            st = self._statinfo\n        assert st is not None\n\
+    \        return float(st.st_atime)\n\n    def getInodeNumber(self) -> int:\n \
+    \       \"\"\"\n        Retrieve the file serial number, also called inode number,\
+    \ which\n        distinguishes this file from all other files on the same device.\n\
+    \n        @raise NotImplementedError: if the platform is Windows, since the\n\
+    \            inode number would be a dummy value for all files in Windows\n  \
+    \      @return: a number representing the file serial number\n        @rtype:\
+    \ L{int}\n        @since: 11.0\n        \"\"\"\n        if platform.isWindows():\n\
+    \            raise NotImplementedError\n\n        st = self._statinfo\n      \
+    \  if not st:\n            self.restat()\n            st = self._statinfo\n  \
+    \      assert st is not None\n        return st.st_ino\n\n    def getDevice(self)\
+    \ -> int:\n        \"\"\"\n        Retrieves the device containing the file. \
+    \ The inode number and device\n        number together uniquely identify the file,\
+    \ but the device number is\n        not necessarily consistent across reboots\
+    \ or system crashes.\n\n        @raise NotImplementedError: if the platform is\
+    \ Windows, since the\n            device number would be 0 for all partitions\
+    \ on a Windows platform\n\n        @return: a number representing the device\n\
+    \        @rtype: L{int}\n\n        @since: 11.0\n        \"\"\"\n        if platform.isWindows():\n\
+    \            raise NotImplementedError\n\n        st = self._statinfo\n      \
+    \  if not st:\n            self.restat()\n            st = self._statinfo\n  \
+    \      assert st is not None\n        return st.st_dev\n\n    def getNumberOfHardLinks(self)\
+    \ -> int:\n        \"\"\"\n        Retrieves the number of hard links to the file.\n\
+    \n        This count keeps track of how many directories have entries for this\n\
+    \        file. If the count is ever decremented to zero then the file itself is\n\
+    \        discarded as soon as no process still holds it open.  Symbolic links\n\
+    \        are not counted in the total.\n\n        @raise NotImplementedError:\
+    \ if the platform is Windows, since Windows\n            doesn't maintain a link\
+    \ count for directories, and L{os.stat} does\n            not set C{st_nlink}\
+    \ on Windows anyway.\n        @return: the number of hard links to the file\n\
+    \        @rtype: L{int}\n        @since: 11.0\n        \"\"\"\n        if platform.isWindows():\n\
+    \            raise NotImplementedError\n\n        st = self._statinfo\n      \
+    \  if not st:\n            self.restat()\n            st = self._statinfo\n  \
+    \      assert st is not None\n        return st.st_nlink\n\n    def getUserID(self)\
+    \ -> int:\n        \"\"\"\n        Returns the user ID of the file's owner.\n\n\
+    \        @raise NotImplementedError: if the platform is Windows, since the UID\n\
+    \            is always 0 on Windows\n        @return: the user ID of the file's\
+    \ owner\n        @rtype: L{int}\n        @since: 11.0\n        \"\"\"\n      \
+    \  if platform.isWindows():\n            raise NotImplementedError\n\n       \
+    \ st = self._statinfo\n        if not st:\n            self.restat()\n       \
+    \     st = self._statinfo\n        assert st is not None\n        return st.st_uid\n\
+    \n    def getGroupID(self) -> int:\n        \"\"\"\n        Returns the group\
+    \ ID of the file.\n\n        @raise NotImplementedError: if the platform is Windows,\
+    \ since the GID\n            is always 0 on windows\n        @return: the group\
+    \ ID of the file\n        @rtype: L{int}\n        @since: 11.0\n        \"\"\"\
+    \n        if platform.isWindows():\n            raise NotImplementedError\n\n\
+    \        st = self._statinfo\n        if not st:\n            self.restat()\n\
+    \            st = self._statinfo\n        assert st is not None\n        return\
+    \ st.st_gid\n\n    def getPermissions(self) -> Permissions:\n        \"\"\"\n\
+    \        Returns the permissions of the file.  Should also work on Windows,\n\
+    \        however, those permissions may not be what is expected in Windows.\n\n\
+    \        @return: the permissions for the file\n        @rtype: L{Permissions}\n\
+    \        @since: 11.1\n        \"\"\"\n        st = self._statinfo\n        if\
+    \ not st:\n            self.restat()\n            st = self._statinfo\n      \
+    \  assert st is not None\n        return Permissions(S_IMODE(st.st_mode))\n\n\
+    \    def exists(self) -> bool:\n        \"\"\"\n        Check if this L{FilePath}\
+    \ exists.\n\n        @return: C{True} if the stats of C{path} can be retrieved\
+    \ successfully,\n            C{False} in the other cases.\n        @rtype: L{bool}\n\
+    \        \"\"\"\n        if self._statinfo:\n            return True\n       \
+    \ else:\n            self.restat(False)\n            if self._statinfo:\n    \
+    \            return True\n            else:\n                return False\n\n\
+    \    def isdir(self) -> bool:\n        \"\"\"\n        Check if this L{FilePath}\
+    \ refers to a directory.\n\n        @return: C{True} if this L{FilePath} refers\
+    \ to a directory, C{False}\n            otherwise.\n        @rtype: L{bool}\n\
+    \        \"\"\"\n        st = self._statinfo\n        if not st:\n           \
+    \ self.restat(False)\n            st = self._statinfo\n            if not st:\n\
+    \                return False\n        return S_ISDIR(st.st_mode)\n\n    def isfile(self)\
+    \ -> bool:\n        \"\"\"\n        Check if this file path refers to a regular\
+    \ file.\n\n        @return: C{True} if this L{FilePath} points to a regular file\
+    \ (not a\n            directory, socket, named pipe, etc), C{False} otherwise.\n\
+    \        @rtype: L{bool}\n        \"\"\"\n        st = self._statinfo\n      \
+    \  if not st:\n            self.restat(False)\n            st = self._statinfo\n\
+    \            if not st:\n                return False\n        return S_ISREG(st.st_mode)\n\
+    \n    def isBlockDevice(self) -> bool:\n        \"\"\"\n        Returns whether\
+    \ the underlying path is a block device.\n\n        @return: C{True} if it is\
+    \ a block device, C{False} otherwise\n        @rtype: L{bool}\n        @since:\
+    \ 11.1\n        \"\"\"\n        st = self._statinfo\n        if not st:\n    \
+    \        self.restat(False)\n            st = self._statinfo\n            if not\
+    \ st:\n                return False\n        return S_ISBLK(st.st_mode)\n\n  \
+    \  def isSocket(self) -> bool:\n        \"\"\"\n        Returns whether the underlying\
+    \ path is a socket.\n\n        @return: C{True} if it is a socket, C{False} otherwise\n\
+    \        @rtype: L{bool}\n        @since: 11.1\n        \"\"\"\n        st = self._statinfo\n\
+    \        if not st:\n            self.restat(False)\n            st = self._statinfo\n\
+    \            if not st:\n                return False\n        return S_ISSOCK(st.st_mode)\n\
+    \n    def islink(self) -> bool:\n        \"\"\"\n        Check if this L{FilePath}\
+    \ points to a symbolic link.\n\n        @return: C{True} if this L{FilePath} points\
+    \ to a symbolic link,\n            C{False} otherwise.\n        @rtype: L{bool}\n\
+    \        \"\"\"\n        # We can't use cached stat results here, because that\
+    \ is the stat of\n        # the destination - (see #1773) which in *every case*\
+    \ but this one is\n        # the right thing to use.  We could call lstat here\
+    \ and use that, but\n        # it seems unlikely we'd actually save any work that\
+    \ way.  -glyph\n        return islink(self.path)\n\n    def isabs(self) -> bool:\n\
+    \        \"\"\"\n        Check if this L{FilePath} refers to an absolute path.\n\
+    \n        This always returns C{True}.\n\n        @return: C{True}, always.\n\
+    \        @rtype: L{bool}\n        \"\"\"\n        return isabs(self.path)\n\n\
+    \    def listdir(self) -> List[AnyStr]:\n        \"\"\"\n        List the base\
+    \ names of the direct children of this L{FilePath}.\n\n        @return: A L{list}\
+    \ of L{bytes}/L{unicode} giving the names of the\n            contents of the\
+    \ directory this L{FilePath} refers to. These names\n            are relative\
+    \ to this L{FilePath}.\n        @rtype: L{list}\n\n        @raise OSError: Any\
+    \ exception the platform L{os.listdir} implementation\n            may raise.\n\
+    \        \"\"\"\n        return listdir(self.path)\n\n    def splitext(self) ->\
+    \ Tuple[AnyStr, AnyStr]:\n        \"\"\"\n        Split the file path into a pair\
+    \ C{(root, ext)} such that\n        C{root + ext == path}.\n\n        @return:\
+    \ Tuple where the first item is the filename and second item is\n            the\
+    \ file extension. See Python docs for L{os.path.splitext}.\n        @rtype: L{tuple}\n\
+    \        \"\"\"\n        return splitext(self.path)\n\n    def __repr__(self)\
+    \ -> str:\n        return f\"FilePath({self.path!r})\"\n\n    def touch(self)\
+    \ -> None:\n        \"\"\"\n        Updates the access and last modification times\
+    \ of the file at this\n        file path to the current time. Also creates the\
+    \ file if it does not\n        already exist.\n\n        @raise Exception: if\
+    \ unable to create or modify the last modification\n            time of the file.\n\
+    \        \"\"\"\n        try:\n            self.open(\"a\").close()\n        except\
+    \ OSError:\n            pass\n        utime(self.path, None)\n\n    def remove(self)\
+    \ -> None:\n        \"\"\"\n        Removes the file or directory that is represented\
+    \ by self.  If\n        C{self.path} is a directory, recursively remove all its\
+    \ children\n        before removing the directory. If it's a file or link, just\
+    \ delete it.\n        \"\"\"\n        if self.isdir() and not self.islink():\n\
+    \            for child in self.children():\n                child.remove()\n \
+    \           os.rmdir(self.path)\n        else:\n            os.remove(self.path)\n\
+    \        self.changed()\n\n    def makedirs(self, ignoreExistingDirectory: bool\
+    \ = False) -> None:\n        \"\"\"\n        Create all directories not yet existing\
+    \ in C{path} segments, using\n        L{os.makedirs}.\n\n        @param ignoreExistingDirectory:\
+    \ Don't raise L{OSError} if directory\n            already exists.\n        @type\
+    \ ignoreExistingDirectory: L{bool}\n\n        @return: L{None}\n        \"\"\"\
+    \n        try:\n            os.makedirs(self.path)\n        except OSError as\
+    \ e:\n            if not (\n                e.errno == errno.EEXIST and ignoreExistingDirectory\
+    \ and self.isdir()\n            ):\n                raise\n\n    def globChildren(self,\
+    \ pattern: OtherAnyStr) -> List[FilePath[OtherAnyStr]]:\n        \"\"\"\n    \
+    \    Assuming I am representing a directory, return a list of FilePaths\n    \
+    \    representing my children that match the given pattern.\n\n        @param\
+    \ pattern: A glob pattern to use to match child paths.\n        @type pattern:\
+    \ L{unicode} or L{bytes}\n\n        @return: A L{list} of matching children.\n\
+    \        @rtype: L{list} of L{FilePath}, with the mode of C{pattern}'s type\n\
+    \        \"\"\"\n        sep = _coerceToFilesystemEncoding(pattern, os.sep)\n\
+    \        ourPath = self._getPathAsSameTypeAs(pattern)\n\n        import glob\n\
+    \n        path = ourPath[-1] == sep and ourPath + pattern or sep.join([ourPath,\
+    \ pattern])\n        return [self.clonePath(p) for p in glob.glob(path)]\n\n \
+    \   def basename(self) -> AnyStr:\n        \"\"\"\n        Retrieve the final\
+    \ component of the file path's path (everything\n        after the final path\
+    \ separator).\n\n        @return: The final component of the L{FilePath}'s path\
+    \ (Everything\n            after the final path separator).\n        @rtype: the\
+    \ same type as this L{FilePath}'s C{path} attribute\n        \"\"\"\n        return\
+    \ basename(self.path)\n\n    def dirname(self) -> AnyStr:\n        \"\"\"\n  \
+    \      Retrieve all of the components of the L{FilePath}'s path except the\n \
+    \       last one (everything up to the final path separator).\n\n        @return:\
+    \ All of the components of the L{FilePath}'s path except the\n            last\
+    \ one (everything up to the final path separator).\n        @rtype: the same type\
+    \ as this L{FilePath}'s C{path} attribute\n        \"\"\"\n        return dirname(self.path)\n\
+    \n    def parent(self) -> FilePath[AnyStr]:\n        \"\"\"\n        A file path\
+    \ for the directory containing the file at this file path.\n\n        @return:\
+    \ A L{FilePath} representing the path which directly contains\n            this\
+    \ L{FilePath}.\n        @rtype: L{FilePath}\n        \"\"\"\n        return self.clonePath(self.dirname())\n\
+    \n    def setContent(self, content: bytes, ext: Union[str, bytes] = \".new\")\
+    \ -> None:\n        \"\"\"\n        Replace the file at this path with a new file\
+    \ that contains the given\n        bytes, trying to avoid data-loss in the meanwhile.\n\
+    \n        On UNIX-like platforms, this method does its best to ensure that by\
+    \ the\n        time this method returns, either the old contents I{or} the new\n\
+    \        contents of the file will be present at this path for subsequent\n  \
+    \      readers regardless of premature device removal, program crash, or power\n\
+    \        loss, making the following assumptions:\n\n            - your filesystem\
+    \ is journaled (i.e. your filesystem will not\n              I{itself} lose data\
+    \ due to power loss)\n\n            - your filesystem's C{rename()} is atomic\n\
+    \n            - your filesystem will not discard new data while preserving new\n\
+    \              metadata (see U{http://mjg59.livejournal.com/108257.html} for\n\
+    \              more detail)\n\n        On most versions of Windows there is no\
+    \ atomic C{rename()} (see\n        U{http://bit.ly/win32-overwrite} for more information),\
+    \ so this method\n        is slightly less helpful.  There is a small window where\
+    \ the file at\n        this path may be deleted before the new file is moved to\
+    \ replace it:\n        however, the new file will be fully written and flushed\
+    \ beforehand so\n        in the unlikely event that there is a crash at that point,\
+    \ it should be\n        possible for the user to manually recover the new version\
+    \ of their\n        data.  In the future, Twisted will support atomic file moves\
+    \ on those\n        versions of Windows which I{do} support them: see U{Twisted\
+    \ ticket\n        3004<http://twistedmatrix.com/trac/ticket/3004>}.\n\n      \
+    \  This method should be safe for use by multiple concurrent processes,\n    \
+    \    but note that it is not easy to predict which process's contents will\n \
+    \       ultimately end up on disk if they invoke this method at close to the\n\
+    \        same time.\n\n        @param content: The desired contents of the file\
+    \ at this path.\n        @type content: L{bytes}\n\n        @param ext: An extension\
+    \ to append to the temporary filename used to\n            store the bytes while\
+    \ they are being written.  This can be used to\n            make sure that temporary\
+    \ files can be identified by their suffix,\n            for cleanup in case of\
+    \ crashes.\n        @type ext: L{bytes}\n        \"\"\"\n        sib = self.temporarySibling(ext)\n\
+    \        with sib.open(\"w\") as f:\n            f.write(content)\n        if\
+    \ platform.isWindows() and exists(self.path):\n            os.unlink(self.path)\n\
+    \        os.rename(sib.path, self.asBytesMode().path)\n\n    def __cmp__(self,\
+    \ other: object) -> int:\n        if not isinstance(other, FilePath):\n      \
+    \      return NotImplemented\n        return cmp(self.path, other.path)\n\n  \
+    \  def createDirectory(self) -> None:\n        \"\"\"\n        Create the directory\
+    \ the L{FilePath} refers to.\n\n        @see: L{makedirs}\n\n        @raise OSError:\
+    \ If the directory cannot be created.\n        \"\"\"\n        os.mkdir(self.path)\n\
+    \n    def requireCreate(self, val: bool = True) -> None:\n        \"\"\"\n   \
+    \     Sets the C{alwaysCreate} variable.\n\n        @param val: C{True} or C{False},\
+    \ indicating whether opening this path\n            will be required to create\
+    \ the file or not.\n        @type val: L{bool}\n\n        @return: L{None}\n \
+    \       \"\"\"\n        self.alwaysCreate = val\n\n    def create(self) -> IO[bytes]:\n\
+    \        \"\"\"\n        Exclusively create a file, only if this file previously\
+    \ did not exist.\n\n        @return: A file-like object opened from this path.\n\
+    \        \"\"\"\n        fdint = os.open(self.path, _CREATE_FLAGS)\n\n       \
+    \ # XXX TODO: 'name' attribute of returned files is not mutable or\n        #\
+    \ settable via fdopen, so this file is slightly less functional than the\n   \
+    \     # one returned from 'open' by default.  send a patch to Python...\n\n  \
+    \      return cast(IO[bytes], os.fdopen(fdint, \"w+b\"))\n\n    @overload\n  \
+    \  def temporarySibling(self) -> FilePath[AnyStr]:\n        ...\n\n    @overload\n\
+    \    def temporarySibling(\n        self, extension: Optional[OtherAnyStr]\n \
+    \   ) -> FilePath[OtherAnyStr]:\n        ...\n\n    def temporarySibling(\n  \
+    \      self, extension: Optional[OtherAnyStr] = None\n    ) -> FilePath[OtherAnyStr]:\n\
+    \        \"\"\"\n        Construct a path referring to a sibling of this path.\n\
+    \n        The resulting path will be unpredictable, so that other subprocesses\n\
+    \        should neither accidentally attempt to refer to the same path before\
+    \ it\n        is created, nor they should other processes be able to guess its\
+    \ name\n        in advance.\n\n        @param extension: A suffix to append to\
+    \ the created filename.  (Note\n            that if you want an extension with\
+    \ a '.' you must include the '.'\n            yourself.)\n        @type extension:\
+    \ L{bytes} or L{unicode}\n\n        @return: a path object with the given extension\
+    \ suffix, C{alwaysCreate}\n            set to True.\n        @rtype: L{FilePath}\
+    \ with a mode equal to the type of C{extension}\n        \"\"\"\n        ext:\
+    \ OtherAnyStr\n        if extension is None:\n            # It's not possible\
+    \ to provide a default type argument which is why\n            # the overload\
+    \ is required.\n            ext = self.path[0:0]  # type:ignore[assignment]\n\
+    \        else:\n            ext = extension\n        ourPath = self._getPathAsSameTypeAs(ext)\n\
+    \        sib = self.sibling(\n            _secureEnoughString(ourPath) + self.clonePath(ourPath).basename()\
+    \ + ext\n        )\n        sib.requireCreate()\n        return sib\n\n    _chunkSize\
+    \ = 2**2**2**2\n\n    def copyTo(\n        self, destination: FilePath[OtherAnyStr],\
+    \ followLinks: bool = True\n    ) -> None:\n        \"\"\"\n        Copies self\
+    \ to destination.\n\n        If self doesn't exist, an OSError is raised.\n\n\
+    \        If self is a directory, this method copies its children (but not\n  \
+    \      itself) recursively to destination - if destination does not exist as a\n\
+    \        directory, this method creates it.  If destination is a file, an\n  \
+    \      IOError will be raised.\n\n        If self is a file, this method copies\
+    \ it to destination.  If\n        destination is a file, this method overwrites\
+    \ it.  If destination is a\n        directory, an IOError will be raised.\n\n\
+    \        If self is a link (and followLinks is False), self will be copied\n \
+    \       over as a new symlink with the same target as returned by os.readlink.\n\
+    \        That means that if it is absolute, both the old and new symlink will\n\
+    \        link to the same thing.  If it's relative, then perhaps not (and\n  \
+    \      it's also possible that this relative link will be broken).\n\n       \
+    \ File/directory permissions and ownership will NOT be copied over.\n\n      \
+    \  If followLinks is True, symlinks are followed so that they're treated\n   \
+    \     as their targets.  In other words, if self is a link, the link's target\n\
+    \        will be copied.  If destination is a link, self will be copied to the\n\
+    \        destination's target (the actual destination will be destination's\n\
+    \        target).  Symlinks under self (if self is a directory) will be\n    \
+    \    followed and its target's children be copied recursively.\n\n        If followLinks\
+    \ is False, symlinks will be copied over as symlinks.\n\n        @param destination:\
+    \ the destination (a FilePath) to which self\n            should be copied\n \
+    \       @param followLinks: whether symlinks in self should be treated as links\n\
+    \            or as their targets\n        \"\"\"\n        if self.islink() and\
+    \ not followLinks:\n            os.symlink(os.readlink(self.path), destination.path)\n\
+    \            return\n        # XXX TODO: *thorough* audit and documentation of\
+    \ the exact desired\n        # semantics of this code.  Right now the behavior\
+    \ of existent\n        # destination symlinks is convenient, and quite possibly\
+    \ correct, but\n        # its security properties need to be explained.\n    \
+    \    if self.isdir():\n            if not destination.exists():\n            \
+    \    destination.createDirectory()\n            for child in self.children():\n\
+    \                destChild = destination.child(child.basename())\n           \
+    \     child.copyTo(destChild, followLinks)\n        elif self.isfile():\n    \
+    \        with destination.open(\"w\") as writefile, self.open() as readfile:\n\
+    \                while 1:\n                    # XXX TODO: optionally use os.open,\
+    \ os.read and\n                    # O_DIRECT and use os.fstatvfs to determine\
+    \ chunk sizes\n                    # and make *****sure**** copy is page-atomic;\
+    \ the\n                    # following is good enough for 99.9% of everybody and\n\
+    \                    # won't take a week to audit though.\n                  \
+    \  chunk = readfile.read(self._chunkSize)\n                    writefile.write(chunk)\n\
+    \                    if len(chunk) < self._chunkSize:\n                      \
+    \  break\n        elif not self.exists():\n            raise OSError(errno.ENOENT,\
+    \ \"No such file or directory\")\n        else:\n            # If you see the\
+    \ following message because you want to copy\n            # symlinks, fifos, block\
+    \ devices, character devices, or unix\n            # sockets, please feel free\
+    \ to add support to do sensible things in\n            # reaction to those types!\n\
+    \            raise NotImplementedError(\"Only copying of files and directories\
+    \ supported\")\n\n    def moveTo(\n        self, destination: FilePath[OtherAnyStr],\
+    \ followLinks: bool = True\n    ) -> None:\n        \"\"\"\n        Move self\
+    \ to destination - basically renaming self to whatever\n        destination is\
+    \ named.\n\n        If destination is an already-existing directory,\n       \
+    \ moves all children to destination if destination is empty.  If\n        destination\
+    \ is a non-empty directory, or destination is a file, an\n        OSError will\
+    \ be raised.\n\n        If moving between filesystems, self needs to be copied,\
+    \ and everything\n        that applies to copyTo applies to moveTo.\n\n      \
+    \  @param destination: the destination (a FilePath) to which self\n          \
+    \  should be copied\n        @param followLinks: whether symlinks in self should\
+    \ be treated as links\n            or as their targets (only applicable when moving\
+    \ between\n            filesystems)\n        \"\"\"\n        try:\n          \
+    \  os.rename(self._getPathAsSameTypeAs(destination.path), destination.path)\n\
+    \        except OSError as ose:\n            if ose.errno == errno.EXDEV:\n  \
+    \              # man 2 rename, ubuntu linux 5.10 \"breezy\":\n\n             \
+    \   #   oldpath and newpath are not on the same mounted filesystem.\n        \
+    \        #   (Linux permits a filesystem to be mounted at multiple\n         \
+    \       #   points, but rename(2) does not work across different mount\n     \
+    \           #   points, even if the same filesystem is mounted on both.)\n\n \
+    \               # that means it's time to copy trees of directories!\n       \
+    \         secsib = destination.temporarySibling()\n                self.copyTo(secsib,\
+    \ followLinks)  # slow\n                secsib.moveTo(destination, followLinks)\
+    \  # visible\n\n                # done creating new stuff.  let's clean me up.\n\
+    \                mysecsib = self.temporarySibling()\n                self.moveTo(mysecsib,\
+    \ followLinks)  # visible\n                mysecsib.remove()  # slow\n       \
+    \     else:\n                raise\n        else:\n            self.changed()\n\
+    \            destination.changed()\n\n\n### Dependency File: interfaces.py\n#\
+    \ Copyright (c) Twisted Matrix Laboratories.\n# See LICENSE for details.\n\n\"\
+    \"\"\nInterface documentation.\n\nMaintainer: Itamar Shtull-Trauring\n\"\"\"\n\
+    from __future__ import annotations\n\nfrom typing import (\n    TYPE_CHECKING,\n\
+    \    Any,\n    AnyStr,\n    Callable,\n    Iterable,\n    List,\n    Mapping,\n\
+    \    Optional,\n    Sequence,\n    Tuple,\n    Type,\n    Union,\n)\n\nfrom zope.interface\
+    \ import Attribute, Interface\n\nfrom twisted.python.failure import Failure\n\n\
+    if TYPE_CHECKING:\n    from socket import AddressFamily\n\n    try:\n        from\
+    \ OpenSSL.SSL import (\n            Connection as OpenSSLConnection,\n       \
+    \     Context as OpenSSLContext,\n        )\n    except ImportError:\n       \
+    \ OpenSSLConnection = OpenSSLContext = object  # type: ignore[misc,assignment]\n\
+    \n    from twisted.internet.abstract import FileDescriptor\n    from twisted.internet.address\
+    \ import IPv4Address, IPv6Address, UNIXAddress\n    from twisted.internet.defer\
+    \ import Deferred\n    from twisted.internet.protocol import (\n        ClientFactory,\n\
+    \        ConnectedDatagramProtocol,\n        DatagramProtocol,\n        Factory,\n\
+    \        ServerFactory,\n    )\n    from twisted.internet.ssl import ClientContextFactory\n\
+    \    from twisted.names.dns import Query, RRHeader\n    from twisted.protocols.tls\
+    \ import TLSMemoryBIOProtocol\n    from twisted.python.runtime import platform\n\
+    \n    if platform.supportsThreads():\n        from twisted.python.threadpool import\
+    \ ThreadPool\n    else:\n        ThreadPool = object  # type: ignore[misc, assignment]\n\
+    \n\nclass IAddress(Interface):\n    \"\"\"\n    An address, e.g. a TCP C{(host,\
+    \ port)}.\n\n    Default implementations are in L{twisted.internet.address}.\n\
+    \    \"\"\"\n\n\n### Reactor Interfaces\n\n\nclass IConnector(Interface):\n  \
+    \  \"\"\"\n    Object used to interface between connections and protocols.\n\n\
+    \    Each L{IConnector} manages one connection.\n    \"\"\"\n\n    def stopConnecting()\
+    \ -> None:\n        \"\"\"\n        Stop attempting to connect.\n        \"\"\"\
+    \n\n    def disconnect() -> None:\n        \"\"\"\n        Disconnect regardless\
+    \ of the connection state.\n\n        If we are connected, disconnect, if we are\
+    \ trying to connect,\n        stop trying.\n        \"\"\"\n\n    def connect()\
+    \ -> None:\n        \"\"\"\n        Try to connect to remote address.\n      \
+    \  \"\"\"\n\n    def getDestination() -> IAddress:\n        \"\"\"\n        Return\
+    \ destination this will try to connect to.\n\n        @return: An object which\
+    \ provides L{IAddress}.\n        \"\"\"\n\n\nclass IResolverSimple(Interface):\n\
+    \    def getHostByName(name: str, timeout: Sequence[int] = ()) -> \"Deferred[str]\"\
+    :\n        \"\"\"\n        Resolve the domain name C{name} into an IP address.\n\
+    \n        @param name: DNS name to resolve.\n        @param timeout: Number of\
+    \ seconds after which to reissue the query.\n            When the last timeout\
+    \ expires, the query is considered failed.\n\n        @return: The callback of\
+    \ the Deferred that is returned will be\n            passed a string that represents\
+    \ the IP address of the\n            specified name, or the errback will be called\
+    \ if the\n            lookup times out.  If multiple types of address records\n\
+    \            are associated with the name, A6 records will be returned\n     \
+    \       in preference to AAAA records, which will be returned in\n           \
+    \ preference to A records.  If there are multiple records of\n            the\
+    \ type to be returned, one will be selected at random.\n\n        @raise twisted.internet.defer.TimeoutError:\
+    \ Raised\n            (asynchronously) if the name cannot be resolved within the\n\
+    \            specified timeout period.\n        \"\"\"\n\n\nclass IHostResolution(Interface):\n\
+    \    \"\"\"\n    An L{IHostResolution} represents represents an in-progress recursive\
+    \ query\n    for a DNS name.\n\n    @since: Twisted 17.1.0\n    \"\"\"\n\n   \
+    \ name = Attribute(\n        \"\"\"\n        L{unicode}; the name of the host\
+    \ being resolved.\n        \"\"\"\n    )\n\n    def cancel() -> None:\n      \
+    \  \"\"\"\n        Stop the hostname resolution in progress.\n        \"\"\"\n\
+    \n\nclass IResolutionReceiver(Interface):\n    \"\"\"\n    An L{IResolutionReceiver}\
+    \ receives the results of a hostname resolution in\n    progress, initiated by\
+    \ an L{IHostnameResolver}.\n\n    @since: Twisted 17.1.0\n    \"\"\"\n\n    def\
+    \ resolutionBegan(resolutionInProgress: IHostResolution) -> None:\n        \"\"\
+    \"\n        A hostname resolution began.\n\n        @param resolutionInProgress:\
+    \ an L{IHostResolution}.\n        \"\"\"\n\n    def addressResolved(address: IAddress)\
+    \ -> None:\n        \"\"\"\n        An internet address.  This is called when\
+    \ an address for the given name\n        is discovered.  In the current implementation\
+    \ this practically means\n        L{IPv4Address} or L{IPv6Address}, but implementations\
+    \ of this interface\n        should be lenient to other types being passed to\
+    \ this interface as\n        well, for future-proofing.\n\n        @param address:\
+    \ An address object.\n        \"\"\"\n\n    def resolutionComplete() -> None:\n\
+    \        \"\"\"\n        Resolution has completed; no further addresses will be\
+    \ relayed to\n        L{IResolutionReceiver.addressResolved}.\n        \"\"\"\n\
+    \n\nclass IHostnameResolver(Interface):\n    \"\"\"\n    An L{IHostnameResolver}\
+    \ can resolve a host name and port number into a\n    series of L{IAddress} objects.\n\
+    \n    @since: Twisted 17.1.0\n    \"\"\"\n\n    def resolveHostName(\n       \
+    \ resolutionReceiver: IResolutionReceiver,\n        hostName: str,\n        portNumber:\
+    \ int = 0,\n        addressTypes: Optional[Sequence[Type[IAddress]]] = None,\n\
+    \        transportSemantics: str = \"TCP\",\n    ) -> IHostResolution:\n     \
+    \   \"\"\"\n        Initiate a hostname resolution.\n\n        @param resolutionReceiver:\
+    \ an object that will receive each resolved\n            address as it arrives.\n\
+    \        @param hostName: The name of the host to resolve.  If this contains\n\
+    \            non-ASCII code points, they will be converted to IDNA first.\n  \
+    \      @param portNumber: The port number that the returned addresses should\n\
+    \            include.\n        @param addressTypes: An iterable of implementors\
+    \ of L{IAddress} that\n            are acceptable values for C{resolutionReceiver}\
+    \ to receive to its\n            L{addressResolved <IResolutionReceiver.addressResolved>}.\
+    \  In\n            practice, this means an iterable containing\n            L{twisted.internet.address.IPv4Address},\n\
+    \            L{twisted.internet.address.IPv6Address}, both, or neither.\n    \
+    \    @param transportSemantics: A string describing the semantics of the\n   \
+    \         transport; either C{'TCP'} for stream-oriented transports or\n     \
+    \       C{'UDP'} for datagram-oriented; see\n            L{twisted.internet.address.IPv6Address.type}\
+    \ and\n            L{twisted.internet.address.IPv4Address.type}.\n\n        @return:\
+    \ The resolution in progress.\n        \"\"\"\n\n\nclass IResolver(IResolverSimple):\n\
+    \    def query(\n        query: \"Query\", timeout: Sequence[int]\n    ) -> \"\
+    Deferred[Tuple[RRHeader, RRHeader, RRHeader]]\":\n        \"\"\"\n        Dispatch\
+    \ C{query} to the method which can handle its type.\n\n        @param query: The\
+    \ DNS query being issued, to which a response is to be\n            generated.\n\
+    \        @param timeout: Number of seconds after which to reissue the query.\n\
+    \            When the last timeout expires, the query is considered failed.\n\n\
+    \        @return: A L{Deferred} which fires with a three-tuple of lists of\n \
+    \           L{twisted.names.dns.RRHeader} instances.  The first element of the\n\
+    \            tuple gives answers.  The second element of the tuple gives\n   \
+    \         authorities.  The third element of the tuple gives additional\n    \
+    \        information.  The L{Deferred} may instead fail with one of the\n    \
+    \        exceptions defined in L{twisted.names.error} or with\n            C{NotImplementedError}.\n\
+    \        \"\"\"\n\n    def lookupAddress(\n        name: str, timeout: Sequence[int]\n\
+    \    ) -> \"Deferred[Tuple[RRHeader, RRHeader, RRHeader]]\":\n        \"\"\"\n\
+    \        Perform an A record lookup.\n\n        @param name: DNS name to resolve.\n\
+    \        @param timeout: Number of seconds after which to reissue the query.\n\
+    \            When the last timeout expires, the query is considered failed.\n\n\
+    \        @return: A L{Deferred} which fires with a three-tuple of lists of\n \
+    \           L{twisted.names.dns.RRHeader} instances.  The first element of the\n\
+    \            tuple gives answers.  The second element of the tuple gives\n   \
+    \         authorities.  The third element of the tuple gives additional\n    \
+    \        information.  The L{Deferred} may instead fail with one of the\n    \
+    \        exceptions defined in L{twisted.names.error} or with\n            C{NotImplementedError}.\n\
+    \        \"\"\"\n\n    def lookupAddress6(\n        name: str, timeout: Sequence[int]\n\
+    \    ) -> \"Deferred[Tuple[RRHeader, RRHeader, RRHeader]]\":\n        \"\"\"\n\
+    \        Perform an A6 record lookup.\n\n        @param name: DNS name to resolve.\n\
+    \        @param timeout: Number of seconds after which to reissue the query.\n\
+    \            When the last timeout expires, the query is considered failed.\n\n\
+    \        @return: A L{Deferred} which fires with a three-tuple of lists of\n \
+    \           L{twisted.names.dns.RRHeader} instances.  The first element of the\n\
+    \            tuple gives answers.  The second element of the tuple gives\n   \
+    \         authorities.  The third element of the tuple gives additional\n    \
+    \        information.  The L{Deferred} may instead fail with one of the\n    \
+    \        exceptions defined in L{twisted.names.error} or with\n            C{NotImplementedError}.\n\
+    \        \"\"\"\n\n    def lookupIPV6Address(\n        name: str, timeout: Sequence[int]\n\
+    \    ) -> \"Deferred[Tuple[RRHeader, RRHeader, RRHeader]]\":\n        \"\"\"\n\
+    \        Perform an AAAA record lookup.\n\n        @param name: DNS name to resolve.\n\
+    \        @param timeout: Number of seconds after which to reissue the query.\n\
+    \            When the last timeout expires, the query is considered failed.\n\n\
+    \        @return: A L{Deferred} which fires with a three-tuple of lists of\n \
+    \           L{twisted.names.dns.RRHeader} instances.  The first element of the\n\
+    \            tuple gives answers.  The second element of the tuple gives\n   \
+    \         authorities.  The third element of the tuple gives additional\n    \
+    \        information.  The L{Deferred} may instead fail with one of the\n    \
+    \        exceptions defined in L{twisted.names.error} or with\n            C{NotImplementedError}.\n\
+    \        \"\"\"\n\n    def lookupMailExchange(\n        name: str, timeout: Sequence[int]\n\
+    \    ) -> \"Deferred[Tuple[RRHeader, RRHeader, RRHeader]]\":\n        \"\"\"\n\
+    \        Perform an MX record lookup.\n\n        @param name: DNS name to resolve.\n\
+    \        @param timeout: Number of seconds after which to reissue the query.\n\
+    \            When the last timeout expires, the query is considered failed.\n\n\
+    \        @return: A L{Deferred} which fires with a three-tuple of lists of\n \
+    \           L{twisted.names.dns.RRHeader} instances.  The first element of the\n\
+    \            tuple gives answers.  The second element of the tuple gives\n   \
+    \         authorities.  The third element of the tuple gives additional\n    \
+    \        information.  The L{Deferred} may instead fail with one of the\n    \
+    \        exceptions defined in L{twisted.names.error} or with\n            C{NotImplementedError}.\n\
+    \        \"\"\"\n\n    def lookupNameservers(\n        name: str, timeout: Sequence[int]\n\
+    \    ) -> \"Deferred[Tuple[RRHeader, RRHeader, RRHeader]]\":\n        \"\"\"\n\
+    \        Perform an NS record lookup.\n\n        @param name: DNS name to resolve.\n\
+    \        @param timeout: Number of seconds after which to reissue the query.\n\
+    \            When the last timeout expires, the query is considered failed.\n\n\
+    \        @return: A L{Deferred} which fires with a three-tuple of lists of\n \
+    \           L{twisted.names.dns.RRHeader} instances.  The first element of the\n\
+    \            tuple gives answers.  The second element of the tuple gives\n   \
+    \         authorities.  The third element of the tuple gives additional\n    \
+    \        information.  The L{Deferred} may instead fail with one of the\n    \
+    \        exceptions defined in L{twisted.names.error} or with\n            C{NotImplementedError}.\n\
+    \        \"\"\"\n\n    def lookupCanonicalName(\n        name: str, timeout: Sequence[int]\n\
+    \    ) -> \"Deferred[Tuple[RRHeader, RRHeader, RRHeader]]\":\n        \"\"\"\n\
+    \        Perform a CNAME record lookup.\n\n        @param name: DNS name to resolve.\n\
+    \        @param timeout: Number of seconds after which to reissue the query.\n\
+    \            When the last timeout expires, the query is considered failed.\n\n\
+    \        @return: A L{Deferred} which fires with a three-tuple of lists of\n \
+    \           L{twisted.names.dns.RRHeader} instances.  The first element of the\n\
+    \            tuple gives answers.  The second element of the tuple gives\n   \
+    \         authorities.  The third element of the tuple gives additional\n    \
+    \        information.  The L{Deferred} may instead fail with one of the\n    \
+    \        exceptions defined in L{twisted.names.error} or with\n            C{NotImplementedError}.\n\
+    \        \"\"\"\n\n    def lookupMailBox(\n        name: str, timeout: Sequence[int]\n\
+    \    ) -> \"Deferred[Tuple[RRHeader, RRHeader, RRHeader]]\":\n        \"\"\"\n\
+    \        Perform an MB record lookup.\n\n        @param name: DNS name to resolve.\n\
+    \        @param timeout: Number of seconds after which to reissue the query.\n\
+    \            When the last timeout expires, the query is considered failed.\n\n\
+    \        @return: A L{Deferred} which fires with a three-tuple of lists of\n \
+    \           L{twisted.names.dns.RRHeader} instances.  The first element of the\n\
+    \            tuple gives answers.  The second element of the tuple gives\n   \
+    \         authorities.  The third element of the tuple gives additional\n    \
+    \        information.  The L{Deferred} may instead fail with one of the\n    \
+    \        exceptions defined in L{twisted.names.error} or with\n            C{NotImplementedError}.\n\
+    \        \"\"\"\n\n    def lookupMailGroup(\n        name: str, timeout: Sequence[int]\n\
+    \    ) -> \"Deferred[Tuple[RRHeader, RRHeader, RRHeader]]\":\n        \"\"\"\n\
+    \        Perform an MG record lookup.\n\n        @param name: DNS name to resolve.\n\
+    \        @param timeout: Number of seconds after which to reissue the query.\n\
+    \            When the last timeout expires, the query is considered failed.\n\n\
+    \        @return: A L{Deferred} which fires with a three-tuple of lists of\n \
+    \           L{twisted.names.dns.RRHeader} instances.  The first element of the\n\
+    \            tuple gives answers.  The second element of the tuple gives\n   \
+    \         authorities.  The third element of the tuple gives additional\n    \
+    \        information.  The L{Deferred} may instead fail with one of the\n    \
+    \        exceptions defined in L{twisted.names.error} or with\n            C{NotImplementedError}.\n\
+    \        \"\"\"\n\n    def lookupMailRename(\n        name: str, timeout: Sequence[int]\n\
+    \    ) -> \"Deferred[Tuple[RRHeader, RRHeader, RRHeader]]\":\n        \"\"\"\n\
+    \        Perform an MR record lookup.\n\n        @param name: DNS name to resolve.\n\
+    \        @param timeout: Number of seconds after which to reissue the query.\n\
+    \            When the last timeout expires, the query is considered failed.\n\n\
+    \        @return: A L{Deferred} which fires with a three-tuple of lists of\n \
+    \           L{twisted.names.dns.RRHeader} instances.  The first element of the\n\
+    \            tuple gives answers.  The second element of the tuple gives\n   \
+    \         authorities.  The third element of the tuple gives additional\n    \
+    \        information.  The L{Deferred} may instead fail with one of the\n    \
+    \        exceptions defined in L{twisted.names.error} or with\n            C{NotImplementedError}.\n\
+    \        \"\"\"\n\n    def lookupPointer(\n        name: str, timeout: Sequence[int]\n\
+    \    ) -> \"Deferred[Tuple[RRHeader, RRHeader, RRHeader]]\":\n        \"\"\"\n\
+    \        Perform a PTR record lookup.\n\n        @param name: DNS name to resolve.\n\
+    \        @param timeout: Number of seconds after which to reissue the query.\n\
+    \            When the last timeout expires, the query is considered failed.\n\n\
+    \        @return: A L{Deferred} which fires with a three-tuple of lists of\n \
+    \           L{twisted.names.dns.RRHeader} instances.  The first element of the\n\
+    \            tuple gives answers.  The second element of the tuple gives\n   \
+    \         authorities.  The third element of the tuple gives additional\n    \
+    \        information.  The L{Deferred} may instead fail with one of the\n    \
+    \        exceptions defined in L{twisted.names.error} or with\n            C{NotImplementedError}.\n\
+    \        \"\"\"\n\n    def lookupAuthority(\n        name: str, timeout: Sequence[int]\n\
+    \    ) -> \"Deferred[Tuple[RRHeader, RRHeader, RRHeader]]\":\n        \"\"\"\n\
+    \        Perform an SOA record lookup.\n\n        @param name: DNS name to resolve.\n\
+    \        @param timeout: Number of seconds after which to reissue the query.\n\
+    \            When the last timeout expires, the query is considered failed.\n\n\
+    \        @return: A L{Deferred} which fires with a three-tuple of lists of\n \
+    \           L{twisted.names.dns.RRHeader} instances.  The first element of the\n\
+    \            tuple gives answers.  The second element of the tuple gives\n   \
+    \         authorities.  The third element of the tuple gives additional\n    \
+    \        information.  The L{Deferred} may instead fail with one of the\n    \
+    \        exceptions defined in L{twisted.names.error} or with\n            C{NotImplementedError}.\n\
+    \        \"\"\"\n\n    def lookupNull(\n        name: str, timeout: Sequence[int]\n\
+    \    ) -> \"Deferred[Tuple[RRHeader, RRHeader, RRHeader]]\":\n        \"\"\"\n\
+    \        Perform a NULL record lookup.\n\n        @param name: DNS name to resolve.\n\
+    \        @param timeout: Number of seconds after which to reissue the query.\n\
+    \            When the last timeout expires, the query is considered failed.\n\n\
+    \        @return: A L{Deferred} which fires with a three-tuple of lists of\n \
+    \           L{twisted.names.dns.RRHeader} instances.  The first element of the\n\
+    \            tuple gives answers.  The second element of the tuple gives\n   \
+    \         authorities.  The third element of the tuple gives additional\n    \
+    \        information.  The L{Deferred} may instead fail with one of the\n    \
+    \        exceptions defined in L{twisted.names.error} or with\n            C{NotImplementedError}.\n\
+    \        \"\"\"\n\n    def lookupWellKnownServices(\n        name: str, timeout:\
+    \ Sequence[int]\n    ) -> \"Deferred[Tuple[RRHeader, RRHeader, RRHeader]]\":\n\
+    \        \"\"\"\n        Perform a WKS record lookup.\n\n        @param name:\
+    \ DNS name to resolve.\n        @param timeout: Number of seconds after which\
+    \ to reissue the query.\n            When the last timeout expires, the query\
+    \ is considered failed.\n\n        @return: A L{Deferred} which fires with a three-tuple\
+    \ of lists of\n            L{twisted.names.dns.RRHeader} instances.  The first\
+    \ element of the\n            tuple gives answers.  The second element of the\
+    \ tuple gives\n            authorities.  The third element of the tuple gives\
+    \ additional\n            information.  The L{Deferred} may instead fail with\
+    \ one of the\n            exceptions defined in L{twisted.names.error} or with\n\
+    \            C{NotImplementedError}.\n        \"\"\"\n\n    def lookupHostInfo(\n\
+    \        name: str, timeout: Sequence[int]\n    ) -> \"Deferred[Tuple[RRHeader,\
+    \ RRHeader, RRHeader]]\":\n        \"\"\"\n        Perform a HINFO record lookup.\n\
+    \n        @param name: DNS name to resolve.\n        @param timeout: Number of\
+    \ seconds after which to reissue the query.\n            When the last timeout\
+    \ expires, the query is considered failed.\n\n        @return: A L{Deferred} which\
+    \ fires with a three-tuple of lists of\n            L{twisted.names.dns.RRHeader}\
+    \ instances.  The first element of the\n            tuple gives answers.  The\
+    \ second element of the tuple gives\n            authorities.  The third element\
+    \ of the tuple gives additional\n            information.  The L{Deferred} may\
+    \ instead fail with one of the\n            exceptions defined in L{twisted.names.error}\
+    \ or with\n            C{NotImplementedError}.\n        \"\"\"\n\n    def lookupMailboxInfo(\n\
+    \        name: str, timeout: Sequence[int]\n    ) -> \"Deferred[Tuple[RRHeader,\
+    \ RRHeader, RRHeader]]\":\n        \"\"\"\n        Perform an MINFO record lookup.\n\
+    \n        @param name: DNS name to resolve.\n        @param timeout: Number of\
+    \ seconds after which to reissue the query.\n            When the last timeout\
+    \ expires, the query is considered failed.\n\n        @return: A L{Deferred} which\
+    \ fires with a three-tuple of lists of\n            L{twisted.names.dns.RRHeader}\
+    \ instances.  The first element of the\n            tuple gives answers.  The\
+    \ second element of the tuple gives\n            authorities.  The third element\
+    \ of the tuple gives additional\n            information.  The L{Deferred} may\
+    \ instead fail with one of the\n            exceptions defined in L{twisted.names.error}\
+    \ or with\n            C{NotImplementedError}.\n        \"\"\"\n\n    def lookupText(\n\
+    \        name: str, timeout: Sequence[int]\n    ) -> \"Deferred[Tuple[RRHeader,\
+    \ RRHeader, RRHeader]]\":\n        \"\"\"\n        Perform a TXT record lookup.\n\
+    \n        @param name: DNS name to resolve.\n        @param timeout: Number of\
+    \ seconds after which to reissue the query.\n            When the last timeout\
+    \ expires, the query is considered failed.\n\n        @return: A L{Deferred} which\
+    \ fires with a three-tuple of lists of\n            L{twisted.names.dns.RRHeader}\
+    \ instances.  The first element of the\n            tuple gives answers.  The\
+    \ second element of the tuple gives\n            authorities.  The third element\
+    \ of the tuple gives additional\n            information.  The L{Deferred} may\
+    \ instead fail with one of the\n            exceptions defined in L{twisted.names.error}\
+    \ or with\n            C{NotImplementedError}.\n        \"\"\"\n\n    def lookupResponsibility(\n\
+    \        name: str, timeout: Sequence[int]\n    ) -> \"Deferred[Tuple[RRHeader,\
+    \ RRHeader, RRHeader]]\":\n        \"\"\"\n        Perform an RP record lookup.\n\
+    \n        @param name: DNS name to resolve.\n        @param timeout: Number of\
+    \ seconds after which to reissue the query.\n            When the last timeout\
+    \ expires, the query is considered failed.\n\n        @return: A L{Deferred} which\
+    \ fires with a three-tuple of lists of\n            L{twisted.names.dns.RRHeader}\
+    \ instances.  The first element of the\n            tuple gives answers.  The\
+    \ second element of the tuple gives\n            authorities.  The third element\
+    \ of the tuple gives additional\n            information.  The L{Deferred} may\
+    \ instead fail with one of the\n            exceptions defined in L{twisted.names.error}\
+    \ or with\n            C{NotImplementedError}.\n        \"\"\"\n\n    def lookupAFSDatabase(\n\
+    \        name: str, timeout: Sequence[int]\n    ) -> \"Deferred[Tuple[RRHeader,\
+    \ RRHeader, RRHeader]]\":\n        \"\"\"\n        Perform an AFSDB record lookup.\n\
+    \n        @param name: DNS name to resolve.\n        @param timeout: Number of\
+    \ seconds after which to reissue the query.\n            When the last timeout\
+    \ expires, the query is considered failed.\n\n        @return: A L{Deferred} which\
+    \ fires with a three-tuple of lists of\n            L{twisted.names.dns.RRHeader}\
+    \ instances.  The first element of the\n            tuple gives answers.  The\
+    \ second element of the tuple gives\n            authorities.  The third element\
+    \ of the tuple gives additional\n            information.  The L{Deferred} may\
+    \ instead fail with one of the\n            exceptions defined in L{twisted.names.error}\
+    \ or with\n            C{NotImplementedError}.\n        \"\"\"\n\n    def lookupService(\n\
+    \        name: str, timeout: Sequence[int]\n    ) -> \"Deferred[Tuple[RRHeader,\
+    \ RRHeader, RRHeader]]\":\n        \"\"\"\n        Perform an SRV record lookup.\n\
+    \n        @param name: DNS name to resolve.\n        @param timeout: Number of\
+    \ seconds after which to reissue the query.\n            When the last timeout\
+    \ expires, the query is considered failed.\n\n        @return: A L{Deferred} which\
+    \ fires with a three-tuple of lists of\n            L{twisted.names.dns.RRHeader}\
+    \ instances.  The first element of the\n            tuple gives answers.  The\
+    \ second element of the tuple gives\n            authorities.  The third element\
+    \ of the tuple gives additional\n            information.  The L{Deferred} may\
+    \ instead fail with one of the\n            exceptions defined in L{twisted.names.error}\
+    \ or with\n            C{NotImplementedError}.\n        \"\"\"\n\n    def lookupAllRecords(\n\
+    \        name: str, timeout: Sequence[int]\n    ) -> \"Deferred[Tuple[RRHeader,\
+    \ RRHeader, RRHeader]]\":\n        \"\"\"\n        Perform an ALL_RECORD lookup.\n\
+    \n        @param name: DNS name to resolve.\n        @param timeout: Number of\
+    \ seconds after which to reissue the query.\n            When the last timeout\
+    \ expires, the query is considered failed.\n\n        @return: A L{Deferred} which\
+    \ fires with a three-tuple of lists of\n            L{twisted.names.dns.RRHeader}\
+    \ instances.  The first element of the\n            tuple gives answers.  The\
+    \ second element of the tuple gives\n            authorities.  The third element\
+    \ of the tuple gives additional\n            information.  The L{Deferred} may\
+    \ instead fail with one of the\n            exceptions defined in L{twisted.names.error}\
+    \ or with\n            C{NotImplementedError}.\n        \"\"\"\n\n    def lookupSenderPolicy(\n\
+    \        name: str, timeout: Sequence[int]\n    ) -> \"Deferred[Tuple[RRHeader,\
+    \ RRHeader, RRHeader]]\":\n        \"\"\"\n        Perform a SPF record lookup.\n\
+    \n        @param name: DNS name to resolve.\n        @param timeout: Number of\
+    \ seconds after which to reissue the query.\n            When the last timeout\
+    \ expires, the query is considered failed.\n\n        @return: A L{Deferred} which\
+    \ fires with a three-tuple of lists of\n            L{twisted.names.dns.RRHeader}\
+    \ instances.  The first element of the\n            tuple gives answers.  The\
+    \ second element of the tuple gives\n            authorities.  The third element\
+    \ of the tuple gives additional\n            information.  The L{Deferred} may\
+    \ instead fail with one of the\n            exceptions defined in L{twisted.names.error}\
+    \ or with\n            C{NotImplementedError}.\n        \"\"\"\n\n    def lookupNamingAuthorityPointer(\n\
+    \        name: str, timeout: Sequence[int]\n    ) -> \"Deferred[Tuple[RRHeader,\
+    \ RRHeader, RRHeader]]\":\n        \"\"\"\n        Perform a NAPTR record lookup.\n\
+    \n        @param name: DNS name to resolve.\n        @param timeout: Number of\
+    \ seconds after which to reissue the query.\n            When the last timeout\
+    \ expires, the query is considered failed.\n\n        @return: A L{Deferred} which\
+    \ fires with a three-tuple of lists of\n            L{twisted.names.dns.RRHeader}\
+    \ instances.  The first element of the\n            tuple gives answers.  The\
+    \ second element of the tuple gives\n            authorities.  The third element\
+    \ of the tuple gives additional\n            information.  The L{Deferred} may\
+    \ instead fail with one of the\n            exceptions defined in L{twisted.names.error}\
+    \ or with\n            C{NotImplementedError}.\n        \"\"\"\n\n    def lookupZone(\n\
+    \        name: str, timeout: Sequence[int]\n    ) -> \"Deferred[Tuple[RRHeader,\
+    \ RRHeader, RRHeader]]\":\n        \"\"\"\n        Perform an AXFR record lookup.\n\
+    \n        NB This is quite different from other DNS requests. See\n        U{http://cr.yp.to/djbdns/axfr-notes.html}\
+    \ for more\n        information.\n\n        NB Unlike other C{lookup*} methods,\
+    \ the timeout here is not a\n        list of ints, it is a single int.\n\n   \
+    \     @param name: DNS name to resolve.\n        @param timeout: When this timeout\
+    \ expires, the query is\n            considered failed.\n\n        @return: A\
+    \ L{Deferred} which fires with a three-tuple of lists of\n            L{twisted.names.dns.RRHeader}\
+    \ instances.\n            The first element of the tuple gives answers.\n    \
+    \        The second and third elements are always empty.\n            The L{Deferred}\
+    \ may instead fail with one of the\n            exceptions defined in L{twisted.names.error}\
+    \ or with\n            C{NotImplementedError}.\n        \"\"\"\n\n\nclass IReactorTCP(Interface):\n\
+    \    def listenTCP(\n        port: int,\n        factory: \"ServerFactory\",\n\
+    \        backlog: int = 50,\n        interface: str = \"\",\n    ) -> \"IListeningPort\"\
+    :\n        \"\"\"\n        Connects a given protocol factory to the given numeric\
+    \ TCP/IP port.\n\n        @param port: a port number on which to listen\n    \
+    \    @param factory: a L{twisted.internet.protocol.ServerFactory} instance\n \
+    \       @param backlog: size of the listen queue\n        @param interface: The\
+    \ local IPv4 or IPv6 address to which to bind;\n            defaults to '', ie\
+    \ all IPv4 addresses.  To bind to all IPv4 and IPv6\n            addresses, you\
+    \ must call this method twice.\n\n        @return: an object that provides L{IListeningPort}.\n\
+    \n        @raise CannotListenError: as defined here\n                        \
+    \          L{twisted.internet.error.CannotListenError},\n                    \
+    \              if it cannot listen on this port (e.g., it\n                  \
+    \                cannot bind to the required port number)\n        \"\"\"\n\n\
+    \    def connectTCP(\n        host: str,\n        port: int,\n        factory:\
+    \ \"ClientFactory\",\n        timeout: float = 30.0,\n        bindAddress: Optional[Tuple[str,\
+    \ int]] = None,\n    ) -> IConnector:\n        \"\"\"\n        Connect a TCP client.\n\
+    \n        @param host: A hostname or an IPv4 or IPv6 address literal.\n      \
+    \  @param port: a port number\n        @param factory: a L{twisted.internet.protocol.ClientFactory}\
+    \ instance\n        @param timeout: number of seconds to wait before assuming\
+    \ the\n                        connection has failed.\n        @param bindAddress:\
+    \ a (host, port) tuple of local address to bind\n                            to,\
+    \ or None.\n\n        @return: An object which provides L{IConnector}. This connector\
+    \ will\n                 call various callbacks on the factory when a connection\
+    \ is\n                 made, failed, or lost - see\n                 L{ClientFactory<twisted.internet.protocol.ClientFactory>}\n\
+    \                 docs for details.\n        \"\"\"\n\n\nclass IReactorSSL(Interface):\n\
+    \    def connectSSL(\n        host: str,\n        port: int,\n        factory:\
+    \ \"ClientFactory\",\n        contextFactory: \"ClientContextFactory\",\n    \
+    \    timeout: float,\n        bindAddress: Optional[Tuple[str, int]],\n    ) ->\
+    \ IConnector:\n        \"\"\"\n        Connect a client Protocol to a remote SSL\
+    \ socket.\n\n        @param host: a host name\n        @param port: a port number\n\
+    \        @param factory: a L{twisted.internet.protocol.ClientFactory} instance\n\
+    \        @param contextFactory: a L{twisted.internet.ssl.ClientContextFactory}\
+    \ object.\n        @param timeout: number of seconds to wait before assuming the\n\
+    \                        connection has failed.\n        @param bindAddress: a\
+    \ (host, port) tuple of local address to bind to,\n                          \
+    \  or L{None}.\n\n        @return: An object which provides L{IConnector}.\n \
+    \       \"\"\"\n\n    def listenSSL(\n        port: int,\n        factory: \"\
+    ServerFactory\",\n        contextFactory: \"IOpenSSLContextFactory\",\n      \
+    \  backlog: int,\n        interface: str,\n    ) -> \"IListeningPort\":\n    \
+    \    \"\"\"\n        Connects a given protocol factory to the given numeric TCP/IP\
+    \ port.\n        The connection is a SSL one, using contexts created by the context\n\
+    \        factory.\n\n        @param port: a port number on which to listen\n \
+    \       @param factory: a L{twisted.internet.protocol.ServerFactory} instance\n\
+    \        @param contextFactory: an implementor of L{IOpenSSLContextFactory}\n\
+    \        @param backlog: size of the listen queue\n        @param interface: the\
+    \ hostname to bind to, defaults to '' (all)\n        \"\"\"\n\n\nclass IReactorUNIX(Interface):\n\
+    \    \"\"\"\n    UNIX socket methods.\n    \"\"\"\n\n    def connectUNIX(\n  \
+    \      address: str,\n        factory: \"ClientFactory\",\n        timeout: float\
+    \ = 30,\n        checkPID: bool = False,\n    ) -> IConnector:\n        \"\"\"\
+    \n        Connect a client protocol to a UNIX socket.\n\n        @param address:\
+    \ a path to a unix socket on the filesystem.\n        @param factory: a L{twisted.internet.protocol.ClientFactory}\
+    \ instance\n        @param timeout: number of seconds to wait before assuming\
+    \ the connection\n            has failed.\n        @param checkPID: if True, check\
+    \ for a pid file to verify that a server\n            is listening.  If C{address}\
+    \ is a Linux abstract namespace path,\n            this must be C{False}.\n\n\
+    \        @return: An object which provides L{IConnector}.\n        \"\"\"\n\n\
+    \    def listenUNIX(\n        address: str,\n        factory: \"Factory\",\n \
+    \       backlog: int = 50,\n        mode: int = 0o666,\n        wantPID: bool\
+    \ = False,\n    ) -> \"IListeningPort\":\n        \"\"\"\n        Listen on a\
+    \ UNIX socket.\n\n        @param address: a path to a unix socket on the filesystem.\n\
+    \        @param factory: a L{twisted.internet.protocol.Factory} instance.\n  \
+    \      @param backlog: number of connections to allow in backlog.\n        @param\
+    \ mode: The mode (B{not} umask) to set on the unix socket.  See\n            platform\
+    \ specific documentation for information about how this\n            might affect\
+    \ connection attempts.\n        @param wantPID: if True, create a pidfile for\
+    \ the socket.  If C{address}\n            is a Linux abstract namespace path,\
+    \ this must be C{False}.\n\n        @return: An object which provides L{IListeningPort}.\n\
+    \        \"\"\"\n\n\nclass IReactorUNIXDatagram(Interface):\n    \"\"\"\n    Datagram\
+    \ UNIX socket methods.\n    \"\"\"\n\n    def connectUNIXDatagram(\n        address:\
+    \ str,\n        protocol: \"ConnectedDatagramProtocol\",\n        maxPacketSize:\
+    \ int,\n        mode: int,\n        bindAddress: Optional[Tuple[str, int]],\n\
+    \    ) -> IConnector:\n        \"\"\"\n        Connect a client protocol to a\
+    \ datagram UNIX socket.\n\n        @param address: a path to a unix socket on\
+    \ the filesystem.\n        @param protocol: a L{twisted.internet.protocol.ConnectedDatagramProtocol}\
+    \ instance\n        @param maxPacketSize: maximum packet size to accept\n    \
+    \    @param mode: The mode (B{not} umask) to set on the unix socket.  See\n  \
+    \          platform specific documentation for information about how this\n  \
+    \          might affect connection attempts.\n\n        @param bindAddress: address\
+    \ to bind to\n\n        @return: An object which provides L{IConnector}.\n   \
+    \     \"\"\"\n\n    def listenUNIXDatagram(\n        address: str, protocol: \"\
+    DatagramProtocol\", maxPacketSize: int, mode: int\n    ) -> \"IListeningPort\"\
+    :\n        \"\"\"\n        Listen on a datagram UNIX socket.\n\n        @param\
+    \ address: a path to a unix socket on the filesystem.\n        @param protocol:\
+    \ a L{twisted.internet.protocol.DatagramProtocol} instance.\n        @param maxPacketSize:\
+    \ maximum packet size to accept\n        @param mode: The mode (B{not} umask)\
+    \ to set on the unix socket.  See\n            platform specific documentation\
+    \ for information about how this\n            might affect connection attempts.\n\
+    \n        @return: An object which provides L{IListeningPort}.\n        \"\"\"\
+    \n\n\nclass IReactorWin32Events(Interface):\n    \"\"\"\n    Win32 Event API methods\n\
+    \n    @since: 10.2\n    \"\"\"\n\n    def addEvent(event: object, fd: \"FileDescriptor\"\
+    , action: str) -> None:\n        \"\"\"\n        Add a new win32 event to the\
+    \ event loop.\n\n        @param event: a Win32 event object created using win32event.CreateEvent()\n\
+    \        @param fd: an instance of L{twisted.internet.abstract.FileDescriptor}\n\
+    \        @param action: a string that is a method name of the fd instance.\n \
+    \                      This method is called in response to the event.\n     \
+    \   \"\"\"\n\n    def removeEvent(event: object) -> None:\n        \"\"\"\n  \
+    \      Remove an event.\n\n        @param event: a Win32 event object added using\
+    \ L{IReactorWin32Events.addEvent}\n\n        @return: None\n        \"\"\"\n\n\
+    \nclass IReactorUDP(Interface):\n    \"\"\"\n    UDP socket methods.\n    \"\"\
+    \"\n\n    def listenUDP(\n        port: int, protocol: \"DatagramProtocol\", interface:\
+    \ str, maxPacketSize: int\n    ) -> \"IListeningPort\":\n        \"\"\"\n    \
+    \    Connects a given L{DatagramProtocol} to the given numeric UDP port.\n\n \
+    \       @param port: A port number on which to listen.\n        @param protocol:\
+    \ A L{DatagramProtocol} instance which will be\n            connected to the given\
+    \ C{port}.\n        @param interface: The local IPv4 or IPv6 address to which\
+    \ to bind;\n            defaults to '', ie all IPv4 addresses.\n        @param\
+    \ maxPacketSize: The maximum packet size to accept.\n\n        @return: object\
+    \ which provides L{IListeningPort}.\n        \"\"\"\n\n\nclass IReactorMulticast(Interface):\n\
+    \    \"\"\"\n    UDP socket methods that support multicast.\n\n    IMPORTANT:\
+    \ This is an experimental new interface. It may change\n    without backwards\
+    \ compatibility. Suggestions are welcome.\n    \"\"\"\n\n    def listenMulticast(\n\
+    \        port: int,\n        protocol: \"DatagramProtocol\",\n        interface:\
+    \ str = \"\",\n        maxPacketSize: int = 8192,\n        listenMultiple: bool\
+    \ = False,\n    ) -> IMulticastTransport:\n        \"\"\"\n        Connects a\
+    \ given\n        L{DatagramProtocol<twisted.internet.protocol.DatagramProtocol>}\
+    \ to the\n        given numeric UDP port.\n\n        @param port: The port number\
+    \ to bind to.\n\n        @param protocol: the datagram receiver that will receive\
+    \ multicast\n            packets sent to the given interface and port.\n\n   \
+    \     @param interface: The IP address literal of the network interface to\n \
+    \           bind to.  By default, this will be C{\"0.0.0.0\"}, i.e. all IPv4\n\
+    \            interfaces.  Note that the format of this literal determines the\n\
+    \            address family of the resulting multicast transport: passing an\n\
+    \            IPv6 literal, such as C{\"::\"}, will result in an IPv6 multicast\n\
+    \            transport.\n\n        @param maxPacketSize: The maximum packet size\
+    \ to accept.\n\n        @param listenMultiple: If set to True, allows multiple\
+    \ sockets to bind\n            to the same address and port number at the same\
+    \ time.\n\n        @returns: An L{IMulticastTransport} that can send multicast\
+    \ traffic to\n            C{interface}.\n\n        @see: U{http://twistedmatrix.com/documents/current/core/howto/udp.html}\n\
+    \        \"\"\"\n\n\nclass IReactorSocket(Interface):\n    \"\"\"\n    Methods\
+    \ which allow a reactor to use externally created sockets.\n\n    For example,\
+    \ to use C{adoptStreamPort} to implement behavior equivalent\n    to that of L{IReactorTCP.listenTCP},\
+    \ you might write code like this::\n\n        from socket import SOMAXCONN, AF_INET,\
+    \ SOCK_STREAM, socket\n        portSocket = socket(AF_INET, SOCK_STREAM)\n   \
+    \     # Set FD_CLOEXEC on port, left as an exercise.  Then make it into a\n  \
+    \      # non-blocking listening port:\n        portSocket.setblocking(False)\n\
+    \        portSocket.bind(('192.168.1.2', 12345))\n        portSocket.listen(SOMAXCONN)\n\
+    \n        # Now have the reactor use it as a TCP port\n        port = reactor.adoptStreamPort(\n\
+    \            portSocket.fileno(), AF_INET, YourFactory())\n\n        # portSocket\
+    \ itself is no longer necessary, and needs to be cleaned\n        # up by us.\n\
+    \        portSocket.close()\n\n        # Whenever the server is no longer needed,\
+    \ stop it as usual.\n        stoppedDeferred = port.stopListening()\n\n    Another\
+    \ potential use is to inherit a listening descriptor from a parent\n    process\
+    \ (for example, systemd or launchd), or to receive one over a UNIX\n    domain\
+    \ socket.\n\n    Some plans for extending this interface exist.  See:\n\n    \
+    \    - U{http://twistedmatrix.com/trac/ticket/6594}: AF_UNIX SOCK_DGRAM ports\n\
+    \    \"\"\"\n\n    def adoptStreamPort(\n        fileDescriptor: int, addressFamily:\
+    \ \"AddressFamily\", factory: \"ServerFactory\"\n    ) -> \"IListeningPort\":\n\
+    \        \"\"\"\n        Add an existing listening I{SOCK_STREAM} socket to the\
+    \ reactor to\n        monitor for new connections to accept and handle.\n\n  \
+    \      @param fileDescriptor: A file descriptor associated with a socket which\n\
+    \            is already bound to an address and marked as listening.  The socket\n\
+    \            must be set non-blocking.  Any additional flags (for example,\n \
+    \           close-on-exec) must also be set by application code.  Application\n\
+    \            code is responsible for closing the file descriptor, which may be\n\
+    \            done as soon as C{adoptStreamPort} returns.\n        @param addressFamily:\
+    \ The address family (or I{domain}) of the socket.\n            For example, L{socket.AF_INET6}.\n\
+    \        @param factory: A L{ServerFactory} instance to use to create new\n  \
+    \          protocols to handle connections accepted via this socket.\n\n     \
+    \   @return: An object providing L{IListeningPort}.\n\n        @raise twisted.internet.error.UnsupportedAddressFamily:\
+    \ If the\n            given address family is not supported by this reactor, or\n\
+    \            not supported with the given socket type.\n        @raise twisted.internet.error.UnsupportedSocketType:\
+    \ If the\n            given socket type is not supported by this reactor, or not\n\
+    \            supported with the given socket type.\n        \"\"\"\n\n    def\
+    \ adoptStreamConnection(\n        fileDescriptor: int, addressFamily: \"AddressFamily\"\
+    , factory: \"ServerFactory\"\n    ) -> None:\n        \"\"\"\n        Add an existing\
+    \ connected I{SOCK_STREAM} socket to the reactor to\n        monitor for data.\n\
+    \n        Note that the given factory won't have its C{startFactory} and\n   \
+    \     C{stopFactory} methods called, as there is no sensible time to call\n  \
+    \      them in this situation.\n\n        @param fileDescriptor: A file descriptor\
+    \ associated with a socket which\n            is already connected.  The socket\
+    \ must be set non-blocking.  Any\n            additional flags (for example, close-on-exec)\
+    \ must also be set by\n            application code.  Application code is responsible\
+    \ for closing the\n            file descriptor, which may be done as soon as\n\
+    \            C{adoptStreamConnection} returns.\n        @param addressFamily:\
+    \ The address family (or I{domain}) of the socket.\n            For example, L{socket.AF_INET6}.\n\
+    \        @param factory: A L{ServerFactory} instance to use to create a new\n\
+    \            protocol to handle the connection via this socket.\n\n        @raise\
+    \ UnsupportedAddressFamily: If the given address family is not\n            supported\
+    \ by this reactor, or not supported with the given socket\n            type.\n\
+    \        @raise UnsupportedSocketType: If the given socket type is not supported\n\
+    \            by this reactor, or not supported with the given socket type.\n \
+    \       \"\"\"\n\n    def adoptDatagramPort(\n        fileDescriptor: int,\n \
+    \       addressFamily: \"AddressFamily\",\n        protocol: \"DatagramProtocol\"\
+    ,\n        maxPacketSize: int,\n    ) -> \"IListeningPort\":\n        \"\"\"\n\
+    \        Add an existing listening I{SOCK_DGRAM} socket to the reactor to\n  \
+    \      monitor for read and write readiness.\n\n        @param fileDescriptor:\
+    \ A file descriptor associated with a socket which\n            is already bound\
+    \ to an address and marked as listening.  The socket\n            must be set\
+    \ non-blocking.  Any additional flags (for example,\n            close-on-exec)\
+    \ must also be set by application code.  Application\n            code is responsible\
+    \ for closing the file descriptor, which may be\n            done as soon as C{adoptDatagramPort}\
+    \ returns.\n        @param addressFamily: The address family or I{domain} of the\
+    \ socket.\n            For example, L{socket.AF_INET6}.\n        @param protocol:\
+    \ A L{DatagramProtocol} instance to connect to\n            a UDP transport.\n\
+    \        @param maxPacketSize: The maximum packet size to accept.\n\n        @return:\
+    \ An object providing L{IListeningPort}.\n\n        @raise UnsupportedAddressFamily:\
+    \ If the given address family is not\n            supported by this reactor, or\
+    \ not supported with the given socket\n            type.\n        @raise UnsupportedSocketType:\
+    \ If the given socket type is not supported\n            by this reactor, or not\
+    \ supported with the given socket type.\n        \"\"\"\n\n\nclass IReactorProcess(Interface):\n\
+    \    def spawnProcess(\n        processProtocol: \"IProcessProtocol\",\n     \
+    \   executable: Union[bytes, str],\n        args: Sequence[Union[bytes, str]],\n\
+    \        env: Optional[Mapping[AnyStr, AnyStr]] = None,\n        path: Union[None,\
+    \ bytes, str] = None,\n        uid: Optional[int] = None,\n        gid: Optional[int]\
+    \ = None,\n        usePTY: bool = False,\n        childFDs: Optional[Mapping[int,\
+    \ Union[int, str]]] = None,\n    ) -> \"IProcessTransport\":\n        \"\"\"\n\
+    \        Spawn a process, with a process protocol.\n\n        Arguments given\
+    \ to this function that are listed as L{bytes} or\n        L{unicode} may be encoded\
+    \ or decoded depending on the platform and the\n        argument type given. \
+    \ On UNIX systems (Linux, FreeBSD, macOS) and\n        Python 2 on Windows, L{unicode}\
+    \ arguments will be encoded down to\n        L{bytes} using the encoding given\
+    \ by L{sys.getfilesystemencoding}, to be\n        used with the \"narrow\" OS\
+    \ APIs.  On Python 3 on Windows, L{bytes}\n        arguments will be decoded up\
+    \ to L{unicode} using the encoding given by\n        L{sys.getfilesystemencoding}\
+    \ (C{utf8}) and given to Windows's native \"wide\" APIs.\n\n        @param processProtocol:\
+    \ An object which will be notified of all events\n            related to the created\
+    \ process.\n\n        @param executable: the file name to spawn - the full path\
+    \ should be\n            used.\n\n        @param args: the command line arguments\
+    \ to pass to the process; a\n            sequence of strings.  The first string\
+    \ should be the executable's\n            name.\n\n        @param env: the environment\
+    \ variables to pass to the child process.\n            The resulting behavior\
+    \ varies between platforms.  If:\n\n                - C{env} is not set:\n   \
+    \               - On POSIX: pass an empty environment.\n                  - On\
+    \ Windows: pass L{os.environ}.\n                - C{env} is L{None}:\n       \
+    \           - On POSIX: pass L{os.environ}.\n                  - On Windows: pass\
+    \ L{os.environ}.\n                - C{env} is a L{dict}:\n                  -\
+    \ On POSIX: pass the key/value pairs in C{env} as the\n                    complete\
+    \ environment.\n                  - On Windows: update L{os.environ} with the\
+    \ key/value\n                    pairs in the L{dict} before passing it. As a\n\
+    \                    consequence of U{bug #1640\n                    <http://twistedmatrix.com/trac/ticket/1640>},\
+    \ passing\n                    keys with empty values in an effort to unset\n\
+    \                    environment variables I{won't} unset them.\n\n        @param\
+    \ path: the path to run the subprocess in - defaults to the\n            current\
+    \ directory.\n\n        @param uid: user ID to run the subprocess as.  (Only available\
+    \ on POSIX\n            systems.)\n\n        @param gid: group ID to run the subprocess\
+    \ as.  (Only available on\n            POSIX systems.)\n\n        @param usePTY:\
+    \ if true, run this process in a pseudo-terminal.\n            optionally a tuple\
+    \ of C{(masterfd, slavefd, ttyname)}, in which\n            case use those file\
+    \ descriptors.  (Not available on all systems.)\n\n        @param childFDs: A\
+    \ dictionary mapping file descriptors in the new child\n            process to\
+    \ an integer or to the string 'r' or 'w'.\n\n            If the value is an integer,\
+    \ it specifies a file descriptor in the\n            parent process which will\
+    \ be mapped to a file descriptor (specified\n            by the key) in the child\
+    \ process.  This is useful for things like\n            inetd and shell-like file\
+    \ redirection.\n\n            If it is the string 'r', a pipe will be created\
+    \ and attached to the\n            child at that file descriptor: the child will\
+    \ be able to write to\n            that file descriptor and the parent will receive\
+    \ read notification\n            via the L{IProcessProtocol.childDataReceived}\
+    \ callback.  This is\n            useful for the child's stdout and stderr.\n\n\
+    \            If it is the string 'w', similar setup to the previous case will\n\
+    \            occur, with the pipe being readable by the child instead of\n   \
+    \         writeable.  The parent process can write to that file descriptor\n \
+    \           using L{IProcessTransport.writeToChild}.  This is useful for the\n\
+    \            child's stdin.\n\n            If childFDs is not passed, the default\
+    \ behaviour is to use a\n            mapping that opens the usual stdin/stdout/stderr\
+    \ pipes.\n\n        @see: L{twisted.internet.protocol.ProcessProtocol}\n\n   \
+    \     @return: An object which provides L{IProcessTransport}.\n\n        @raise\
+    \ OSError: Raised with errno C{EAGAIN} or C{ENOMEM} if there are\n           \
+    \ insufficient system resources to create a new process.\n        \"\"\"\n\n\n\
+    class IReactorTime(Interface):\n    \"\"\"\n    Time methods that a Reactor should\
+    \ implement.\n    \"\"\"\n\n    def seconds() -> float:\n        \"\"\"\n    \
+    \    Get the current time in seconds.\n\n        @return: A number-like object\
+    \ of some sort.\n        \"\"\"\n\n    def callLater(\n        delay: float, callable:\
+    \ Callable[..., Any], *args: object, **kwargs: object\n    ) -> \"IDelayedCall\"\
+    :\n        \"\"\"\n        Call a function later.\n\n        @param delay: the\
+    \ number of seconds to wait.\n        @param callable: the callable object to\
+    \ call later.\n        @param args: the arguments to call it with.\n        @param\
+    \ kwargs: the keyword arguments to call it with.\n\n        @return: An object\
+    \ which provides L{IDelayedCall} and can be used to\n                 cancel the\
+    \ scheduled call, by calling its C{cancel()} method.\n                 It also\
+    \ may be rescheduled by calling its C{delay()} or\n                 C{reset()}\
+    \ methods.\n        \"\"\"\n\n    def getDelayedCalls() -> Sequence[\"IDelayedCall\"\
+    ]:\n        \"\"\"\n        See L{twisted.internet.interfaces.IReactorTime.getDelayedCalls}\n\
+    \        \"\"\"\n\n\nclass IDelayedCall(Interface):\n    \"\"\"\n    A scheduled\
+    \ call.\n\n    There are probably other useful methods we can add to this interface;\n\
+    \    suggestions are welcome.\n    \"\"\"\n\n    def getTime() -> float:\n   \
+    \     \"\"\"\n        Get time when delayed call will happen.\n\n        @return:\
+    \ time in seconds since epoch (a float).\n        \"\"\"\n\n    def cancel() ->\
+    \ None:\n        \"\"\"\n        Cancel the scheduled call.\n\n        @raises\
+    \ twisted.internet.error.AlreadyCalled: if the call has already\n            happened.\n\
+    \        @raises twisted.internet.error.AlreadyCancelled: if the call has already\n\
+    \            been cancelled.\n        \"\"\"\n\n    def delay(secondsLater: float)\
+    \ -> None:\n        \"\"\"\n        Delay the scheduled call.\n\n        @param\
+    \ secondsLater: how many seconds from its current firing time to delay\n\n   \
+    \     @raises twisted.internet.error.AlreadyCalled: if the call has already\n\
+    \            happened.\n        @raises twisted.internet.error.AlreadyCancelled:\
+    \ if the call has already\n            been cancelled.\n        \"\"\"\n\n   \
+    \ def reset(secondsFromNow: float) -> None:\n        \"\"\"\n        Reset the\
+    \ scheduled call's timer.\n\n        @param secondsFromNow: how many seconds from\
+    \ now it should fire,\n            equivalent to C{.cancel()} and then doing another\n\
+    \            C{reactor.callLater(secondsLater, ...)}\n\n        @raises twisted.internet.error.AlreadyCalled:\
+    \ if the call has already\n            happened.\n        @raises twisted.internet.error.AlreadyCancelled:\
+    \ if the call has already\n            been cancelled.\n        \"\"\"\n\n   \
+    \ def active() -> bool:\n        \"\"\"\n        @return: True if this call is\
+    \ still active, False if it has been\n                 called or cancelled.\n\
+    \        \"\"\"\n\n\nclass IReactorFromThreads(Interface):\n    \"\"\"\n    This\
+    \ interface is the set of thread-safe methods which may be invoked on\n    the\
+    \ reactor from other threads.\n\n    @since: 15.4\n    \"\"\"\n\n    def callFromThread(\n\
+    \        callable: Callable[..., Any], *args: object, **kwargs: object\n    )\
+    \ -> None:\n        \"\"\"\n        Cause a function to be executed by the reactor\
+    \ thread.\n\n        Use this method when you want to run a function in the reactor's\
+    \ thread\n        from another thread.  Calling L{callFromThread} should wake\
+    \ up the main\n        thread (where L{reactor.run() <IReactorCore.run>} is executing)\
+    \ and run\n        the given callable in that thread.\n\n        If you're writing\
+    \ a multi-threaded application the C{callable}\n        may need to be thread\
+    \ safe, but this method doesn't require it as such.\n        If you want to call\
+    \ a function in the next mainloop iteration, but\n        you're in the same thread,\
+    \ use L{callLater} with a delay of 0.\n        \"\"\"\n\n\nclass IReactorInThreads(Interface):\n\
+    \    \"\"\"\n    This interface contains the methods exposed by a reactor which\
+    \ will let you\n    run functions in another thread.\n\n    @since: 15.4\n   \
+    \ \"\"\"\n\n    def callInThread(\n        callable: Callable[..., Any], *args:\
+    \ object, **kwargs: object\n    ) -> None:\n        \"\"\"\n        Run the given\
+    \ callable object in a separate thread, with the given\n        arguments and\
+    \ keyword arguments.\n        \"\"\"\n\n\nclass IReactorThreads(IReactorFromThreads,\
+    \ IReactorInThreads):\n    \"\"\"\n    Dispatch methods to be run in threads.\n\
+    \n    Internally, this should use a thread pool and dispatch methods to them.\n\
+    \    \"\"\"\n\n    def getThreadPool() -> \"ThreadPool\":\n        \"\"\"\n  \
+    \      Return the threadpool used by L{IReactorInThreads.callInThread}.\n    \
+    \    Create it first if necessary.\n        \"\"\"\n\n    def suggestThreadPoolSize(size:\
+    \ int) -> None:\n        \"\"\"\n        Suggest the size of the internal threadpool\
+    \ used to dispatch functions\n        passed to L{IReactorInThreads.callInThread}.\n\
+    \        \"\"\"\n\n\nclass IReactorCore(Interface):\n    \"\"\"\n    Core methods\
+    \ that a Reactor must implement.\n    \"\"\"\n\n    running = Attribute(\n   \
+    \     \"A C{bool} which is C{True} from I{during startup} to \"\n        \"I{during\
+    \ shutdown} and C{False} the rest of the time.\"\n    )\n\n    def resolve(name:\
+    \ str, timeout: Sequence[int] = (1, 3, 11, 45)) -> \"Deferred[str]\":\n      \
+    \  \"\"\"\n        Asynchronously resolve a hostname to a single IPv4 address.\n\
+    \n        @note: Rather than calling this API directly, you probably want to use\n\
+    \            L{twisted.internet.endpoints.HostnameEndpoint} to connect to a\n\
+    \            hostname.  If you do want to resolve a hostname without connecting\n\
+    \            to it, see L{IReactorPluggableNameResolver} and\n            L{IHostnameResolver}\
+    \ so that you can receive multiple results and\n            IPv6 addresses.\n\n\
+    \        @param name: The hostname to resolve.\n\n        @param timeout: A sequence\
+    \ of timeouts, meant to mirror the sequence of\n            timeouts used for\
+    \ each hop in recursive queries.  Note that\n            different implementations\
+    \ of the resolver backend may not honor\n            this timeout as such, or\
+    \ at all; if the underlying platform API\n            supports it, implementations\
+    \ make a best-effort attempt to cancel\n            the underlying resolution\
+    \ if the sum of these timeouts elapses.\n        \"\"\"\n\n    def run() -> None:\n\
+    \        \"\"\"\n        Fire 'startup' System Events, move the reactor to the\
+    \ 'running'\n        state, then run the main loop until it is stopped with C{stop()}\
+    \ or\n        C{crash()}.\n        \"\"\"\n\n    def stop() -> None:\n       \
+    \ \"\"\"\n        Fire 'shutdown' System Events, which will move the reactor to\
+    \ the\n        'stopped' state and cause C{reactor.run()} to exit.\n        \"\
+    \"\"\n\n    def crash() -> None:\n        \"\"\"\n        Stop the main loop *immediately*,\
+    \ without firing any system events.\n\n        This is named as it is because\
+    \ this is an extremely \"rude\" thing to do;\n        it is possible to lose data\
+    \ and put your system in an inconsistent\n        state by calling this.  However,\
+    \ it is necessary, as sometimes a system\n        can become wedged in a pre-shutdown\
+    \ call.\n        \"\"\"\n\n    def iterate(delay: float) -> None:\n        \"\"\
+    \"\n        Run the main loop's I/O polling function for a period of time.\n\n\
+    \        This is most useful in applications where the UI is being drawn \"as\n\
+    \        fast as possible\", such as games. All pending L{IDelayedCall}s will\n\
+    \        be called.\n\n        The reactor must have been started (via the C{run()}\
+    \ method) prior to\n        any invocations of this method.  It must also be stopped\
+    \ manually\n        after the last call to this method (via the C{stop()} method).\
+    \  This\n        method is not re-entrant: you must not call it recursively; in\n\
+    \        particular, you must not call it while the reactor is running.\n    \
+    \    \"\"\"\n\n    def fireSystemEvent(eventType: str) -> None:\n        \"\"\"\
+    \n        Fire a system-wide event.\n\n        System-wide events are things like\
+    \ 'startup', 'shutdown', and\n        'persist'.\n        \"\"\"\n\n    def addSystemEventTrigger(\n\
+    \        phase: str,\n        eventType: str,\n        callable: Callable[...,\
+    \ Any],\n        *args: object,\n        **kwargs: object,\n    ) -> Any:\n  \
+    \      \"\"\"\n        Add a function to be called when a system event occurs.\n\
+    \n        Each \"system event\" in Twisted, such as 'startup', 'shutdown', and\n\
+    \        'persist', has 3 phases: 'before', 'during', and 'after' (in that\n \
+    \       order, of course).  These events will be fired internally by the\n   \
+    \     Reactor.\n\n        An implementor of this interface must only implement\
+    \ those events\n        described here.\n\n        Callbacks registered for the\
+    \ \"before\" phase may return either None or a\n        Deferred.  The \"during\"\
+    \ phase will not execute until all of the\n        Deferreds from the \"before\"\
+    \ phase have fired.\n\n        Once the \"during\" phase is running, all of the\
+    \ remaining triggers must\n        execute; their return values must be ignored.\n\
+    \n        @param phase: a time to call the event -- either the string 'before',\n\
+    \                      'after', or 'during', describing when to call it\n    \
+    \                  relative to the event's execution.\n        @param eventType:\
+    \ this is a string describing the type of event.\n        @param callable: the\
+    \ object to call before shutdown.\n        @param args: the arguments to call\
+    \ it with.\n        @param kwargs: the keyword arguments to call it with.\n\n\
+    \        @return: an ID that can be used to remove this call with\n          \
+    \       removeSystemEventTrigger.\n        \"\"\"\n\n    def removeSystemEventTrigger(triggerID:\
+    \ Any) -> None:\n        \"\"\"\n        Removes a trigger added with addSystemEventTrigger.\n\
+    \n        @param triggerID: a value returned from addSystemEventTrigger.\n\n \
+    \       @raise KeyError: If there is no system event trigger for the given\n \
+    \           C{triggerID}.\n        @raise ValueError: If there is no system event\
+    \ trigger for the given\n            C{triggerID}.\n        @raise TypeError:\
+    \ If there is no system event trigger for the given\n            C{triggerID}.\n\
+    \        \"\"\"\n\n    def callWhenRunning(\n        callable: Callable[..., Any],\
+    \ *args: object, **kwargs: object\n    ) -> Optional[Any]:\n        \"\"\"\n \
+    \       Call a function when the reactor is running.\n\n        If the reactor\
+    \ has not started, the callable will be scheduled\n        to run when it does\
+    \ start. Otherwise, the callable will be invoked\n        immediately.\n\n   \
+    \     @param callable: the callable object to call later.\n        @param args:\
+    \ the arguments to call it with.\n        @param kwargs: the keyword arguments\
+    \ to call it with.\n\n        @return: None if the callable was invoked, otherwise\
+    \ a system\n                 event id for the scheduled call.\n        \"\"\"\n\
+    \n\nclass IReactorPluggableResolver(Interface):\n    \"\"\"\n    An L{IReactorPluggableResolver}\
+    \ is a reactor which can be customized with\n    an L{IResolverSimple}.  This\
+    \ is a fairly limited interface, that supports\n    only IPv4; you should use\
+    \ L{IReactorPluggableNameResolver} instead.\n\n    @see: L{IReactorPluggableNameResolver}\n\
+    \    \"\"\"\n\n    def installResolver(resolver: IResolverSimple) -> IResolverSimple:\n\
+    \        \"\"\"\n        Set the internal resolver to use to for name lookups.\n\
+    \n        @param resolver: The new resolver to use.\n\n        @return: The previously\
+    \ installed resolver.\n        \"\"\"\n\n\nclass IReactorPluggableNameResolver(Interface):\n\
+    \    \"\"\"\n    An L{IReactorPluggableNameResolver} is a reactor whose name resolver\
+    \ can be\n    set to a user-supplied object.\n    \"\"\"\n\n    nameResolver:\
+    \ IHostnameResolver = Attribute(\n        \"\"\"\n        Read-only attribute;\
+    \ the resolver installed with L{installResolver}.\n        An L{IHostnameResolver}.\n\
+    \        \"\"\"\n    )\n\n    def installNameResolver(resolver: IHostnameResolver)\
+    \ -> IHostnameResolver:\n        \"\"\"\n        Set the internal resolver to\
+    \ use for name lookups.\n\n        @param resolver: The new resolver to use.\n\
+    \n        @return: The previously installed resolver.\n        \"\"\"\n\n\nclass\
+    \ IReactorDaemonize(Interface):\n    \"\"\"\n    A reactor which provides hooks\
+    \ that need to be called before and after\n    daemonization.\n\n    Notes:\n\
+    \       - This interface SHOULD NOT be called by applications.\n       - This\
+    \ interface should only be implemented by reactors as a workaround\n         (in\
+    \ particular, it's implemented currently only by kqueue()).\n         For details\
+    \ please see the comments on ticket #1918.\n    \"\"\"\n\n    def beforeDaemonize()\
+    \ -> None:\n        \"\"\"\n        Hook to be called immediately before daemonization.\
+    \ No reactor methods\n        may be called until L{afterDaemonize} is called.\n\
+    \        \"\"\"\n\n    def afterDaemonize() -> None:\n        \"\"\"\n       \
+    \ Hook to be called immediately after daemonization. This may only be\n      \
+    \  called after L{beforeDaemonize} had been called previously.\n        \"\"\"\
+    \n\n\nclass IReactorFDSet(Interface):\n    \"\"\"\n    Implement me to be able\
+    \ to use L{IFileDescriptor} type resources.\n\n    This assumes that your main-loop\
+    \ uses UNIX-style numeric file descriptors\n    (or at least similarly opaque\
+    \ IDs returned from a .fileno() method)\n    \"\"\"\n\n    def addReader(reader:\
+    \ \"IReadDescriptor\") -> None:\n        \"\"\"\n        I add reader to the set\
+    \ of file descriptors to get read events for.\n\n        @param reader: An L{IReadDescriptor}\
+    \ provider that will be checked for\n                       read events until\
+    \ it is removed from the reactor with\n                       L{removeReader}.\n\
+    \        \"\"\"\n\n    def addWriter(writer: \"IWriteDescriptor\") -> None:\n\
+    \        \"\"\"\n        I add writer to the set of file descriptors to get write\
+    \ events for.\n\n        @param writer: An L{IWriteDescriptor} provider that will\
+    \ be checked for\n                       write events until it is removed from\
+    \ the reactor with\n                       L{removeWriter}.\n        \"\"\"\n\n\
+    \    def removeReader(reader: \"IReadDescriptor\") -> None:\n        \"\"\"\n\
+    \        Removes an object previously added with L{addReader}.\n        \"\"\"\
+    \n\n    def removeWriter(writer: \"IWriteDescriptor\") -> None:\n        \"\"\"\
+    \n        Removes an object previously added with L{addWriter}.\n        \"\"\"\
+    \n\n    def removeAll() -> List[Union[\"IReadDescriptor\", \"IWriteDescriptor\"\
+    ]]:\n        \"\"\"\n        Remove all readers and writers.\n\n        Should\
+    \ not remove reactor internal reactor connections (like a waker).\n\n        @return:\
+    \ A list of L{IReadDescriptor} and L{IWriteDescriptor} providers\n           \
+    \      which were removed.\n        \"\"\"\n\n    def getReaders() -> List[\"\
+    IReadDescriptor\"]:\n        \"\"\"\n        Return the list of file descriptors\
+    \ currently monitored for input\n        events by the reactor.\n\n        @return:\
+    \ the list of file descriptors monitored for input events.\n        \"\"\"\n\n\
+    \    def getWriters() -> List[\"IWriteDescriptor\"]:\n        \"\"\"\n       \
+    \ Return the list file descriptors currently monitored for output events\n   \
+    \     by the reactor.\n\n        @return: the list of file descriptors monitored\
+    \ for output events.\n        \"\"\"\n\n\nclass IListeningPort(Interface):\n \
+    \   \"\"\"\n    A listening port.\n    \"\"\"\n\n    def startListening() -> None:\n\
+    \        \"\"\"\n        Start listening on this port.\n\n        @raise CannotListenError:\
+    \ If it cannot listen on this port (e.g., it is\n                            \
+    \      a TCP port and it cannot bind to the required\n                       \
+    \           port number).\n        \"\"\"\n\n    def stopListening() -> Optional[\"\
+    Deferred[None]\"]:\n        \"\"\"\n        Stop listening on this port.\n\n \
+    \       If it does not complete immediately, will return Deferred that fires\n\
+    \        upon completion.\n        \"\"\"\n\n    def getHost() -> IAddress:\n\
+    \        \"\"\"\n        Get the host that this port is listening for.\n\n   \
+    \     @return: An L{IAddress} provider.\n        \"\"\"\n\n\nclass ILoggingContext(Interface):\n\
+    \    \"\"\"\n    Give context information that will be used to log events generated\
+    \ by\n    this item.\n    \"\"\"\n\n    def logPrefix() -> str:\n        \"\"\"\
+    \n        @return: Prefix used during log formatting to indicate context.\n  \
+    \      \"\"\"\n\n\nclass IFileDescriptor(ILoggingContext):\n    \"\"\"\n    An\
+    \ interface representing a UNIX-style numeric file descriptor.\n    \"\"\"\n\n\
+    \    def fileno() -> object:\n        \"\"\"\n        @return: The platform-specified\
+    \ representation of a file descriptor\n            number.  Or C{-1} if the descriptor\
+    \ no longer has a valid file\n            descriptor number associated with it.\
+    \  As long as the descriptor\n            is valid, calls to this method on a\
+    \ particular instance must\n            return the same value.\n        \"\"\"\
+    \n\n    def connectionLost(reason: Failure) -> None:\n        \"\"\"\n       \
+    \ Called when the connection was lost.\n\n        This is called when the connection\
+    \ on a selectable object has been\n        lost.  It will be called whether the\
+    \ connection was closed explicitly,\n        an exception occurred in an event\
+    \ handler, or the other end of the\n        connection closed it first.\n\n  \
+    \      See also L{IHalfCloseableDescriptor} if your descriptor wants to be\n \
+    \       notified separately of the two halves of the connection being closed.\n\
+    \n        @param reason: A failure instance indicating the reason why the\n  \
+    \                     connection was lost.  L{error.ConnectionLost} and\n    \
+    \                   L{error.ConnectionDone} are of special note, but the\n   \
+    \                    failure may be of other classes as well.\n        \"\"\"\n\
+    \n\nclass IReadDescriptor(IFileDescriptor):\n    \"\"\"\n    An L{IFileDescriptor}\
+    \ that can read.\n\n    This interface is generally used in conjunction with L{IReactorFDSet}.\n\
+    \    \"\"\"\n\n    def doRead() -> Optional[Failure]:\n        \"\"\"\n      \
+    \  Some data is available for reading on your descriptor.\n\n        @return:\
+    \ If an error is encountered which causes the descriptor to\n            no longer\
+    \ be valid, a L{Failure} should be returned.  Otherwise,\n            L{None}.\n\
+    \        \"\"\"\n\n\nclass IWriteDescriptor(IFileDescriptor):\n    \"\"\"\n  \
+    \  An L{IFileDescriptor} that can write.\n\n    This interface is generally used\
+    \ in conjunction with L{IReactorFDSet}.\n    \"\"\"\n\n    def doWrite() -> Optional[Failure]:\n\
+    \        \"\"\"\n        Some data can be written to your descriptor.\n\n    \
+    \    @return: If an error is encountered which causes the descriptor to\n    \
+    \        no longer be valid, a L{Failure} should be returned.  Otherwise,\n  \
+    \          L{None}.\n        \"\"\"\n\n\nclass IReadWriteDescriptor(IReadDescriptor,\
+    \ IWriteDescriptor):\n    \"\"\"\n    An L{IFileDescriptor} that can both read\
+    \ and write.\n    \"\"\"\n\n\nclass IHalfCloseableDescriptor(Interface):\n   \
+    \ \"\"\"\n    A descriptor that can be half-closed.\n    \"\"\"\n\n    def writeConnectionLost(reason:\
+    \ Failure) -> None:\n        \"\"\"\n        Indicates write connection was lost.\n\
+    \        \"\"\"\n\n    def readConnectionLost(reason: Failure) -> None:\n    \
+    \    \"\"\"\n        Indicates read connection was lost.\n        \"\"\"\n\n\n\
+    class ISystemHandle(Interface):\n    \"\"\"\n    An object that wraps a networking\
+    \ OS-specific handle.\n    \"\"\"\n\n    def getHandle() -> object:\n        \"\
+    \"\"\n        Return a system- and reactor-specific handle.\n\n        This might\
+    \ be a socket.socket() object, or some other type of\n        object, depending\
+    \ on which reactor is being used. Use and\n        manipulate at your own risk.\n\
+    \n        This might be used in cases where you want to set specific\n       \
+    \ options not exposed by the Twisted APIs.\n        \"\"\"\n\n\nclass IConsumer(Interface):\n\
+    \    \"\"\"\n    A consumer consumes data from a producer.\n    \"\"\"\n\n   \
+    \ def registerProducer(producer: \"IProducer\", streaming: bool) -> None:\n  \
+    \      \"\"\"\n        Register to receive data from a producer.\n\n        This\
+    \ sets self to be a consumer for a producer.  When this object runs\n        out\
+    \ of data (as when a send(2) call on a socket succeeds in moving the\n       \
+    \ last data from a userspace buffer into a kernelspace buffer), it will\n    \
+    \    ask the producer to resumeProducing().\n\n        For L{IPullProducer} providers,\
+    \ C{resumeProducing} will be called once\n        each time data is required.\n\
+    \n        For L{IPushProducer} providers, C{pauseProducing} will be called\n \
+    \       whenever the write buffer fills up and C{resumeProducing} will only be\n\
+    \        called when it empties.  The consumer will only call C{resumeProducing}\n\
+    \        to balance a previous C{pauseProducing} call; the producer is assumed\n\
+    \        to start in an un-paused state.\n\n        @param streaming: C{True}\
+    \ if C{producer} provides L{IPushProducer},\n            C{False} if C{producer}\
+    \ provides L{IPullProducer}.\n\n        @raise RuntimeError: If a producer is\
+    \ already registered.\n        \"\"\"\n\n    def unregisterProducer() -> None:\n\
+    \        \"\"\"\n        Stop consuming data from a producer, without disconnecting.\n\
+    \        \"\"\"\n\n    def write(data: bytes) -> None:\n        \"\"\"\n     \
+    \   The producer will write data by calling this method.\n\n        The implementation\
+    \ must be non-blocking and perform whatever\n        buffering is necessary. \
+    \ If the producer has provided enough data\n        for now and it is a L{IPushProducer},\
+    \ the consumer may call its\n        C{pauseProducing} method.\n        \"\"\"\
+    \n\n\nclass IProducer(Interface):\n    \"\"\"\n    A producer produces data for\
+    \ a consumer.\n\n    Typically producing is done by calling the C{write} method\
+    \ of a class\n    implementing L{IConsumer}.\n    \"\"\"\n\n    def stopProducing()\
+    \ -> None:\n        \"\"\"\n        Stop producing data.\n\n        This tells\
+    \ a producer that its consumer has died, so it must stop\n        producing data\
+    \ for good.\n        \"\"\"\n\n\nclass IPushProducer(IProducer):\n    \"\"\"\n\
+    \    A push producer, also known as a streaming producer is expected to\n    produce\
+    \ (write to this consumer) data on a continuous basis, unless\n    it has been\
+    \ paused. A paused push producer will resume producing\n    after its C{resumeProducing()}\
+    \ method is called.   For a push producer\n    which is not pauseable, these functions\
+    \ may be noops.\n    \"\"\"\n\n    def pauseProducing() -> None:\n        \"\"\
+    \"\n        Pause producing data.\n\n        Tells a producer that it has produced\
+    \ too much data to process for\n        the time being, and to stop until C{resumeProducing()}\
+    \ is called.\n        \"\"\"\n\n    def resumeProducing() -> None:\n        \"\
+    \"\"\n        Resume producing data.\n\n        This tells a producer to re-add\
+    \ itself to the main loop and produce\n        more data for its consumer.\n \
+    \       \"\"\"\n\n\nclass IPullProducer(IProducer):\n    \"\"\"\n    A pull producer,\
+    \ also known as a non-streaming producer, is\n    expected to produce data each\
+    \ time L{resumeProducing()} is called.\n    \"\"\"\n\n    def resumeProducing()\
+    \ -> None:\n        \"\"\"\n        Produce data for the consumer a single time.\n\
+    \n        This tells a producer to produce data for the consumer once\n      \
+    \  (not repeatedly, once only). Typically this will be done\n        by calling\
+    \ the consumer's C{write} method a single time with\n        produced data. The\
+    \ producer should produce data before returning\n        from C{resumeProducing()},\
+    \ that is, it should not schedule a deferred\n        write.\n        \"\"\"\n\
+    \n\nclass IProtocol(Interface):\n    def dataReceived(data: bytes) -> None:\n\
+    \        \"\"\"\n        Called whenever data is received.\n\n        Use this\
+    \ method to translate to a higher-level message.  Usually, some\n        callback\
+    \ will be made upon the receipt of each complete protocol\n        message.\n\n\
+    \        Please keep in mind that you will probably need to buffer some data\n\
+    \        as partial (or multiple) protocol messages may be received!  We\n   \
+    \     recommend that unit tests for protocols call through to this method\n  \
+    \      with differing chunk sizes, down to one byte at a time.\n\n        @param\
+    \ data: bytes of indeterminate length\n        \"\"\"\n\n    def connectionLost(reason:\
+    \ Failure) -> None:\n        \"\"\"\n        Called when the connection is shut\
+    \ down.\n\n        Clear any circular references here, and any external references\n\
+    \        to this Protocol.  The connection has been closed. The C{reason}\n  \
+    \      Failure wraps a L{twisted.internet.error.ConnectionDone} or\n        L{twisted.internet.error.ConnectionLost}\
+    \ instance (or a subclass\n        of one of those).\n        \"\"\"\n\n    def\
+    \ makeConnection(transport: \"ITransport\") -> None:\n        \"\"\"\n       \
+    \ Make a connection to a transport and a server.\n        \"\"\"\n\n    def connectionMade()\
+    \ -> None:\n        \"\"\"\n        Called when a connection is made.\n\n    \
+    \    This may be considered the initializer of the protocol, because\n       \
+    \ it is called when the connection is completed.  For clients,\n        this is\
+    \ called once the connection to the server has been\n        established; for\
+    \ servers, this is called after an accept() call\n        stops blocking and a\
+    \ socket has been received.  If you need to\n        send any greeting or initial\
+    \ message, do it here.\n        \"\"\"\n\n\nclass IProcessProtocol(Interface):\n\
+    \    \"\"\"\n    Interface for process-related event handlers.\n    \"\"\"\n\n\
+    \    def makeConnection(process: \"IProcessTransport\") -> None:\n        \"\"\
+    \"\n        Called when the process has been created.\n\n        @param process:\
+    \ An object representing the process which has been\n            created and associated\
+    \ with this protocol.\n        \"\"\"\n\n    def childDataReceived(childFD: int,\
+    \ data: bytes) -> None:\n        \"\"\"\n        Called when data arrives from\
+    \ the child process.\n\n        @param childFD: The file descriptor from which\
+    \ the data was\n            received.\n        @param data: The data read from\
+    \ the child's file descriptor.\n        \"\"\"\n\n    def childConnectionLost(childFD:\
+    \ int) -> None:\n        \"\"\"\n        Called when a file descriptor associated\
+    \ with the child process is\n        closed.\n\n        @param childFD: The file\
+    \ descriptor which was closed.\n        \"\"\"\n\n    def processExited(reason:\
+    \ Failure) -> None:\n        \"\"\"\n        Called when the child process exits.\n\
+    \n        @param reason: A failure giving the reason the child process\n     \
+    \       terminated.  The type of exception for this failure is either\n      \
+    \      L{twisted.internet.error.ProcessDone} or\n            L{twisted.internet.error.ProcessTerminated}.\n\
+    \n        @since: 8.2\n        \"\"\"\n\n    def processEnded(reason: Failure)\
+    \ -> None:\n        \"\"\"\n        Called when the child process exits and all\
+    \ file descriptors associated\n        with it have been closed.\n\n        @param\
+    \ reason: A failure giving the reason the child process\n            terminated.\
+    \  The type of exception for this failure is either\n            L{twisted.internet.error.ProcessDone}\
+    \ or\n            L{twisted.internet.error.ProcessTerminated}.\n        \"\"\"\
+    \n\n\nclass IHalfCloseableProtocol(Interface):\n    \"\"\"\n    Implemented to\
+    \ indicate they want notification of half-closes.\n\n    TCP supports the notion\
+    \ of half-closing the connection, e.g.\n    closing the write side but still not\
+    \ stopping reading. A protocol\n    that implements this interface will be notified\
+    \ of such events,\n    instead of having connectionLost called.\n    \"\"\"\n\n\
+    \    def readConnectionLost() -> None:\n        \"\"\"\n        Notification of\
+    \ the read connection being closed.\n\n        This indicates peer did half-close\
+    \ of write side. It is now\n        the responsibility of the this protocol to\
+    \ call\n        loseConnection().  In addition, the protocol MUST make sure a\n\
+    \        reference to it still exists (i.e. by doing a callLater with\n      \
+    \  one of its methods, etc.)  as the reactor will only have a\n        reference\
+    \ to it if it is writing.\n\n        If the protocol does not do so, it might\
+    \ get garbage collected\n        without the connectionLost method ever being\
+    \ called.\n        \"\"\"\n\n    def writeConnectionLost() -> None:\n        \"\
+    \"\"\n        Notification of the write connection being closed.\n\n        This\
+    \ will never be called for TCP connections as TCP does not\n        support notification\
+    \ of this type of half-close.\n        \"\"\"\n\n\nclass IHandshakeListener(Interface):\n\
+    \    \"\"\"\n    An interface implemented by a L{IProtocol} to indicate that it\
+    \ would like\n    to be notified when TLS handshakes complete when run over a\
+    \ TLS-based\n    transport.\n\n    This interface is only guaranteed to be called\
+    \ when run over a TLS-based\n    transport: non TLS-based transports will not\
+    \ respect this interface.\n    \"\"\"\n\n    def handshakeCompleted() -> None:\n\
+    \        \"\"\"\n        Notification of the TLS handshake being completed.\n\n\
+    \        This notification fires when OpenSSL has completed the TLS handshake.\n\
+    \        At this point the TLS connection is established, and the protocol can\n\
+    \        interrogate its transport (usually an L{ISSLTransport}) for details of\n\
+    \        the TLS connection.\n\n        This notification *also* fires whenever\
+    \ the TLS session is\n        renegotiated. As a result, protocols that have certain\
+    \ minimum security\n        requirements should implement this interface to ensure\
+    \ that they are\n        able to re-evaluate the security of the TLS session if\
+    \ it changes.\n        \"\"\"\n\n\nclass IFileDescriptorReceiver(Interface):\n\
+    \    \"\"\"\n    Protocols may implement L{IFileDescriptorReceiver} to receive\
+    \ file\n    descriptors sent to them.  This is useful in conjunction with\n  \
+    \  L{IUNIXTransport}, which allows file descriptors to be sent between\n    processes\
+    \ on a single host.\n    \"\"\"\n\n    def fileDescriptorReceived(descriptor:\
+    \ int) -> None:\n        \"\"\"\n        Called when a file descriptor is received\
+    \ over the connection.\n\n        @param descriptor: The descriptor which was\
+    \ received.\n\n        @return: L{None}\n        \"\"\"\n\n\nclass IProtocolFactory(Interface):\n\
+    \    \"\"\"\n    Interface for protocol factories.\n    \"\"\"\n\n    def buildProtocol(addr:\
+    \ IAddress) -> Optional[IProtocol]:\n        \"\"\"\n        Called when a connection\
+    \ has been established to addr.\n\n        If None is returned, the connection\
+    \ is assumed to have been refused,\n        and the Port will close the connection.\n\
+    \n        @param addr: The address of the newly-established connection\n\n   \
+    \     @return: None if the connection was refused, otherwise an object\n     \
+    \            providing L{IProtocol}.\n        \"\"\"\n\n    def doStart() -> None:\n\
+    \        \"\"\"\n        Called every time this is connected to a Port or Connector.\n\
+    \        \"\"\"\n\n    def doStop() -> None:\n        \"\"\"\n        Called every\
+    \ time this is unconnected from a Port or Connector.\n        \"\"\"\n\n\nclass\
+    \ ITransport(Interface):\n    \"\"\"\n    I am a transport for bytes.\n\n    I\
+    \ represent (and wrap) the physical connection and synchronicity\n    of the framework\
+    \ which is talking to the network.  I make no\n    representations about whether\
+    \ calls to me will happen immediately\n    or require returning to a control loop,\
+    \ or whether they will happen\n    in the same or another thread.  Consider methods\
+    \ of this class\n    (aside from getPeer) to be 'thrown over the wall', to happen\
+    \ at some\n    indeterminate time.\n    \"\"\"\n\n    def write(data: bytes) ->\
+    \ None:\n        \"\"\"\n        Write some data to the physical connection, in\
+    \ sequence, in a\n        non-blocking fashion.\n\n        If possible, make sure\
+    \ that it is all written.  No data will\n        ever be lost, although (obviously)\
+    \ the connection may be closed\n        before it all gets through.\n\n      \
+    \  @param data: The data to write.\n        \"\"\"\n\n    def writeSequence(data:\
+    \ Iterable[bytes]) -> None:\n        \"\"\"\n        Write an iterable of byte\
+    \ strings to the physical connection.\n\n        If possible, make sure that all\
+    \ of the data is written to\n        the socket at once, without first copying\
+    \ it all into a\n        single byte string.\n\n        @param data: The data\
+    \ to write.\n        \"\"\"\n\n    def loseConnection() -> None:\n        \"\"\
+    \"\n        Close my connection, after writing all pending data.\n\n        Note\
+    \ that if there is a registered producer on a transport it\n        will not be\
+    \ closed until the producer has been unregistered.\n        \"\"\"\n\n    def\
+    \ getPeer() -> IAddress:\n        \"\"\"\n        Get the remote address of this\
+    \ connection.\n\n        Treat this method with caution.  It is the unfortunate\
+    \ result of the\n        CGI and Jabber standards, but should not be considered\
+    \ reliable for\n        the usual host of reasons; port forwarding, proxying,\
+    \ firewalls, IP\n        masquerading, etc.\n\n        @return: An L{IAddress}\
+    \ provider.\n        \"\"\"\n\n    def getHost() -> IAddress:\n        \"\"\"\n\
+    \        Similar to getPeer, but returns an address describing this side of the\n\
+    \        connection.\n\n        @return: An L{IAddress} provider.\n        \"\"\
+    \"\n\n\nclass ITCPTransport(ITransport):\n    \"\"\"\n    A TCP based transport.\n\
+    \    \"\"\"\n\n    def loseWriteConnection() -> None:\n        \"\"\"\n      \
+    \  Half-close the write side of a TCP connection.\n\n        If the protocol instance\
+    \ this is attached to provides\n        IHalfCloseableProtocol, it will get notified\
+    \ when the operation is\n        done. When closing write connection, as with\
+    \ loseConnection this will\n        only happen when buffer has emptied and there\
+    \ is no registered\n        producer.\n        \"\"\"\n\n    def abortConnection()\
+    \ -> None:\n        \"\"\"\n        Close the connection abruptly.\n\n       \
+    \ Discards any buffered data, stops any registered producer,\n        and, if\
+    \ possible, notifies the other end of the unclean\n        closure.\n\n      \
+    \  @since: 11.1\n        \"\"\"\n\n    def getTcpNoDelay() -> bool:\n        \"\
+    \"\"\n        Return if C{TCP_NODELAY} is enabled.\n        \"\"\"\n\n    def\
+    \ setTcpNoDelay(enabled: bool) -> None:\n        \"\"\"\n        Enable/disable\
+    \ C{TCP_NODELAY}.\n\n        Enabling C{TCP_NODELAY} turns off Nagle's algorithm.\
+    \ Small packets are\n        sent sooner, possibly at the expense of overall throughput.\n\
+    \        \"\"\"\n\n    def getTcpKeepAlive() -> bool:\n        \"\"\"\n      \
+    \  Return if C{SO_KEEPALIVE} is enabled.\n        \"\"\"\n\n    def setTcpKeepAlive(enabled:\
+    \ bool) -> None:\n        \"\"\"\n        Enable/disable C{SO_KEEPALIVE}.\n\n\
+    \        Enabling C{SO_KEEPALIVE} sends packets periodically when the connection\n\
+    \        is otherwise idle, usually once every two hours. They are intended\n\
+    \        to allow detection of lost peers in a non-infinite amount of time.\n\
+    \        \"\"\"\n\n    def getHost() -> Union[\"IPv4Address\", \"IPv6Address\"\
+    ]:\n        \"\"\"\n        Returns L{IPv4Address} or L{IPv6Address}.\n      \
+    \  \"\"\"\n\n    def getPeer() -> Union[\"IPv4Address\", \"IPv6Address\"]:\n \
+    \       \"\"\"\n        Returns L{IPv4Address} or L{IPv6Address}.\n        \"\"\
+    \"\n\n\nclass IUNIXTransport(ITransport):\n    \"\"\"\n    Transport for stream-oriented\
+    \ unix domain connections.\n    \"\"\"\n\n    def sendFileDescriptor(descriptor:\
+    \ int) -> None:\n        \"\"\"\n        Send a duplicate of this (file, socket,\
+    \ pipe, etc) descriptor to the\n        other end of this connection.\n\n    \
+    \    The send is non-blocking and will be queued if it cannot be performed\n \
+    \       immediately.  The send will be processed in order with respect to other\n\
+    \        C{sendFileDescriptor} calls on this transport, but not necessarily with\n\
+    \        respect to C{write} calls on this transport.  The send can only be\n\
+    \        processed if there are also bytes in the normal connection-oriented send\n\
+    \        buffer (ie, you must call C{write} at least as many times as you call\n\
+    \        C{sendFileDescriptor}).\n\n        @param descriptor: An C{int} giving\
+    \ a valid file descriptor in this\n            process.  Note that a I{file descriptor}\
+    \ may actually refer to a\n            socket, a pipe, or anything else POSIX\
+    \ tries to treat in the same\n            way as a file.\n        \"\"\"\n\n\n\
+    class IOpenSSLServerConnectionCreator(Interface):\n    \"\"\"\n    A provider\
+    \ of L{IOpenSSLServerConnectionCreator} can create\n    L{OpenSSL.SSL.Connection}\
+    \ objects for TLS servers.\n\n    @see: L{twisted.internet.ssl}\n\n    @note:\
+    \ Creating OpenSSL connection objects is subtle, error-prone, and\n        security-critical.\
+    \  Before implementing this interface yourself,\n        consider using L{twisted.internet.ssl.CertificateOptions}\
+    \ as your\n        C{contextFactory}.  (For historical reasons, that class does\
+    \ not\n        actually I{implement} this interface; nevertheless it is usable\
+    \ in all\n        Twisted APIs which require a provider of this interface.)\n\
+    \    \"\"\"\n\n    def serverConnectionForTLS(\n        tlsProtocol: \"TLSMemoryBIOProtocol\"\
+    ,\n    ) -> \"OpenSSLConnection\":\n        \"\"\"\n        Create a connection\
+    \ for the given server protocol.\n\n        @return: an OpenSSL connection object\
+    \ configured appropriately for the\n            given Twisted protocol.\n    \
+    \    \"\"\"\n\n\nclass IOpenSSLClientConnectionCreator(Interface):\n    \"\"\"\
+    \n    A provider of L{IOpenSSLClientConnectionCreator} can create\n    L{OpenSSL.SSL.Connection}\
+    \ objects for TLS clients.\n\n    @see: L{twisted.internet.ssl}\n\n    @note:\
+    \ Creating OpenSSL connection objects is subtle, error-prone, and\n        security-critical.\
+    \  Before implementing this interface yourself,\n        consider using L{twisted.internet.ssl.optionsForClientTLS}\
+    \ as your\n        C{contextFactory}.\n    \"\"\"\n\n    def clientConnectionForTLS(\n\
+    \        tlsProtocol: \"TLSMemoryBIOProtocol\",\n    ) -> \"OpenSSLConnection\"\
+    :\n        \"\"\"\n        Create a connection for the given client protocol.\n\
+    \n        @param tlsProtocol: the client protocol making the request.\n\n    \
+    \    @return: an OpenSSL connection object configured appropriately for the\n\
+    \            given Twisted protocol.\n        \"\"\"\n\n\nclass IProtocolNegotiationFactory(Interface):\n\
+    \    \"\"\"\n    A provider of L{IProtocolNegotiationFactory} can provide information\
+    \ about\n    the various protocols that the factory can create implementations\
+    \ of. This\n    can be used, for example, to provide protocol names for Next Protocol\n\
+    \    Negotiation and Application Layer Protocol Negotiation.\n\n    @see: L{twisted.internet.ssl}\n\
+    \    \"\"\"\n\n    def acceptableProtocols() -> List[bytes]:\n        \"\"\"\n\
+    \        Returns a list of protocols that can be spoken by the connection\n  \
+    \      factory in the form of ALPN tokens, as laid out in the IANA registry\n\
+    \        for ALPN tokens.\n\n        @return: a list of ALPN tokens in order of\
+    \ preference.\n        \"\"\"\n\n\nclass IOpenSSLContextFactory(Interface):\n\
+    \    \"\"\"\n    A provider of L{IOpenSSLContextFactory} is capable of generating\n\
+    \    L{OpenSSL.SSL.Context} classes suitable for configuring TLS on a\n    connection.\
+    \ A provider will store enough state to be able to generate these\n    contexts\
+    \ as needed for individual connections.\n\n    @see: L{twisted.internet.ssl}\n\
+    \    \"\"\"\n\n    def getContext() -> \"OpenSSLContext\":\n        \"\"\"\n \
+    \       Returns a TLS context object, suitable for securing a TLS connection.\n\
+    \        This context object will be appropriately customized for the connection\n\
+    \        based on the state in this object.\n\n        @return: A TLS context\
+    \ object.\n        \"\"\"\n\n\nclass ITLSTransport(ITCPTransport):\n    \"\"\"\
+    \n    A TCP transport that supports switching to TLS midstream.\n\n    Once TLS\
+    \ mode is started the transport will implement L{ISSLTransport}.\n    \"\"\"\n\
+    \n    def startTLS(\n        contextFactory: Union[\n            IOpenSSLClientConnectionCreator,\
+    \ IOpenSSLServerConnectionCreator\n        ]\n    ) -> None:\n        \"\"\"\n\
+    \        Initiate TLS negotiation.\n\n        @param contextFactory: An object\
+    \ which creates appropriately configured\n            TLS connections.\n\n   \
+    \         For clients, use L{twisted.internet.ssl.optionsForClientTLS}; for\n\
+    \            servers, use L{twisted.internet.ssl.CertificateOptions}.\n\n    \
+    \    @type contextFactory: L{IOpenSSLClientConnectionCreator} or\n           \
+    \ L{IOpenSSLServerConnectionCreator}, depending on whether this\n            L{ITLSTransport}\
+    \ is a server or not.  If the appropriate interface\n            is not provided\
+    \ by the value given for C{contextFactory}, it must\n            be an implementor\
+    \ of L{IOpenSSLContextFactory}.\n        \"\"\"\n\n\nclass ISSLTransport(ITCPTransport):\n\
+    \    \"\"\"\n    A SSL/TLS based transport.\n    \"\"\"\n\n    def getPeerCertificate()\
+    \ -> object:\n        \"\"\"\n        Return an object with the peer's certificate\
+    \ info.\n        \"\"\"\n\n\nclass INegotiated(ISSLTransport):\n    \"\"\"\n \
+    \   A TLS based transport that supports using ALPN/NPN to negotiate the\n    protocol\
+    \ to be used inside the encrypted tunnel.\n    \"\"\"\n\n    negotiatedProtocol\
+    \ = Attribute(\n        \"\"\"\n        The protocol selected to be spoken using\
+    \ ALPN/NPN. The result from ALPN\n        is preferred to the result from NPN\
+    \ if both were used. If the remote\n        peer does not support ALPN or NPN,\
+    \ or neither NPN or ALPN are available\n        on this machine, will be L{None}.\
+    \ Otherwise, will be the name of the\n        selected protocol as C{bytes}. Note\
+    \ that until the handshake has\n        completed this property may incorrectly\
+    \ return L{None}: wait until data\n        has been received before trusting it\
+    \ (see\n        https://twistedmatrix.com/trac/ticket/6024).\n        \"\"\"\n\
+    \    )\n\n\nclass ICipher(Interface):\n    \"\"\"\n    A TLS cipher.\n    \"\"\
+    \"\n\n    fullName = Attribute(\"The fully qualified name of the cipher in L{unicode}.\"\
+    )\n\n\nclass IAcceptableCiphers(Interface):\n    \"\"\"\n    A list of acceptable\
+    \ ciphers for a TLS context.\n    \"\"\"\n\n    def selectCiphers(availableCiphers:\
+    \ Tuple[ICipher]) -> Tuple[ICipher]:\n        \"\"\"\n        Choose which ciphers\
+    \ to allow to be negotiated on a TLS connection.\n\n        @param availableCiphers:\
+    \ A L{tuple} of L{ICipher} which gives the names\n            of all ciphers supported\
+    \ by the TLS implementation in use.\n\n        @return: A L{tuple} of L{ICipher}\
+    \ which represents the ciphers\n            which may be negotiated on the TLS\
+    \ connection.  The result is\n            ordered by preference with more preferred\
+    \ ciphers appearing\n            earlier.\n        \"\"\"\n\n\nclass IProcessTransport(ITransport):\n\
+    \    \"\"\"\n    A process transport.\n    \"\"\"\n\n    pid = Attribute(\n  \
+    \      \"From before L{IProcessProtocol.makeConnection} is called to before \"\
+    \n        \"L{IProcessProtocol.processEnded} is called, C{pid} is an L{int} \"\
+    \n        \"giving the platform process ID of this process.  C{pid} is L{None}\
+    \ \"\n        \"at all other times.\"\n    )\n\n    def closeStdin() -> None:\n\
+    \        \"\"\"\n        Close stdin after all data has been written out.\n  \
+    \      \"\"\"\n\n    def closeStdout() -> None:\n        \"\"\"\n        Close\
+    \ stdout.\n        \"\"\"\n\n    def closeStderr() -> None:\n        \"\"\"\n\
+    \        Close stderr.\n        \"\"\"\n\n    def closeChildFD(descriptor: int)\
+    \ -> None:\n        \"\"\"\n        Close a file descriptor which is connected\
+    \ to the child process, identified\n        by its FD in the child process.\n\
+    \        \"\"\"\n\n    def writeToChild(childFD: int, data: bytes) -> None:\n\
+    \        \"\"\"\n        Similar to L{ITransport.write} but also allows the file\
+    \ descriptor in\n        the child process which will receive the bytes to be\
+    \ specified.\n\n        @param childFD: The file descriptor to which to write.\n\
+    \        @param data: The bytes to write.\n\n        @raise KeyError: If C{childFD}\
+    \ is not a file descriptor that was mapped\n            in the child when L{IReactorProcess.spawnProcess}\
+    \ was used to create\n            it.\n        \"\"\"\n\n    def loseConnection()\
+    \ -> None:\n        \"\"\"\n        Close stdin, stderr and stdout.\n        \"\
+    \"\"\n\n    def signalProcess(signalID: Union[str, int]) -> None:\n        \"\"\
+    \"\n        Send a signal to the process.\n\n        @param signalID: can be\n\
+    \          - one of C{\"KILL\"}, C{\"TERM\"}, or C{\"INT\"}.\n              These\
+    \ will be implemented in a\n              cross-platform manner, and so should\
+    \ be used\n              if possible.\n          - an integer, where it represents\
+    \ a POSIX\n              signal ID.\n\n        @raise twisted.internet.error.ProcessExitedAlready:\
+    \ If the process has\n            already exited.\n        @raise OSError: If\
+    \ the C{os.kill} call fails with an errno different\n            from C{ESRCH}.\n\
+    \        \"\"\"\n\n\nclass IServiceCollection(Interface):\n    \"\"\"\n    An\
+    \ object which provides access to a collection of services.\n    \"\"\"\n\n  \
+    \  def getServiceNamed(serviceName: str) -> object:\n        \"\"\"\n        Retrieve\
+    \ the named service from this application.\n\n        Raise a C{KeyError} if there\
+    \ is no such service name.\n        \"\"\"\n\n    def addService(service: object)\
+    \ -> None:\n        \"\"\"\n        Add a service to this collection.\n      \
+    \  \"\"\"\n\n    def removeService(service: object) -> None:\n        \"\"\"\n\
+    \        Remove a service from this collection.\n        \"\"\"\n\n\nclass IUDPTransport(Interface):\n\
+    \    \"\"\"\n    Transport for UDP DatagramProtocols.\n    \"\"\"\n\n    def write(packet:\
+    \ bytes, addr: Optional[Tuple[str, int]]) -> None:\n        \"\"\"\n        Write\
+    \ packet to given address.\n\n        @param addr: a tuple of (ip, port). For\
+    \ connected transports must\n                     be the address the transport\
+    \ is connected to, or None.\n                     In non-connected mode this is\
+    \ mandatory.\n\n        @raise twisted.internet.error.MessageLengthError: C{packet}\
+    \ was too\n        long.\n        \"\"\"\n\n    def connect(host: str, port: int)\
+    \ -> None:\n        \"\"\"\n        Connect the transport to an address.\n\n \
+    \       This changes it to connected mode. Datagrams can only be sent to\n   \
+    \     this address, and will only be received from this address. In addition\n\
+    \        the protocol's connectionRefused method might get called if destination\n\
+    \        is not receiving datagrams.\n\n        @param host: an IP address, not\
+    \ a domain name ('127.0.0.1', not 'localhost')\n        @param port: port to connect\
+    \ to.\n        \"\"\"\n\n    def getHost() -> Union[\"IPv4Address\", \"IPv6Address\"\
+    ]:\n        \"\"\"\n        Get this port's host address.\n\n        @return:\
+    \ an address describing the listening port.\n        \"\"\"\n\n    def stopListening()\
+    \ -> Optional[\"Deferred[None]\"]:\n        \"\"\"\n        Stop listening on\
+    \ this port.\n\n        If it does not complete immediately, will return L{Deferred}\
+    \ that fires\n        upon completion.\n        \"\"\"\n\n    def setBroadcastAllowed(enabled:\
+    \ bool) -> None:\n        \"\"\"\n        Set whether this port may broadcast.\n\
+    \n        @param enabled: Whether the port may broadcast.\n        \"\"\"\n\n\
+    \    def getBroadcastAllowed() -> bool:\n        \"\"\"\n        Checks if broadcast\
+    \ is currently allowed on this port.\n\n        @return: Whether this port may\
+    \ broadcast.\n        \"\"\"\n\n\nclass IUNIXDatagramTransport(Interface):\n \
+    \   \"\"\"\n    Transport for UDP PacketProtocols.\n    \"\"\"\n\n    def write(packet:\
+    \ bytes, addr: str) -> None:\n        \"\"\"\n        Write packet to given address.\n\
+    \        \"\"\"\n\n    def getHost() -> \"UNIXAddress\":\n        \"\"\"\n   \
+    \     Returns L{UNIXAddress}.\n        \"\"\"\n\n\nclass IUNIXDatagramConnectedTransport(Interface):\n\
+    \    \"\"\"\n    Transport for UDP ConnectedPacketProtocols.\n    \"\"\"\n\n \
+    \   def write(packet: bytes) -> None:\n        \"\"\"\n        Write packet to\
+    \ address we are connected to.\n        \"\"\"\n\n    def getHost() -> \"UNIXAddress\"\
+    :\n        \"\"\"\n        Returns L{UNIXAddress}.\n        \"\"\"\n\n    def\
+    \ getPeer() -> \"UNIXAddress\":\n        \"\"\"\n        Returns L{UNIXAddress}.\n\
+    \        \"\"\"\n\n\nclass IMulticastTransport(IUDPTransport):\n    \"\"\"\n \
+    \   Additional functionality for multicast UDP.\n    \"\"\"\n\n    def getOutgoingInterface()\
+    \ -> str | int:\n        \"\"\"\n        Return interface of outgoing multicast\
+    \ packets.\n        \"\"\"\n\n    def setOutgoingInterface(addr: str | int) ->\
+    \ Deferred[int]:\n        \"\"\"\n        Set interface for outgoing multicast\
+    \ packets.\n\n        @note: For IPv4 multicast sockets, the address must be a\
+    \ hostname or IP\n            address.  For IPv6 multicast sockets, the address\
+    \ must be an\n            interface index, as described in L{socket.if_nameindex}.\n\
+    \n        @returns: Deferred of (1: success, 0: failure).\n        \"\"\"\n\n\
+    \    def getLoopbackMode() -> bool:\n        \"\"\"\n        Return if loopback\
+    \ mode is enabled.\n        \"\"\"\n\n    def setLoopbackMode(mode: bool) -> None:\n\
+    \        \"\"\"\n        Set if loopback mode is enabled.\n        \"\"\"\n\n\
+    \    def getTTL() -> int:\n        \"\"\"\n        Get time to live for multicast\
+    \ packets.\n        \"\"\"\n\n    def setTTL(ttl: int) -> None:\n        \"\"\"\
+    \n        Set time to live on multicast packets.\n        \"\"\"\n\n    def joinGroup(addr:\
+    \ str, interface: str = \"\") -> \"Deferred[None]\":\n        \"\"\"\n       \
+    \ Join a multicast group. Returns L{Deferred} of success or failure.\n\n     \
+    \   If an error occurs, the returned L{Deferred} will fail with\n        L{error.MulticastJoinError}.\n\
+    \        \"\"\"\n\n    def leaveGroup(addr: str, interface: str = \"\") -> \"\
+    Deferred[None]\":\n        \"\"\"\n        Leave multicast group, return L{Deferred}\
+    \ of success.\n        \"\"\"\n\n\nclass IStreamClientEndpoint(Interface):\n \
+    \   \"\"\"\n    A stream client endpoint is a place that L{ClientFactory} can\
+    \ connect to.\n    For example, a remote TCP host/port pair would be a TCP client\
+    \ endpoint.\n\n    @since: 10.1\n    \"\"\"\n\n    def connect(protocolFactory:\
+    \ IProtocolFactory) -> \"Deferred[IProtocol]\":\n        \"\"\"\n        Connect\
+    \ the C{protocolFactory} to the location specified by this\n        L{IStreamClientEndpoint}\
+    \ provider.\n\n        @param protocolFactory: A provider of L{IProtocolFactory}\n\
+    \n        @return: A L{Deferred} that results in an L{IProtocol} upon successful\n\
+    \            connection otherwise a L{Failure} wrapping L{ConnectError} or\n \
+    \           L{NoProtocol <twisted.internet.error.NoProtocol>}.\n        \"\"\"\
+    \n\n\nclass IStreamServerEndpoint(Interface):\n    \"\"\"\n    A stream server\
+    \ endpoint is a place that a L{Factory} can listen for\n    incoming connections.\n\
+    \n    @since: 10.1\n    \"\"\"\n\n    def listen(protocolFactory: IProtocolFactory)\
+    \ -> \"Deferred[IListeningPort]\":\n        \"\"\"\n        Listen with C{protocolFactory}\
+    \ at the location specified by this\n        L{IStreamServerEndpoint} provider.\n\
+    \n        @param protocolFactory: A provider of L{IProtocolFactory}\n\n      \
+    \  @return: A L{Deferred} that results in an L{IListeningPort} or an\n       \
+    \     L{CannotListenError}\n        \"\"\"\n\n\nclass IStreamServerEndpointStringParser(Interface):\n\
+    \    \"\"\"\n    An L{IStreamServerEndpointStringParser} is like an\n    L{IStreamClientEndpointStringParserWithReactor},\
+    \ except for\n    L{IStreamServerEndpoint}s instead of clients.  It integrates\
+    \ with\n    L{endpoints.serverFromString} in much the same way.\n    \"\"\"\n\n\
+    \    prefix = Attribute(\n        \"\"\"\n        A C{str}, the description prefix\
+    \ to respond to.  For example, an\n        L{IStreamServerEndpointStringParser}\
+    \ plugin which had C{\"foo\"} for its\n        C{prefix} attribute would be called\
+    \ for endpoint descriptions like\n        C{\"foo:bar:baz\"} or C{\"foo:\"}.\n\
+    \        \"\"\"\n    )\n\n    def parseStreamServer(\n        reactor: IReactorCore,\
+    \ *args: object, **kwargs: object\n    ) -> IStreamServerEndpoint:\n        \"\
+    \"\"\n        Parse a stream server endpoint from a reactor and string-only arguments\n\
+    \        and keyword arguments.\n\n        @see: L{IStreamClientEndpointStringParserWithReactor.parseStreamClient}\n\
+    \n        @return: a stream server endpoint\n        \"\"\"\n\n\nclass IStreamClientEndpointStringParserWithReactor(Interface):\n\
+    \    \"\"\"\n    An L{IStreamClientEndpointStringParserWithReactor} is a parser\
+    \ which can\n    convert a set of string C{*args} and C{**kwargs} into an\n  \
+    \  L{IStreamClientEndpoint} provider.\n\n    This interface is really only useful\
+    \ in the context of the plugin system\n    for L{endpoints.clientFromString}.\
+    \  See the document entitled \"I{The\n    Twisted Plugin System}\" for more details\
+    \ on how to write a plugin.\n\n    If you place an L{IStreamClientEndpointStringParserWithReactor}\
+    \ plugin in\n    the C{twisted.plugins} package, that plugin's C{parseStreamClient}\
+    \ method\n    will be used to produce endpoints for any description string that\
+    \ begins\n    with the result of that L{IStreamClientEndpointStringParserWithReactor}'s\n\
+    \    prefix attribute.\n    \"\"\"\n\n    prefix = Attribute(\n        \"\"\"\n\
+    \        L{bytes}, the description prefix to respond to.  For example, an\n  \
+    \      L{IStreamClientEndpointStringParserWithReactor} plugin which had\n    \
+    \    C{b\"foo\"} for its C{prefix} attribute would be called for endpoint\n  \
+    \      descriptions like C{b\"foo:bar:baz\"} or C{b\"foo:\"}.\n        \"\"\"\n\
+    \    )\n\n    def parseStreamClient(\n        reactor: IReactorCore, *args: object,\
+    \ **kwargs: object\n    ) -> IStreamClientEndpoint:\n        \"\"\"\n        This\
+    \ method is invoked by L{endpoints.clientFromString}, if the type of\n       \
+    \ endpoint matches the return value from this\n        L{IStreamClientEndpointStringParserWithReactor}'s\
+    \ C{prefix} method.\n\n        @param reactor: The reactor passed to L{endpoints.clientFromString}.\n\
+    \        @param args: The byte string arguments, minus the endpoint type, in the\n\
+    \            endpoint description string, parsed according to the rules\n    \
+    \        described in L{endpoints.quoteStringArgument}.  For example, if the\n\
+    \            description were C{b\"my-type:foo:bar:baz=qux\"}, C{args} would be\n\
+    \            C{(b'foo', b'bar')}\n        @param kwargs: The byte string arguments\
+    \ from the endpoint description\n            passed as keyword arguments.  For\
+    \ example, if the description were\n            C{b\"my-type:foo:bar:baz=qux\"\
+    }, C{kwargs} would be\n            C{dict(baz=b'qux')}.\n\n        @return: a\
+    \ client endpoint\n        \"\"\"\n\n\nclass _ISupportsExitSignalCapturing(Interface):\n\
+    \    \"\"\"\n    An implementor of L{_ISupportsExitSignalCapturing} will capture\
+    \ the\n    value of any delivered exit signal (SIGINT, SIGTERM, SIGBREAK) for\
+    \ which\n    it has installed a handler.  The caught signal number is made available\
+    \ in\n    the _exitSignal attribute.\n    \"\"\"\n\n    _exitSignal = Attribute(\n\
+    \        \"\"\"\n        C{int} or C{None}, the integer exit signal delivered\
+    \ to the\n        application, or None if no signal was delivered.\n        \"\
+    \"\"\n    )\n\n\n### Dependency File: runtime.py\n# -*- test-case-name: twisted.python.test.test_runtime\
+    \ -*-\n# Copyright (c) Twisted Matrix Laboratories.\n# See LICENSE for details.\n\
+    \n__all__ = [\n    \"seconds\",\n    \"shortPythonVersion\",\n    \"Platform\"\
+    ,\n    \"platform\",\n    \"platformType\",\n]\nimport os\nimport sys\nimport\
+    \ warnings\nfrom time import time as seconds\nfrom typing import Optional\n\n\n\
+    def shortPythonVersion() -> str:\n    \"\"\"\n    Returns the Python version as\
+    \ a dot-separated string.\n    \"\"\"\n    return \"%s.%s.%s\" % sys.version_info[:3]\n\
+    \n\nknownPlatforms = {\n    \"nt\": \"win32\",\n    \"ce\": \"win32\",\n    \"\
+    posix\": \"posix\",\n    \"java\": \"java\",\n    \"org.python.modules.os\": \"\
+    java\",\n}\n\n\nclass Platform:\n    \"\"\"\n    Gives us information about the\
+    \ platform we're running on.\n    \"\"\"\n\n    type: Optional[str] = knownPlatforms.get(os.name)\n\
+    \    seconds = staticmethod(seconds)\n    _platform = sys.platform\n\n    def\
+    \ __init__(\n        self, name: Optional[str] = None, platform: Optional[str]\
+    \ = None\n    ) -> None:\n        if name is not None:\n            self.type\
+    \ = knownPlatforms.get(name)\n        if platform is not None:\n            self._platform\
+    \ = platform\n\n    def isKnown(self) -> bool:\n        \"\"\"\n        Do we\
+    \ know about this platform?\n\n        @return: Boolean indicating whether this\
+    \ is a known platform or not.\n        \"\"\"\n        return self.type != None\n\
+    \n    def getType(self) -> Optional[str]:\n        \"\"\"\n        Get platform\
+    \ type.\n\n        @return: Either 'posix', 'win32' or 'java'\n        \"\"\"\n\
+    \        return self.type\n\n    def isMacOSX(self) -> bool:\n        \"\"\"\n\
+    \        Check if current platform is macOS.\n\n        @return: C{True} if the\
+    \ current platform has been detected as macOS.\n        \"\"\"\n        return\
+    \ self._platform == \"darwin\"\n\n    def isWinNT(self) -> bool:\n        \"\"\
+    \"\n        Are we running in Windows NT?\n\n        This is deprecated and always\
+    \ returns C{True} on win32 because\n        Twisted only supports Windows NT-derived\
+    \ platforms at this point.\n\n        @return: C{True} if the current platform\
+    \ has been detected as\n            Windows NT.\n        \"\"\"\n        warnings.warn(\n\
+    \            \"twisted.python.runtime.Platform.isWinNT was deprecated in \"\n\
+    \            \"Twisted 13.0. Use Platform.isWindows instead.\",\n            DeprecationWarning,\n\
+    \            stacklevel=2,\n        )\n        return self.isWindows()\n\n   \
+    \ def isWindows(self) -> bool:\n        \"\"\"\n        Are we running in Windows?\n\
+    \n        @return: C{True} if the current platform has been detected as\n    \
+    \        Windows.\n        \"\"\"\n        return self.getType() == \"win32\"\n\
+    \n    def isVista(self) -> bool:\n        \"\"\"\n        Check if current platform\
+    \ is Windows Vista or Windows Server 2008.\n\n        @return: C{True} if the\
+    \ current platform has been detected as Vista\n        \"\"\"\n        return\
+    \ sys.platform == \"win32\" and sys.getwindowsversion().major == 6\n\n    def\
+    \ isLinux(self) -> bool:\n        \"\"\"\n        Check if current platform is\
+    \ Linux.\n\n        @return: C{True} if the current platform has been detected\
+    \ as Linux.\n        \"\"\"\n        return self._platform.startswith(\"linux\"\
+    )\n\n    def isDocker(self, _initCGroupLocation: str = \"/proc/1/cgroup\") ->\
+    \ bool:\n        \"\"\"\n        Check if the current platform is Linux in a Docker\
+    \ container.\n\n        @return: C{True} if the current platform has been detected\
+    \ as Linux\n            inside a Docker container.\n        \"\"\"\n        if\
+    \ not self.isLinux():\n            return False\n\n        from twisted.python.filepath\
+    \ import FilePath\n\n        # Ask for the cgroups of init (pid 1)\n        initCGroups\
+    \ = FilePath(_initCGroupLocation)\n        if initCGroups.exists():\n        \
+    \    # The cgroups file looks like \"2:cpu:/\". The third element will\n     \
+    \       # begin with /docker if it is inside a Docker container.\n           \
+    \ controlGroups = [\n                x.split(b\":\") for x in initCGroups.getContent().split(b\"\
+    \\n\")\n            ]\n\n            for group in controlGroups:\n           \
+    \     if len(group) == 3 and group[2].startswith(b\"/docker/\"):\n           \
+    \         # If it starts with /docker/, we're in a docker container\n        \
+    \            return True\n\n        return False\n\n    def _supportsSymlinks(self)\
+    \ -> bool:\n        \"\"\"\n        Check for symlink support usable for Twisted's\
+    \ purposes.\n\n        @return: C{True} if symlinks are supported on the current\
+    \ platform,\n                 otherwise C{False}.\n        \"\"\"\n        if\
+    \ self.isWindows():\n            # We do the isWindows() check as newer Pythons\
+    \ support the symlink\n            # support in Vista+, but only if you have some\
+    \ obscure permission\n            # (SeCreateSymbolicLinkPrivilege), which can\
+    \ only be given on\n            # platforms with msc.exe (so, Business/Enterprise\
+    \ editions).\n            # This uncommon requirement makes the Twisted test suite\
+    \ test fail\n            # in 99.99% of cases as general users don't have permission\
+    \ to do\n            # it, even if there is \"symlink support\".\n           \
+    \ return False\n        else:\n            # If we're not on Windows, check for\
+    \ existence of os.symlink.\n            try:\n                os.symlink\n   \
+    \         except AttributeError:\n                return False\n            else:\n\
+    \                return True\n\n    def supportsThreads(self) -> bool:\n     \
+    \   \"\"\"\n        Can threads be created?\n\n        @return: C{True} if the\
+    \ threads are supported on the current platform.\n        \"\"\"\n        try:\n\
+    \            import threading\n\n            return threading is not None  # shh\
+    \ pyflakes\n        except ImportError:\n            return False\n\n    def supportsINotify(self)\
+    \ -> bool:\n        \"\"\"\n        Return C{True} if we can use the inotify API\
+    \ on this platform.\n\n        @since: 10.1\n        \"\"\"\n        try:\n  \
+    \          from twisted.python._inotify import INotifyError, init\n        except\
+    \ ImportError:\n            return False\n\n        try:\n            os.close(init())\n\
+    \        except INotifyError:\n            return False\n        return True\n\
+    \n\nplatform = Platform()\nplatformType = platform.getType()\n\nOutput the complete\
+    \ test file, code only, no explanations.\n```Python\n<complete test code>\n```\n\
+    ### Time\nCurrent time: 2025-03-13 17:45:52\n"
+  role: user

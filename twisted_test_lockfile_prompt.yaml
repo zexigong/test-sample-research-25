@@ -1,0 +1,195 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: twisted\nTest File Path: twisted\\test_lockfile\\\
+    test_lockfile.py\nProject Programming Language: Python\nTesting Framework: pytest\n\
+    ### Source File Content\n### Source File Content:\n# -*- test-case-name: twisted.test.test_lockfile\
+    \ -*-\n# Copyright (c) 2005 Divmod, Inc.\n# Copyright (c) Twisted Matrix Laboratories.\n\
+    # See LICENSE for details.\n\n\"\"\"\nFilesystem-based interprocess mutex.\n\"\
+    \"\"\n\n\nimport errno\nimport os\nfrom time import time as _uniquefloat\n\nfrom\
+    \ twisted.python.runtime import platform\n\n\ndef unique():\n    return str(int(_uniquefloat()\
+    \ * 1000))\n\n\nfrom os import rename\n\nif not platform.isWindows():\n    from\
+    \ os import kill, readlink, remove as rmlink, symlink\n\n    _windows = False\n\
+    else:\n    _windows = True\n\n    # On UNIX, a symlink can be made to a nonexistent\
+    \ location, and\n    # FilesystemLock uses this by making the target of the symlink\
+    \ an\n    # imaginary, non-existing file named that of the PID of the process\
+    \ with\n    # the lock. This has some benefits on UNIX -- making and removing\
+    \ this\n    # symlink is atomic. However, because Windows doesn't support symlinks\
+    \ (at\n    # least as how we know them), we have to fake this and actually write\
+    \ a\n    # file with the PID of the process holding the lock instead.\n    # These\
+    \ functions below perform that unenviable, probably-fraught-with-\n    # race-conditions\
+    \ duty. - hawkie\n\n    try:\n        import pywintypes\n        from win32api\
+    \ import OpenProcess\n    except ImportError:\n        kill = None  # type: ignore[assignment]\n\
+    \    else:\n        ERROR_ACCESS_DENIED = 5\n        ERROR_INVALID_PARAMETER =\
+    \ 87\n\n        # typing ignored due to:\n        # https://github.com/python/typeshed/issues/4249\n\
+    \        def kill(pid, signal):  # type: ignore[misc]\n            try:\n    \
+    \            OpenProcess(0, 0, pid)\n            except pywintypes.error as e:\n\
+    \                if e.args[0] == ERROR_ACCESS_DENIED:\n                    return\n\
+    \                elif e.args[0] == ERROR_INVALID_PARAMETER:\n                \
+    \    raise OSError(errno.ESRCH, None)\n                raise\n            else:\n\
+    \                raise RuntimeError(\"OpenProcess is required to fail.\")\n\n\
+    \    # For monkeypatching in tests\n    _open = open\n\n    # typing ignored due\
+    \ to:\n    # https://github.com/python/typeshed/issues/4249\n    def symlink(value,\
+    \ filename):  # type: ignore[misc]\n        \"\"\"\n        Write a file at C{filename}\
+    \ with the contents of C{value}. See the\n        above comment block as to why\
+    \ this is needed.\n        \"\"\"\n        # XXX Implement an atomic thingamajig\
+    \ for win32\n        newlinkname = filename + \".\" + unique() + \".newlink\"\n\
+    \        newvalname = os.path.join(newlinkname, \"symlink\")\n        os.mkdir(newlinkname)\n\
+    \n        # Python 3 does not support the 'commit' flag of fopen in the MSVCRT\n\
+    \        # (http://msdn.microsoft.com/en-us/library/yeby3zcb%28VS.71%29.aspx)\n\
+    \        mode = \"w\"\n\n        with _open(newvalname, mode) as f:\n        \
+    \    f.write(value)\n            f.flush()\n\n        try:\n            rename(newlinkname,\
+    \ filename)\n        except BaseException:\n            os.remove(newvalname)\n\
+    \            os.rmdir(newlinkname)\n            raise\n\n    # typing ignored\
+    \ due to:\n    # https://github.com/python/typeshed/issues/4249\n    def readlink(filename):\
+    \  # type: ignore[misc]\n        \"\"\"\n        Read the contents of C{filename}.\
+    \ See the above comment block as to why\n        this is needed.\n        \"\"\
+    \"\n        try:\n            fObj = _open(os.path.join(filename, \"symlink\"\
+    ), \"r\")\n        except OSError as e:\n            if e.errno == errno.ENOENT\
+    \ or e.errno == errno.EIO:\n                raise OSError(e.errno, None)\n   \
+    \         raise\n        else:\n            with fObj:\n                result\
+    \ = fObj.read()\n            return result\n\n    # typing ignored due to:\n \
+    \   # https://github.com/python/typeshed/issues/4249\n    def rmlink(filename):\
+    \  # type: ignore[misc]\n        os.remove(os.path.join(filename, \"symlink\"\
+    ))\n        os.rmdir(filename)\n\n\nclass FilesystemLock:\n    \"\"\"\n    A mutex.\n\
+    \n    This relies on the filesystem property that creating\n    a symlink is an\
+    \ atomic operation and that it will\n    fail if the symlink already exists. \
+    \ Deleting the\n    symlink will release the lock.\n\n    @ivar name: The name\
+    \ of the file associated with this lock.\n\n    @ivar clean: Indicates whether\
+    \ this lock was released cleanly by its\n        last owner.  Only meaningful\
+    \ after C{lock} has been called and\n        returns True.\n\n    @ivar locked:\
+    \ Indicates whether the lock is currently held by this\n        object.\n    \"\
+    \"\"\n\n    clean = None\n    locked = False\n\n    def __init__(self, name):\n\
+    \        self.name = name\n\n    def lock(self):\n        \"\"\"\n        Acquire\
+    \ this lock.\n\n        @rtype: C{bool}\n        @return: True if the lock is\
+    \ acquired, false otherwise.\n\n        @raise OSError: Any exception L{os.symlink()}\
+    \ may raise,\n            other than L{errno.EEXIST}.\n        \"\"\"\n      \
+    \  clean = True\n        while True:\n            try:\n                symlink(str(os.getpid()),\
+    \ self.name)\n            except OSError as e:\n                if _windows and\
+    \ e.errno in (errno.EACCES, errno.EIO):\n                    # The lock is in\
+    \ the middle of being deleted because we're\n                    # on Windows\
+    \ where lock removal isn't atomic.  Give up, we\n                    # don't know\
+    \ how long this is going to take.\n                    return False\n        \
+    \        if e.errno == errno.EEXIST:\n                    try:\n             \
+    \           pid = readlink(self.name)\n                    except OSError as e:\n\
+    \                        if e.errno == errno.ENOENT:\n                       \
+    \     # The lock has vanished, try to claim it in the\n                      \
+    \      # next iteration through the loop.\n                            continue\n\
+    \                        elif _windows and e.errno == errno.EACCES:\n        \
+    \                    # The lock is in the middle of being\n                  \
+    \          # deleted because we're on Windows where\n                        \
+    \    # lock removal isn't atomic.  Give up, we\n                            #\
+    \ don't know how long this is going to\n                            # take.\n\
+    \                            return False\n                        raise\n   \
+    \                 try:\n                        if kill is not None:\n       \
+    \                     kill(int(pid), 0)\n                    except OSError as\
+    \ e:\n                        if e.errno == errno.ESRCH:\n                   \
+    \         # The owner has vanished, try to claim it in the\n                 \
+    \           # next iteration through the loop.\n                            try:\n\
+    \                                rmlink(self.name)\n                         \
+    \   except OSError as e:\n                                if e.errno == errno.ENOENT:\n\
+    \                                    # Another process cleaned up the lock.\n\
+    \                                    # Race them to acquire it in the next\n \
+    \                                   # iteration through the loop.\n          \
+    \                          continue\n                                raise\n \
+    \                           clean = False\n                            continue\n\
+    \                        raise\n                    return False\n           \
+    \     raise\n            self.locked = True\n            self.clean = clean\n\
+    \            return True\n\n    def unlock(self):\n        \"\"\"\n        Release\
+    \ this lock.\n\n        This deletes the directory with the given name.\n\n  \
+    \      @raise OSError: Any exception L{os.readlink()} may raise.\n        @raise\
+    \ ValueError: If the lock is not owned by this process.\n        \"\"\"\n    \
+    \    pid = readlink(self.name)\n        if int(pid) != os.getpid():\n        \
+    \    raise ValueError(f\"Lock {self.name!r} not owned by this process\")\n   \
+    \     rmlink(self.name)\n        self.locked = False\n\n\ndef isLocked(name):\n\
+    \    \"\"\"\n    Determine if the lock of the given name is held or not.\n\n \
+    \   @type name: C{str}\n    @param name: The filesystem path to the lock to test\n\
+    \n    @rtype: C{bool}\n    @return: True if the lock is held, False otherwise.\n\
+    \    \"\"\"\n    l = FilesystemLock(name)\n    result = None\n    try:\n     \
+    \   result = l.lock()\n    finally:\n        if result:\n            l.unlock()\n\
+    \    return not result\n\n\n__all__ = [\"FilesystemLock\", \"isLocked\"]\n\n###\
+    \ Source File Dependency Files Content\n### Dependency File: runtime.py\n# -*-\
+    \ test-case-name: twisted.python.test.test_runtime -*-\n# Copyright (c) Twisted\
+    \ Matrix Laboratories.\n# See LICENSE for details.\n\n__all__ = [\n    \"seconds\"\
+    ,\n    \"shortPythonVersion\",\n    \"Platform\",\n    \"platform\",\n    \"platformType\"\
+    ,\n]\nimport os\nimport sys\nimport warnings\nfrom time import time as seconds\n\
+    from typing import Optional\n\n\ndef shortPythonVersion() -> str:\n    \"\"\"\n\
+    \    Returns the Python version as a dot-separated string.\n    \"\"\"\n    return\
+    \ \"%s.%s.%s\" % sys.version_info[:3]\n\n\nknownPlatforms = {\n    \"nt\": \"\
+    win32\",\n    \"ce\": \"win32\",\n    \"posix\": \"posix\",\n    \"java\": \"\
+    java\",\n    \"org.python.modules.os\": \"java\",\n}\n\n\nclass Platform:\n  \
+    \  \"\"\"\n    Gives us information about the platform we're running on.\n   \
+    \ \"\"\"\n\n    type: Optional[str] = knownPlatforms.get(os.name)\n    seconds\
+    \ = staticmethod(seconds)\n    _platform = sys.platform\n\n    def __init__(\n\
+    \        self, name: Optional[str] = None, platform: Optional[str] = None\n  \
+    \  ) -> None:\n        if name is not None:\n            self.type = knownPlatforms.get(name)\n\
+    \        if platform is not None:\n            self._platform = platform\n\n \
+    \   def isKnown(self) -> bool:\n        \"\"\"\n        Do we know about this\
+    \ platform?\n\n        @return: Boolean indicating whether this is a known platform\
+    \ or not.\n        \"\"\"\n        return self.type != None\n\n    def getType(self)\
+    \ -> Optional[str]:\n        \"\"\"\n        Get platform type.\n\n        @return:\
+    \ Either 'posix', 'win32' or 'java'\n        \"\"\"\n        return self.type\n\
+    \n    def isMacOSX(self) -> bool:\n        \"\"\"\n        Check if current platform\
+    \ is macOS.\n\n        @return: C{True} if the current platform has been detected\
+    \ as macOS.\n        \"\"\"\n        return self._platform == \"darwin\"\n\n \
+    \   def isWinNT(self) -> bool:\n        \"\"\"\n        Are we running in Windows\
+    \ NT?\n\n        This is deprecated and always returns C{True} on win32 because\n\
+    \        Twisted only supports Windows NT-derived platforms at this point.\n\n\
+    \        @return: C{True} if the current platform has been detected as\n     \
+    \       Windows NT.\n        \"\"\"\n        warnings.warn(\n            \"twisted.python.runtime.Platform.isWinNT\
+    \ was deprecated in \"\n            \"Twisted 13.0. Use Platform.isWindows instead.\"\
+    ,\n            DeprecationWarning,\n            stacklevel=2,\n        )\n   \
+    \     return self.isWindows()\n\n    def isWindows(self) -> bool:\n        \"\"\
+    \"\n        Are we running in Windows?\n\n        @return: C{True} if the current\
+    \ platform has been detected as\n            Windows.\n        \"\"\"\n      \
+    \  return self.getType() == \"win32\"\n\n    def isVista(self) -> bool:\n    \
+    \    \"\"\"\n        Check if current platform is Windows Vista or Windows Server\
+    \ 2008.\n\n        @return: C{True} if the current platform has been detected\
+    \ as Vista\n        \"\"\"\n        return sys.platform == \"win32\" and sys.getwindowsversion().major\
+    \ == 6\n\n    def isLinux(self) -> bool:\n        \"\"\"\n        Check if current\
+    \ platform is Linux.\n\n        @return: C{True} if the current platform has been\
+    \ detected as Linux.\n        \"\"\"\n        return self._platform.startswith(\"\
+    linux\")\n\n    def isDocker(self, _initCGroupLocation: str = \"/proc/1/cgroup\"\
+    ) -> bool:\n        \"\"\"\n        Check if the current platform is Linux in\
+    \ a Docker container.\n\n        @return: C{True} if the current platform has\
+    \ been detected as Linux\n            inside a Docker container.\n        \"\"\
+    \"\n        if not self.isLinux():\n            return False\n\n        from twisted.python.filepath\
+    \ import FilePath\n\n        # Ask for the cgroups of init (pid 1)\n        initCGroups\
+    \ = FilePath(_initCGroupLocation)\n        if initCGroups.exists():\n        \
+    \    # The cgroups file looks like \"2:cpu:/\". The third element will\n     \
+    \       # begin with /docker if it is inside a Docker container.\n           \
+    \ controlGroups = [\n                x.split(b\":\") for x in initCGroups.getContent().split(b\"\
+    \\n\")\n            ]\n\n            for group in controlGroups:\n           \
+    \     if len(group) == 3 and group[2].startswith(b\"/docker/\"):\n           \
+    \         # If it starts with /docker/, we're in a docker container\n        \
+    \            return True\n\n        return False\n\n    def _supportsSymlinks(self)\
+    \ -> bool:\n        \"\"\"\n        Check for symlink support usable for Twisted's\
+    \ purposes.\n\n        @return: C{True} if symlinks are supported on the current\
+    \ platform,\n                 otherwise C{False}.\n        \"\"\"\n        if\
+    \ self.isWindows():\n            # We do the isWindows() check as newer Pythons\
+    \ support the symlink\n            # support in Vista+, but only if you have some\
+    \ obscure permission\n            # (SeCreateSymbolicLinkPrivilege), which can\
+    \ only be given on\n            # platforms with msc.exe (so, Business/Enterprise\
+    \ editions).\n            # This uncommon requirement makes the Twisted test suite\
+    \ test fail\n            # in 99.99% of cases as general users don't have permission\
+    \ to do\n            # it, even if there is \"symlink support\".\n           \
+    \ return False\n        else:\n            # If we're not on Windows, check for\
+    \ existence of os.symlink.\n            try:\n                os.symlink\n   \
+    \         except AttributeError:\n                return False\n            else:\n\
+    \                return True\n\n    def supportsThreads(self) -> bool:\n     \
+    \   \"\"\"\n        Can threads be created?\n\n        @return: C{True} if the\
+    \ threads are supported on the current platform.\n        \"\"\"\n        try:\n\
+    \            import threading\n\n            return threading is not None  # shh\
+    \ pyflakes\n        except ImportError:\n            return False\n\n    def supportsINotify(self)\
+    \ -> bool:\n        \"\"\"\n        Return C{True} if we can use the inotify API\
+    \ on this platform.\n\n        @since: 10.1\n        \"\"\"\n        try:\n  \
+    \          from twisted.python._inotify import INotifyError, init\n        except\
+    \ ImportError:\n            return False\n\n        try:\n            os.close(init())\n\
+    \        except INotifyError:\n            return False\n        return True\n\
+    \n\nplatform = Platform()\nplatformType = platform.getType()\n\nOutput the complete\
+    \ test file, code only, no explanations.\n```Python\n<complete test code>\n```\n\
+    ### Time\nCurrent time: 2025-03-13 17:53:38\n"
+  role: user

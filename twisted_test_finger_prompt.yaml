@@ -1,0 +1,435 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: twisted\nTest File Path: twisted\\test_finger\\\
+    test_finger.py\nProject Programming Language: Python\nTesting Framework: pytest\n\
+    ### Source File Content\n### Source File Content:\n# Copyright (c) Twisted Matrix\
+    \ Laboratories.\n# See LICENSE for details.\n\n\n\"\"\"The Finger User Information\
+    \ Protocol (RFC 1288)\"\"\"\n\nfrom twisted.protocols import basic\n\n\nclass\
+    \ Finger(basic.LineReceiver):\n    def lineReceived(self, line):\n        parts\
+    \ = line.split()\n        if not parts:\n            parts = [b\"\"]\n       \
+    \ if len(parts) == 1:\n            slash_w = 0\n        else:\n            slash_w\
+    \ = 1\n        user = parts[-1]\n        if b\"@\" in user:\n            hostPlace\
+    \ = user.rfind(b\"@\")\n            user = user[:hostPlace]\n            host\
+    \ = user[hostPlace + 1 :]\n            return self.forwardQuery(slash_w, user,\
+    \ host)\n        if user:\n            return self.getUser(slash_w, user)\n  \
+    \      else:\n            return self.getDomain(slash_w)\n\n    def _refuseMessage(self,\
+    \ message):\n        self.transport.write(message + b\"\\n\")\n        self.transport.loseConnection()\n\
+    \n    def forwardQuery(self, slash_w, user, host):\n        self._refuseMessage(b\"\
+    Finger forwarding service denied\")\n\n    def getDomain(self, slash_w):\n   \
+    \     self._refuseMessage(b\"Finger online list denied\")\n\n    def getUser(self,\
+    \ slash_w, user):\n        self.transport.write(b\"Login: \" + user + b\"\\n\"\
+    )\n        self._refuseMessage(b\"No such user\")\n\n### Source File Dependency\
+    \ Files Content\n### Dependency File: basic.py\n# -*- test-case-name: twisted.protocols.test.test_basic\
+    \ -*-\n# Copyright (c) Twisted Matrix Laboratories.\n# See LICENSE for details.\n\
+    \n\n\"\"\"\nBasic protocols, such as line-oriented, netstring, and int prefixed\
+    \ strings.\n\"\"\"\n\n\nimport math\n\n# System imports\nimport re\nfrom io import\
+    \ BytesIO\nfrom struct import calcsize, pack, unpack\n\nfrom zope.interface import\
+    \ implementer\n\n# Twisted imports\nfrom twisted.internet import defer, interfaces,\
+    \ protocol\nfrom twisted.python import log\n\n\n# Unfortunately we cannot use\
+    \ regular string formatting on Python 3; see\n# http://bugs.python.org/issue3982\
+    \ for details.\ndef _formatNetstring(data):\n    return b\"\".join([str(len(data)).encode(\"\
+    ascii\"), b\":\", data, b\",\"])\n\n\n_formatNetstring.__doc__ = \"\"\"\nConvert\
+    \ some C{bytes} into netstring format.\n\n@param data: C{bytes} that will be reformatted.\n\
+    \"\"\"\n\n\nDEBUG = 0\n\n\nclass NetstringParseError(ValueError):\n    \"\"\"\n\
+    \    The incoming data is not in valid Netstring format.\n    \"\"\"\n\n\nclass\
+    \ IncompleteNetstring(Exception):\n    \"\"\"\n    Not enough data to complete\
+    \ a netstring.\n    \"\"\"\n\n\nclass NetstringReceiver(protocol.Protocol):\n\
+    \    \"\"\"\n    A protocol that sends and receives netstrings.\n\n    See U{http://cr.yp.to/proto/netstrings.txt}\
+    \ for the specification of\n    netstrings. Every netstring starts with digits\
+    \ that specify the length\n    of the data. This length specification is separated\
+    \ from the data by\n    a colon. The data is terminated with a comma.\n\n    Override\
+    \ L{stringReceived} to handle received netstrings. This\n    method is called\
+    \ with the netstring payload as a single argument\n    whenever a complete netstring\
+    \ is received.\n\n    Security features:\n        1. Messages are limited in size,\
+    \ useful if you don't want\n           someone sending you a 500MB netstring (change\
+    \ C{self.MAX_LENGTH}\n           to the maximum length you wish to accept).\n\
+    \        2. The connection is lost if an illegal message is received.\n\n    @ivar\
+    \ MAX_LENGTH: Defines the maximum length of netstrings that can be\n        received.\n\
+    \    @type MAX_LENGTH: C{int}\n\n    @ivar _LENGTH: A pattern describing all strings\
+    \ that contain a netstring\n        length specification. Examples for length\
+    \ specifications are C{b'0:'},\n        C{b'12:'}, and C{b'179:'}. C{b'007:'}\
+    \ is not a valid length\n        specification, since leading zeros are not allowed.\n\
+    \    @type _LENGTH: C{re.Match}\n\n    @ivar _LENGTH_PREFIX: A pattern describing\
+    \ all strings that contain\n        the first part of a netstring length specification\
+    \ (without the\n        trailing comma). Examples are '0', '12', and '179'. '007'\
+    \ does not\n        start a netstring length specification, since leading zeros\
+    \ are\n        not allowed.\n    @type _LENGTH_PREFIX: C{re.Match}\n\n    @ivar\
+    \ _PARSING_LENGTH: Indicates that the C{NetstringReceiver} is in\n        the\
+    \ state of parsing the length portion of a netstring.\n    @type _PARSING_LENGTH:\
+    \ C{int}\n\n    @ivar _PARSING_PAYLOAD: Indicates that the C{NetstringReceiver}\
+    \ is in\n        the state of parsing the payload portion (data and trailing comma)\n\
+    \        of a netstring.\n    @type _PARSING_PAYLOAD: C{int}\n\n    @ivar brokenPeer:\
+    \ Indicates if the connection is still functional\n    @type brokenPeer: C{int}\n\
+    \n    @ivar _state: Indicates if the protocol is consuming the length portion\n\
+    \        (C{PARSING_LENGTH}) or the payload (C{PARSING_PAYLOAD}) of a netstring\n\
+    \    @type _state: C{int}\n\n    @ivar _remainingData: Holds the chunk of data\
+    \ that has not yet been consumed\n    @type _remainingData: C{string}\n\n    @ivar\
+    \ _payload: Holds the payload portion of a netstring including the\n        trailing\
+    \ comma\n    @type _payload: C{BytesIO}\n\n    @ivar _expectedPayloadSize: Holds\
+    \ the payload size plus one for the trailing\n        comma.\n    @type _expectedPayloadSize:\
+    \ C{int}\n    \"\"\"\n\n    MAX_LENGTH = 99999\n    _LENGTH = re.compile(rb\"\
+    (0|[1-9]\\d*)(:)\")\n\n    _LENGTH_PREFIX = re.compile(rb\"(0|[1-9]\\d*)$\")\n\
+    \n    # Some error information for NetstringParseError instances.\n    _MISSING_LENGTH\
+    \ = (\n        \"The received netstring does not start with a \" \"length specification.\"\
+    \n    )\n    _OVERFLOW = (\n        \"The length specification of the received\
+    \ netstring \"\n        \"cannot be represented in Python - it causes an \"\n\
+    \        \"OverflowError!\"\n    )\n    _TOO_LONG = (\n        \"The received\
+    \ netstring is longer than the maximum %s \"\n        \"specified by self.MAX_LENGTH\"\
+    \n    )\n    _MISSING_COMMA = \"The received netstring is not terminated by a\
+    \ comma.\"\n\n    # The following constants are used for determining if the NetstringReceiver\n\
+    \    # is parsing the length portion of a netstring, or the payload.\n    _PARSING_LENGTH,\
+    \ _PARSING_PAYLOAD = range(2)\n\n    def makeConnection(self, transport):\n  \
+    \      \"\"\"\n        Initializes the protocol.\n        \"\"\"\n        protocol.Protocol.makeConnection(self,\
+    \ transport)\n        self._remainingData = b\"\"\n        self._currentPayloadSize\
+    \ = 0\n        self._payload = BytesIO()\n        self._state = self._PARSING_LENGTH\n\
+    \        self._expectedPayloadSize = 0\n        self.brokenPeer = 0\n\n    def\
+    \ sendString(self, string):\n        \"\"\"\n        Sends a netstring.\n\n  \
+    \      Wraps up C{string} by adding length information and a\n        trailing\
+    \ comma; writes the result to the transport.\n\n        @param string: The string\
+    \ to send.  The necessary framing (length\n            prefix, etc) will be added.\n\
+    \        @type string: C{bytes}\n        \"\"\"\n        self.transport.write(_formatNetstring(string))\n\
+    \n    def dataReceived(self, data):\n        \"\"\"\n        Receives some characters\
+    \ of a netstring.\n\n        Whenever a complete netstring is received, this method\
+    \ extracts\n        its payload and calls L{stringReceived} to process it.\n\n\
+    \        @param data: A chunk of data representing a (possibly partial)\n    \
+    \        netstring\n        @type data: C{bytes}\n        \"\"\"\n        self._remainingData\
+    \ += data\n        while self._remainingData:\n            try:\n            \
+    \    self._consumeData()\n            except IncompleteNetstring:\n          \
+    \      break\n            except NetstringParseError:\n                self._handleParseError()\n\
+    \                break\n\n    def stringReceived(self, string):\n        \"\"\"\
+    \n        Override this for notification when each complete string is received.\n\
+    \n        @param string: The complete string which was received with all\n   \
+    \         framing (length prefix, etc) removed.\n        @type string: C{bytes}\n\
+    \n        @raise NotImplementedError: because the method has to be implemented\n\
+    \            by the child class.\n        \"\"\"\n        raise NotImplementedError()\n\
+    \n    def _maxLengthSize(self):\n        \"\"\"\n        Calculate and return\
+    \ the string size of C{self.MAX_LENGTH}.\n\n        @return: The size of the string\
+    \ representation for C{self.MAX_LENGTH}\n        @rtype: C{float}\n        \"\"\
+    \"\n        return math.ceil(math.log10(self.MAX_LENGTH)) + 1\n\n    def _consumeData(self):\n\
+    \        \"\"\"\n        Consumes the content of C{self._remainingData}.\n\n \
+    \       @raise IncompleteNetstring: if C{self._remainingData} does not\n     \
+    \       contain enough data to complete the current netstring.\n        @raise\
+    \ NetstringParseError: if the received data do not\n            form a valid netstring.\n\
+    \        \"\"\"\n        if self._state == self._PARSING_LENGTH:\n           \
+    \ self._consumeLength()\n            self._prepareForPayloadConsumption()\n  \
+    \      if self._state == self._PARSING_PAYLOAD:\n            self._consumePayload()\n\
+    \n    def _consumeLength(self):\n        \"\"\"\n        Consumes the length portion\
+    \ of C{self._remainingData}.\n\n        @raise IncompleteNetstring: if C{self._remainingData}\
+    \ contains\n            a partial length specification (digits without trailing\n\
+    \            comma).\n        @raise NetstringParseError: if the received data\
+    \ do not form a valid\n            netstring.\n        \"\"\"\n        lengthMatch\
+    \ = self._LENGTH.match(self._remainingData)\n        if not lengthMatch:\n   \
+    \         self._checkPartialLengthSpecification()\n            raise IncompleteNetstring()\n\
+    \        self._processLength(lengthMatch)\n\n    def _checkPartialLengthSpecification(self):\n\
+    \        \"\"\"\n        Makes sure that the received data represents a valid\
+    \ number.\n\n        Checks if C{self._remainingData} represents a number smaller\
+    \ or\n        equal to C{self.MAX_LENGTH}.\n\n        @raise NetstringParseError:\
+    \ if C{self._remainingData} is no\n            number or is too big (checked by\
+    \ L{_extractLength}).\n        \"\"\"\n        partialLengthMatch = self._LENGTH_PREFIX.match(self._remainingData)\n\
+    \        if not partialLengthMatch:\n            raise NetstringParseError(self._MISSING_LENGTH)\n\
+    \        lengthSpecification = partialLengthMatch.group(1)\n        self._extractLength(lengthSpecification)\n\
+    \n    def _processLength(self, lengthMatch):\n        \"\"\"\n        Processes\
+    \ the length definition of a netstring.\n\n        Extracts and stores in C{self._expectedPayloadSize}\
+    \ the number\n        representing the netstring size.  Removes the prefix\n \
+    \       representing the length specification from\n        C{self._remainingData}.\n\
+    \n        @raise NetstringParseError: if the received netstring does not\n   \
+    \         start with a number or the number is bigger than\n            C{self.MAX_LENGTH}.\n\
+    \        @param lengthMatch: A regular expression match object matching\n    \
+    \        a netstring length specification\n        @type lengthMatch: C{re.Match}\n\
+    \        \"\"\"\n        endOfNumber = lengthMatch.end(1)\n        startOfData\
+    \ = lengthMatch.end(2)\n        lengthString = self._remainingData[:endOfNumber]\n\
+    \        # Expect payload plus trailing comma:\n        self._expectedPayloadSize\
+    \ = self._extractLength(lengthString) + 1\n        self._remainingData = self._remainingData[startOfData:]\n\
+    \n    def _extractLength(self, lengthAsString):\n        \"\"\"\n        Attempts\
+    \ to extract the length information of a netstring.\n\n        @raise NetstringParseError:\
+    \ if the number is bigger than\n            C{self.MAX_LENGTH}.\n        @param\
+    \ lengthAsString: A chunk of data starting with a length\n            specification\n\
+    \        @type lengthAsString: C{bytes}\n        @return: The length of the netstring\n\
+    \        @rtype: C{int}\n        \"\"\"\n        self._checkStringSize(lengthAsString)\n\
+    \        length = int(lengthAsString)\n        if length > self.MAX_LENGTH:\n\
+    \            raise NetstringParseError(self._TOO_LONG % (self.MAX_LENGTH,))\n\
+    \        return length\n\n    def _checkStringSize(self, lengthAsString):\n  \
+    \      \"\"\"\n        Checks the sanity of lengthAsString.\n\n        Checks\
+    \ if the size of the length specification exceeds the\n        size of the string\
+    \ representing self.MAX_LENGTH. If this is\n        not the case, the number represented\
+    \ by lengthAsString is\n        certainly bigger than self.MAX_LENGTH, and a\n\
+    \        NetstringParseError can be raised.\n\n        This method should make\
+    \ sure that netstrings with extremely\n        long length specifications are\
+    \ refused before even attempting\n        to convert them to an integer (which\
+    \ might trigger a\n        MemoryError).\n        \"\"\"\n        if len(lengthAsString)\
+    \ > self._maxLengthSize():\n            raise NetstringParseError(self._TOO_LONG\
+    \ % (self.MAX_LENGTH,))\n\n    def _prepareForPayloadConsumption(self):\n    \
+    \    \"\"\"\n        Sets up variables necessary for consuming the payload of\
+    \ a netstring.\n        \"\"\"\n        self._state = self._PARSING_PAYLOAD\n\
+    \        self._currentPayloadSize = 0\n        self._payload.seek(0)\n       \
+    \ self._payload.truncate()\n\n    def _consumePayload(self):\n        \"\"\"\n\
+    \        Consumes the payload portion of C{self._remainingData}.\n\n        If\
+    \ the payload is complete, checks for the trailing comma and\n        processes\
+    \ the payload. If not, raises an L{IncompleteNetstring}\n        exception.\n\n\
+    \        @raise IncompleteNetstring: if the payload received so far\n        \
+    \    contains fewer characters than expected.\n        @raise NetstringParseError:\
+    \ if the payload does not end with a\n        comma.\n        \"\"\"\n       \
+    \ self._extractPayload()\n        if self._currentPayloadSize < self._expectedPayloadSize:\n\
+    \            raise IncompleteNetstring()\n        self._checkForTrailingComma()\n\
+    \        self._state = self._PARSING_LENGTH\n        self._processPayload()\n\n\
+    \    def _extractPayload(self):\n        \"\"\"\n        Extracts payload information\
+    \ from C{self._remainingData}.\n\n        Splits C{self._remainingData} at the\
+    \ end of the netstring.  The\n        first part becomes C{self._payload}, the\
+    \ second part is stored\n        in C{self._remainingData}.\n\n        If the\
+    \ netstring is not yet complete, the whole content of\n        C{self._remainingData}\
+    \ is moved to C{self._payload}.\n        \"\"\"\n        if self._payloadComplete():\n\
+    \            remainingPayloadSize = self._expectedPayloadSize - self._currentPayloadSize\n\
+    \            self._payload.write(self._remainingData[:remainingPayloadSize])\n\
+    \            self._remainingData = self._remainingData[remainingPayloadSize:]\n\
+    \            self._currentPayloadSize = self._expectedPayloadSize\n        else:\n\
+    \            self._payload.write(self._remainingData)\n            self._currentPayloadSize\
+    \ += len(self._remainingData)\n            self._remainingData = b\"\"\n\n   \
+    \ def _payloadComplete(self):\n        \"\"\"\n        Checks if enough data have\
+    \ been received to complete the netstring.\n\n        @return: C{True} iff the\
+    \ received data contain at least as many\n            characters as specified\
+    \ in the length section of the\n            netstring\n        @rtype: C{bool}\n\
+    \        \"\"\"\n        return (\n            len(self._remainingData) + self._currentPayloadSize\n\
+    \            >= self._expectedPayloadSize\n        )\n\n    def _processPayload(self):\n\
+    \        \"\"\"\n        Processes the actual payload with L{stringReceived}.\n\
+    \n        Strips C{self._payload} of the trailing comma and calls\n        L{stringReceived}\
+    \ with the result.\n        \"\"\"\n        self.stringReceived(self._payload.getvalue()[:-1])\n\
+    \n    def _checkForTrailingComma(self):\n        \"\"\"\n        Checks if the\
+    \ netstring has a trailing comma at the expected position.\n\n        @raise NetstringParseError:\
+    \ if the last payload character is\n            anything but a comma.\n      \
+    \  \"\"\"\n        if self._payload.getvalue()[-1:] != b\",\":\n            raise\
+    \ NetstringParseError(self._MISSING_COMMA)\n\n    def _handleParseError(self):\n\
+    \        \"\"\"\n        Terminates the connection and sets the flag C{self.brokenPeer}.\n\
+    \        \"\"\"\n        self.transport.loseConnection()\n        self.brokenPeer\
+    \ = 1\n\n\nclass LineOnlyReceiver(protocol.Protocol):\n    \"\"\"\n    A protocol\
+    \ that receives only lines.\n\n    This is purely a speed optimisation over LineReceiver,\
+    \ for the\n    cases that raw mode is known to be unnecessary.\n\n    @cvar delimiter:\
+    \ The line-ending delimiter to use. By default this is\n                     C{b'\\\
+    \\r\\\\n'}.\n    @cvar MAX_LENGTH: The maximum length of a line to allow (If a\n\
+    \                      sent line is longer than this, the connection is dropped).\n\
+    \                      Default is 16384.\n    \"\"\"\n\n    _buffer = b\"\"\n\
+    \    delimiter = b\"\\r\\n\"\n    MAX_LENGTH = 16384\n\n    def dataReceived(self,\
+    \ data):\n        \"\"\"\n        Translates bytes into lines, and calls lineReceived.\n\
+    \        \"\"\"\n        lines = (self._buffer + data).split(self.delimiter)\n\
+    \        self._buffer = lines.pop(-1)\n        for line in lines:\n          \
+    \  if self.transport.disconnecting:\n                # this is necessary because\
+    \ the transport may be told to lose\n                # the connection by a line\
+    \ within a larger packet, and it is\n                # important to disregard\
+    \ all the lines in that packet following\n                # the one that told\
+    \ it to close.\n                return\n            if len(line) > self.MAX_LENGTH:\n\
+    \                return self.lineLengthExceeded(line)\n            else:\n   \
+    \             self.lineReceived(line)\n        if len(self._buffer) > self.MAX_LENGTH:\n\
+    \            return self.lineLengthExceeded(self._buffer)\n\n    def lineReceived(self,\
+    \ line):\n        \"\"\"\n        Override this for when each line is received.\n\
+    \n        @param line: The line which was received with the delimiter removed.\n\
+    \        @type line: C{bytes}\n        \"\"\"\n        raise NotImplementedError\n\
+    \n    def sendLine(self, line):\n        \"\"\"\n        Sends a line to the other\
+    \ end of the connection.\n\n        @param line: The line to send, not including\
+    \ the delimiter.\n        @type line: C{bytes}\n        \"\"\"\n        return\
+    \ self.transport.writeSequence((line, self.delimiter))\n\n    def lineLengthExceeded(self,\
+    \ line):\n        \"\"\"\n        Called when the maximum line length has been\
+    \ reached.\n        Override if it needs to be dealt with in some special way.\n\
+    \        \"\"\"\n        return self.transport.loseConnection()\n\n\nclass _PauseableMixin:\n\
+    \    paused = False\n\n    def pauseProducing(self):\n        self.paused = True\n\
+    \        self.transport.pauseProducing()\n\n    def resumeProducing(self):\n \
+    \       self.paused = False\n        self.transport.resumeProducing()\n      \
+    \  self.dataReceived(b\"\")\n\n    def stopProducing(self):\n        self.paused\
+    \ = True\n        self.transport.stopProducing()\n\n\nclass LineReceiver(protocol.Protocol,\
+    \ _PauseableMixin):\n    \"\"\"\n    A protocol that receives lines and/or raw\
+    \ data, depending on mode.\n\n    In line mode, each line that's received becomes\
+    \ a callback to\n    L{lineReceived}.  In raw data mode, each chunk of raw data\
+    \ becomes a\n    callback to L{LineReceiver.rawDataReceived}.\n    The L{setLineMode}\
+    \ and L{setRawMode} methods switch between the two modes.\n\n    This is useful\
+    \ for line-oriented protocols such as IRC, HTTP, POP, etc.\n\n    @cvar delimiter:\
+    \ The line-ending delimiter to use. By default this is\n                     C{b'\\\
+    \\r\\\\n'}.\n    @cvar MAX_LENGTH: The maximum length of a line to allow (If a\n\
+    \                      sent line is longer than this, the connection is dropped).\n\
+    \                      Default is 16384.\n    \"\"\"\n\n    line_mode = 1\n  \
+    \  _buffer = b\"\"\n    _busyReceiving = False\n    delimiter = b\"\\r\\n\"\n\
+    \    MAX_LENGTH = 16384\n\n    def clearLineBuffer(self):\n        \"\"\"\n  \
+    \      Clear buffered data.\n\n        @return: All of the cleared buffered data.\n\
+    \        @rtype: C{bytes}\n        \"\"\"\n        b, self._buffer = self._buffer,\
+    \ b\"\"\n        return b\n\n    def dataReceived(self, data):\n        \"\"\"\
+    \n        Protocol.dataReceived.\n        Translates bytes into lines, and calls\
+    \ lineReceived (or\n        rawDataReceived, depending on mode.)\n        \"\"\
+    \"\n        if self._busyReceiving:\n            self._buffer += data\n      \
+    \      return\n\n        try:\n            self._busyReceiving = True\n      \
+    \      self._buffer += data\n            while self._buffer and not self.paused:\n\
+    \                if self.line_mode:\n                    try:\n              \
+    \          line, self._buffer = self._buffer.split(self.delimiter, 1)\n      \
+    \              except ValueError:\n                        if len(self._buffer)\
+    \ >= (self.MAX_LENGTH + len(self.delimiter)):\n                            line,\
+    \ self._buffer = self._buffer, b\"\"\n                            return self.lineLengthExceeded(line)\n\
+    \                        return\n                    else:\n                 \
+    \       lineLength = len(line)\n                        if lineLength > self.MAX_LENGTH:\n\
+    \                            exceeded = line + self.delimiter + self._buffer\n\
+    \                            self._buffer = b\"\"\n                          \
+    \  return self.lineLengthExceeded(exceeded)\n                        why = self.lineReceived(line)\n\
+    \                        if why or self.transport and self.transport.disconnecting:\n\
+    \                            return why\n                else:\n             \
+    \       data = self._buffer\n                    self._buffer = b\"\"\n      \
+    \              why = self.rawDataReceived(data)\n                    if why:\n\
+    \                        return why\n        finally:\n            self._busyReceiving\
+    \ = False\n\n    def setLineMode(self, extra=b\"\"):\n        \"\"\"\n       \
+    \ Sets the line-mode of this receiver.\n\n        If you are calling this from\
+    \ a rawDataReceived callback,\n        you can pass in extra unhandled data, and\
+    \ that data will\n        be parsed for lines.  Further data received will be\
+    \ sent\n        to lineReceived rather than rawDataReceived.\n\n        Do not\
+    \ pass extra data if calling this function from\n        within a lineReceived\
+    \ callback.\n        \"\"\"\n        self.line_mode = 1\n        if extra:\n \
+    \           return self.dataReceived(extra)\n\n    def setRawMode(self):\n   \
+    \     \"\"\"\n        Sets the raw mode of this receiver.\n        Further data\
+    \ received will be sent to rawDataReceived rather\n        than lineReceived.\n\
+    \        \"\"\"\n        self.line_mode = 0\n\n    def rawDataReceived(self, data):\n\
+    \        \"\"\"\n        Override this for when raw data is received.\n      \
+    \  \"\"\"\n        raise NotImplementedError\n\n    def lineReceived(self, line):\n\
+    \        \"\"\"\n        Override this for when each line is received.\n\n   \
+    \     @param line: The line which was received with the delimiter removed.\n \
+    \       @type line: C{bytes}\n        \"\"\"\n        raise NotImplementedError\n\
+    \n    def sendLine(self, line):\n        \"\"\"\n        Sends a line to the other\
+    \ end of the connection.\n\n        @param line: The line to send, not including\
+    \ the delimiter.\n        @type line: C{bytes}\n        \"\"\"\n        return\
+    \ self.transport.write(line + self.delimiter)\n\n    def lineLengthExceeded(self,\
+    \ line):\n        \"\"\"\n        Called when the maximum line length has been\
+    \ reached.\n        Override if it needs to be dealt with in some special way.\n\
+    \n        The argument 'line' contains the remainder of the buffer, starting\n\
+    \        with (at least some part) of the line which is too long. This may\n \
+    \       be more than one line, or may be only the initial portion of the\n   \
+    \     line.\n        \"\"\"\n        return self.transport.loseConnection()\n\n\
+    \nclass StringTooLongError(AssertionError):\n    \"\"\"\n    Raised when trying\
+    \ to send a string too long for a length prefixed\n    protocol.\n    \"\"\"\n\
+    \n\nclass _RecvdCompatHack:\n    \"\"\"\n    Emulates the to-be-deprecated C{IntNStringReceiver.recvd}\
+    \ attribute.\n\n    The C{recvd} attribute was where the working buffer for buffering\
+    \ and\n    parsing netstrings was kept.  It was updated each time new data arrived\
+    \ and\n    each time some of that data was parsed and delivered to application\
+    \ code.\n    The piecemeal updates to its string value were expensive and have\
+    \ been\n    removed from C{IntNStringReceiver} in the normal case.  However, for\n\
+    \    applications directly reading this attribute, this descriptor restores that\n\
+    \    behavior.  It only copies the working buffer when necessary (ie, when\n \
+    \   accessed).  This avoids the cost for applications not using the data.\n\n\
+    \    This is a custom descriptor rather than a property, because we still need\n\
+    \    the default __set__ behavior in both new-style and old-style subclasses.\n\
+    \    \"\"\"\n\n    def __get__(self, oself, type=None):\n        return oself._unprocessed[oself._compatibilityOffset\
+    \ :]\n\n\nclass IntNStringReceiver(protocol.Protocol, _PauseableMixin):\n    \"\
+    \"\"\n    Generic class for length prefixed protocols.\n\n    @ivar _unprocessed:\
+    \ bytes received, but not yet broken up into messages /\n        sent to stringReceived.\
+    \  _compatibilityOffset must be updated when this\n        value is updated so\
+    \ that the C{recvd} attribute can be generated\n        correctly.\n    @type\
+    \ _unprocessed: C{bytes}\n\n    @ivar structFormat: format used for struct packing/unpacking.\
+    \ Define it in\n        subclass.\n    @type structFormat: C{str}\n\n    @ivar\
+    \ prefixLength: length of the prefix, in bytes. Define it in subclass,\n     \
+    \   using C{struct.calcsize(structFormat)}\n    @type prefixLength: C{int}\n\n\
+    \    @ivar _compatibilityOffset: the offset within C{_unprocessed} to the next\n\
+    \        message to be parsed. (used to generate the recvd attribute)\n    @type\
+    \ _compatibilityOffset: C{int}\n    \"\"\"\n\n    MAX_LENGTH = 99999\n    _unprocessed\
+    \ = b\"\"\n    _compatibilityOffset = 0\n\n    # Backwards compatibility support\
+    \ for applications which directly touch the\n    # \"internal\" parse buffer.\n\
+    \    recvd = _RecvdCompatHack()\n\n    def stringReceived(self, string):\n   \
+    \     \"\"\"\n        Override this for notification when each complete string\
+    \ is received.\n\n        @param string: The complete string which was received\
+    \ with all\n            framing (length prefix, etc) removed.\n        @type string:\
+    \ C{bytes}\n        \"\"\"\n        raise NotImplementedError\n\n    def lengthLimitExceeded(self,\
+    \ length):\n        \"\"\"\n        Callback invoked when a length prefix greater\
+    \ than C{MAX_LENGTH} is\n        received.  The default implementation disconnects\
+    \ the transport.\n        Override this.\n\n        @param length: The length\
+    \ prefix which was received.\n        @type length: C{int}\n        \"\"\"\n \
+    \       self.transport.loseConnection()\n\n    def dataReceived(self, data):\n\
+    \        \"\"\"\n        Convert int prefixed strings into calls to stringReceived.\n\
+    \        \"\"\"\n        # Try to minimize string copying (via slices) by keeping\
+    \ one buffer\n        # containing all the data we have so far and a separate\
+    \ offset into that\n        # buffer.\n        alldata = self._unprocessed + data\n\
+    \        currentOffset = 0\n        prefixLength = self.prefixLength\n       \
+    \ fmt = self.structFormat\n        self._unprocessed = alldata\n\n        while\
+    \ len(alldata) >= (currentOffset + prefixLength) and not self.paused:\n      \
+    \      messageStart = currentOffset + prefixLength\n            (length,) = unpack(fmt,\
+    \ alldata[currentOffset:messageStart])\n            if length > self.MAX_LENGTH:\n\
+    \                self._unprocessed = alldata\n                self._compatibilityOffset\
+    \ = currentOffset\n                self.lengthLimitExceeded(length)\n        \
+    \        return\n            messageEnd = messageStart + length\n            if\
+    \ len(alldata) < messageEnd:\n                break\n\n            # Here we have\
+    \ to slice the working buffer so we can send just the\n            # netstring\
+    \ into the stringReceived callback.\n            packet = alldata[messageStart:messageEnd]\n\
+    \            currentOffset = messageEnd\n            self._compatibilityOffset\
+    \ = currentOffset\n            self.stringReceived(packet)\n\n            # Check\
+    \ to see if the backwards compat \"recvd\" attribute got written\n           \
+    \ # to by application code.  If so, drop the current data buffer and\n       \
+    \     # switch to the new buffer given by that attribute's value.\n          \
+    \  if \"recvd\" in self.__dict__:\n                alldata = self.__dict__.pop(\"\
+    recvd\")\n                self._unprocessed = alldata\n                self._compatibilityOffset\
+    \ = currentOffset = 0\n                if alldata:\n                    continue\n\
+    \                return\n\n        # Slice off all the data that has been processed,\
+    \ avoiding holding onto\n        # memory to store it, and update the compatibility\
+    \ attributes to reflect\n        # that change.\n        self._unprocessed = alldata[currentOffset:]\n\
+    \        self._compatibilityOffset = 0\n\n    def sendString(self, string):\n\
+    \        \"\"\"\n        Send a prefixed string to the other end of the connection.\n\
+    \n        @param string: The string to send.  The necessary framing (length\n\
+    \            prefix, etc) will be added.\n        @type string: C{bytes}\n   \
+    \     \"\"\"\n        if len(string) >= 2 ** (8 * self.prefixLength):\n      \
+    \      raise StringTooLongError(\n                \"Try to send %s bytes whereas\
+    \ maximum is %s\"\n                % (len(string), 2 ** (8 * self.prefixLength))\n\
+    \            )\n        self.transport.write(pack(self.structFormat, len(string))\
+    \ + string)\n\n\nclass Int32StringReceiver(IntNStringReceiver):\n    \"\"\"\n\
+    \    A receiver for int32-prefixed strings.\n\n    An int32 string is a string\
+    \ prefixed by 4 bytes, the 32-bit length of\n    the string encoded in network\
+    \ byte order.\n\n    This class publishes the same interface as NetstringReceiver.\n\
+    \    \"\"\"\n\n    structFormat = \"!I\"\n    prefixLength = calcsize(structFormat)\n\
+    \n\nclass Int16StringReceiver(IntNStringReceiver):\n    \"\"\"\n    A receiver\
+    \ for int16-prefixed strings.\n\n    An int16 string is a string prefixed by 2\
+    \ bytes, the 16-bit length of\n    the string encoded in network byte order.\n\
+    \n    This class publishes the same interface as NetstringReceiver.\n    \"\"\"\
+    \n\n    structFormat = \"!H\"\n    prefixLength = calcsize(structFormat)\n\n\n\
+    class Int8StringReceiver(IntNStringReceiver):\n    \"\"\"\n    A receiver for\
+    \ int8-prefixed strings.\n\n    An int8 string is a string prefixed by 1 byte,\
+    \ the 8-bit length of\n    the string.\n\n    This class publishes the same interface\
+    \ as NetstringReceiver.\n    \"\"\"\n\n    structFormat = \"!B\"\n    prefixLength\
+    \ = calcsize(structFormat)\n\n\nclass StatefulStringProtocol:\n    \"\"\"\n  \
+    \  A stateful string protocol.\n\n    This is a mixin for string protocols (L{Int32StringReceiver},\n\
+    \    L{NetstringReceiver}) which translates L{stringReceived} into a callback\n\
+    \    (prefixed with C{'proto_'}) depending on state.\n\n    The state C{'done'}\
+    \ is special; if a C{proto_*} method returns it, the\n    connection will be closed\
+    \ immediately.\n\n    @ivar state: Current state of the protocol. Defaults to\
+    \ C{'init'}.\n    @type state: C{str}\n    \"\"\"\n\n    state = \"init\"\n\n\
+    \    def stringReceived(self, string):\n        \"\"\"\n        Choose a protocol\
+    \ phase function and call it.\n\n        Call back to the appropriate protocol\
+    \ phase; this begins with\n        the function C{proto_init} and moves on to\
+    \ C{proto_*} depending on\n        what each C{proto_*} function returns.  (For\
+    \ example, if\n        C{self.proto_init} returns 'foo', then C{self.proto_foo}\
+    \ will be the\n        next function called when a protocol message is received.\n\
+    \        \"\"\"\n        try:\n            pto = \"proto_\" + self.state\n   \
+    \         statehandler = getattr(self, pto)\n        except AttributeError:\n\
+    \            log.msg(\"callback\", self.state, \"not found\")\n        else:\n\
+    \            self.state = statehandler(string)\n            if self.state == \"\
+    done\":\n                self.transport.loseConnection()\n\n\n@implementer(interfaces.IProducer)\n\
+    class FileSender:\n    \"\"\"\n    A producer that sends the contents of a file\
+    \ to a consumer.\n\n    This is a helper for protocols that, at some point, will\
+    \ take a\n    file-like object, read its contents, and write them out to the network,\n\
+    \    optionally performing some transformation on the bytes in between.\n    \"\
+    \"\"\n\n    CHUNK_SIZE = 2**14\n\n    lastSent = \"\"\n    deferred = None\n\n\
+    \    def beginFileTransfer(self, file, consumer, transform=None):\n        \"\"\
+    \"\n        Begin transferring a file\n\n        @type file: Any file-like object\n\
+    \        @param file: The file object to read data from\n\n        @type consumer:\
+    \ Any implementor of IConsumer\n        @param consumer: The object to write data\
+    \ to\n\n        @param transform: A callable taking one string argument and returning\n\
+    \        the same.  All bytes read from the file are passed through this before\n\
+    \        being written to the consumer.\n\n        @rtype: C{Deferred}\n     \
+    \   @return: A deferred whose callback will be invoked when the file has\n   \
+    \     been completely written to the consumer. The last byte written to the\n\
+    \        consumer is passed to the callback.\n        \"\"\"\n        self.file\
+    \ = file\n        self.consumer = consumer\n        self.transform = transform\n\
+    \n        self.deferred = deferred = defer.Deferred()\n        self.consumer.registerProducer(self,\
+    \ False)\n        return deferred\n\n    def resumeProducing(self):\n        chunk\
+    \ = \"\"\n        if self.file:\n            chunk = self.file.read(self.CHUNK_SIZE)\n\
+    \        if not chunk:\n            self.file = None\n            self.consumer.unregisterProducer()\n\
+    \            if self.deferred:\n                self.deferred.callback(self.lastSent)\n\
+    \                self.deferred = None\n            return\n\n        if self.transform:\n\
+    \            chunk = self.transform(chunk)\n        self.consumer.write(chunk)\n\
+    \        self.lastSent = chunk[-1:]\n\n    def pauseProducing(self):\n       \
+    \ pass\n\n    def stopProducing(self):\n        if self.deferred:\n          \
+    \  self.deferred.errback(Exception(\"Consumer asked us to stop producing\"))\n\
+    \            self.deferred = None\n\nOutput the complete test file, code only,\
+    \ no explanations.\n```Python\n<complete test code>\n```\n### Time\nCurrent time:\
+    \ 2025-03-13 17:51:58\n"
+  role: user

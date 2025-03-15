@@ -1,0 +1,147 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: seaborn\nTest File Path: seaborn\\test_groupby\\\
+    test_groupby.py\nProject Programming Language: Python\nTesting Framework: pytest\n\
+    ### Source File Content\n### Source File Content:\n\"\"\"Simplified split-apply-combine\
+    \ paradigm on dataframes for internal use.\"\"\"\nfrom __future__ import annotations\n\
+    \nfrom typing import cast, Iterable\n\nimport pandas as pd\n\nfrom seaborn._core.rules\
+    \ import categorical_order\n\nfrom typing import TYPE_CHECKING\nif TYPE_CHECKING:\n\
+    \    from typing import Callable\n    from pandas import DataFrame, MultiIndex,\
+    \ Index\n\n\nclass GroupBy:\n    \"\"\"\n    Interface for Pandas GroupBy operations\
+    \ allowing specified group order.\n\n    Writing our own class to do this has\
+    \ a few advantages:\n    - It constrains the interface between Plot and Stat/Move\
+    \ objects\n    - It allows control over the row order of the GroupBy result, which\
+    \ is\n      important when using in the context of some Move operations (dodge,\
+    \ stack, ...)\n    - It simplifies some complexities regarding the return type\
+    \ and Index contents\n      one encounters with Pandas, especially for DataFrame\
+    \ -> DataFrame applies\n    - It increases future flexibility regarding alternate\
+    \ DataFrame libraries\n\n    \"\"\"\n    def __init__(self, order: list[str] |\
+    \ dict[str, list | None]):\n        \"\"\"\n        Initialize the GroupBy from\
+    \ grouping variables and optional level orders.\n\n        Parameters\n      \
+    \  ----------\n        order\n            List of variable names or dict mapping\
+    \ names to desired level orders.\n            Level order values can be None to\
+    \ use default ordering rules. The\n            variables can include names that\
+    \ are not expected to appear in the\n            data; these will be dropped before\
+    \ the groups are defined.\n\n        \"\"\"\n        if not order:\n         \
+    \   raise ValueError(\"GroupBy requires at least one grouping variable\")\n\n\
+    \        if isinstance(order, list):\n            order = {k: None for k in order}\n\
+    \        self.order = order\n\n    def _get_groups(\n        self, data: DataFrame\n\
+    \    ) -> tuple[str | list[str], Index | MultiIndex]:\n        \"\"\"Return index\
+    \ with Cartesian product of ordered grouping variable levels.\"\"\"\n        levels\
+    \ = {}\n        for var, order in self.order.items():\n            if var in data:\n\
+    \                if order is None:\n                    order = categorical_order(data[var])\n\
+    \                levels[var] = order\n\n        grouper: str | list[str]\n   \
+    \     groups: Index | MultiIndex\n        if not levels:\n            grouper\
+    \ = []\n            groups = pd.Index([])\n        elif len(levels) > 1:\n   \
+    \         grouper = list(levels)\n            groups = pd.MultiIndex.from_product(levels.values(),\
+    \ names=grouper)\n        else:\n            grouper, = list(levels)\n       \
+    \     groups = pd.Index(levels[grouper], name=grouper)\n        return grouper,\
+    \ groups\n\n    def _reorder_columns(self, res, data):\n        \"\"\"Reorder\
+    \ result columns to match original order with new columns appended.\"\"\"\n  \
+    \      cols = [c for c in data if c in res]\n        cols += [c for c in res if\
+    \ c not in data]\n        return res.reindex(columns=pd.Index(cols))\n\n    def\
+    \ agg(self, data: DataFrame, *args, **kwargs) -> DataFrame:\n        \"\"\"\n\
+    \        Reduce each group to a single row in the output.\n\n        The output\
+    \ will have a row for each unique combination of the grouping\n        variable\
+    \ levels with null values for the aggregated variable(s) where\n        those\
+    \ combinations do not appear in the dataset.\n\n        \"\"\"\n        grouper,\
+    \ groups = self._get_groups(data)\n\n        if not grouper:\n            # We\
+    \ will need to see whether there are valid usecases that end up here\n       \
+    \     raise ValueError(\"No grouping variables are present in dataframe\")\n\n\
+    \        res = (\n            data\n            .groupby(grouper, sort=False,\
+    \ observed=False)\n            .agg(*args, **kwargs)\n            .reindex(groups)\n\
+    \            .reset_index()\n            .pipe(self._reorder_columns, data)\n\
+    \        )\n\n        return res\n\n    def apply(\n        self, data: DataFrame,\
+    \ func: Callable[..., DataFrame],\n        *args, **kwargs,\n    ) -> DataFrame:\n\
+    \        \"\"\"Apply a DataFrame -> DataFrame mapping to each group.\"\"\"\n \
+    \       grouper, groups = self._get_groups(data)\n\n        if not grouper:\n\
+    \            return self._reorder_columns(func(data, *args, **kwargs), data)\n\
+    \n        parts = {}\n        for key, part_df in data.groupby(grouper, sort=False,\
+    \ observed=False):\n            parts[key] = func(part_df, *args, **kwargs)\n\
+    \        stack = []\n        for key in groups:\n            if key in parts:\n\
+    \                if isinstance(grouper, list):\n                    # Implies\
+    \ that we had a MultiIndex so key is iterable\n                    group_ids =\
+    \ dict(zip(grouper, cast(Iterable, key)))\n                else:\n           \
+    \         group_ids = {grouper: key}\n                stack.append(parts[key].assign(**group_ids))\n\
+    \n        res = pd.concat(stack, ignore_index=True)\n        return self._reorder_columns(res,\
+    \ data)\n\n### Source File Dependency Files Content\n### Dependency File: rules.py\n\
+    from __future__ import annotations\n\nimport warnings\nfrom collections import\
+    \ UserString\nfrom numbers import Number\nfrom datetime import datetime\n\nimport\
+    \ numpy as np\nimport pandas as pd\n\nfrom typing import TYPE_CHECKING\nif TYPE_CHECKING:\n\
+    \    from typing import Literal\n    from pandas import Series\n\n\nclass VarType(UserString):\n\
+    \    \"\"\"\n    Prevent comparisons elsewhere in the library from using the wrong\
+    \ name.\n\n    Errors are simple assertions because users should not be able to\
+    \ trigger\n    them. If that changes, they should be more verbose.\n\n    \"\"\
+    \"\n    # TODO VarType is an awfully overloaded name, but so is DataType ...\n\
+    \    # TODO adding unknown because we are using this in for scales, is that right?\n\
+    \    allowed = \"numeric\", \"datetime\", \"categorical\", \"boolean\", \"unknown\"\
+    \n\n    def __init__(self, data):\n        assert data in self.allowed, data\n\
+    \        super().__init__(data)\n\n    def __eq__(self, other):\n        assert\
+    \ other in self.allowed, other\n        return self.data == other\n\n\ndef variable_type(\n\
+    \    vector: Series,\n    boolean_type: Literal[\"numeric\", \"categorical\",\
+    \ \"boolean\"] = \"numeric\",\n    strict_boolean: bool = False,\n) -> VarType:\n\
+    \    \"\"\"\n    Determine whether a vector contains numeric, categorical, or\
+    \ datetime data.\n\n    This function differs from the pandas typing API in a\
+    \ few ways:\n\n    - Python sequences or object-typed PyData objects are considered\
+    \ numeric if\n      all of their entries are numeric.\n    - String or mixed-type\
+    \ data are considered categorical even if not\n      explicitly represented as\
+    \ a :class:`pandas.api.types.CategoricalDtype`.\n    - There is some flexibility\
+    \ about how to treat binary / boolean data.\n\n    Parameters\n    ----------\n\
+    \    vector : :func:`pandas.Series`, :func:`numpy.ndarray`, or Python sequence\n\
+    \        Input data to test.\n    boolean_type : 'numeric', 'categorical', or\
+    \ 'boolean'\n        Type to use for vectors containing only 0s and 1s (and NAs).\n\
+    \    strict_boolean : bool\n        If True, only consider data to be boolean\
+    \ when the dtype is bool or Boolean.\n\n    Returns\n    -------\n    var_type\
+    \ : 'numeric', 'categorical', or 'datetime'\n        Name identifying the type\
+    \ of data in the vector.\n    \"\"\"\n\n    # If a categorical dtype is set, infer\
+    \ categorical\n    if isinstance(getattr(vector, 'dtype', None), pd.CategoricalDtype):\n\
+    \        return VarType(\"categorical\")\n\n    # Special-case all-na data, which\
+    \ is always \"numeric\"\n    if pd.isna(vector).all():\n        return VarType(\"\
+    numeric\")\n\n    # Now drop nulls to simplify further type inference\n    vector\
+    \ = vector.dropna()\n\n    # Special-case binary/boolean data, allow caller to\
+    \ determine\n    # This triggers a numpy warning when vector has strings/objects\n\
+    \    # https://github.com/numpy/numpy/issues/6784\n    # Because we reduce with\
+    \ .all(), we are agnostic about whether the\n    # comparison returns a scalar\
+    \ or vector, so we will ignore the warning.\n    # It triggers a separate DeprecationWarning\
+    \ when the vector has datetimes:\n    # https://github.com/numpy/numpy/issues/13548\n\
+    \    # This is considered a bug by numpy and will likely go away.\n    with warnings.catch_warnings():\n\
+    \        warnings.simplefilter(\n            action='ignore',\n            category=(FutureWarning,\
+    \ DeprecationWarning)  # type: ignore  # mypy bug?\n        )\n        if strict_boolean:\n\
+    \            if isinstance(vector.dtype, pd.core.dtypes.base.ExtensionDtype):\n\
+    \                boolean_dtypes = [\"bool\", \"boolean\"]\n            else:\n\
+    \                boolean_dtypes = [\"bool\"]\n            boolean_vector = vector.dtype\
+    \ in boolean_dtypes\n        else:\n            try:\n                boolean_vector\
+    \ = bool(np.isin(vector, [0, 1]).all())\n            except TypeError:\n     \
+    \           # .isin comparison is not guaranteed to be possible under NumPy\n\
+    \                # casting rules, depending on the (unknown) dtype of 'vector'\n\
+    \                boolean_vector = False\n        if boolean_vector:\n        \
+    \    return VarType(boolean_type)\n\n    # Defer to positive pandas tests\n  \
+    \  if pd.api.types.is_numeric_dtype(vector):\n        return VarType(\"numeric\"\
+    )\n\n    if pd.api.types.is_datetime64_dtype(vector):\n        return VarType(\"\
+    datetime\")\n\n    # --- If we get to here, we need to check the entries\n\n \
+    \   # Check for a collection where everything is a number\n\n    def all_numeric(x):\n\
+    \        for x_i in x:\n            if not isinstance(x_i, Number):\n        \
+    \        return False\n        return True\n\n    if all_numeric(vector):\n  \
+    \      return VarType(\"numeric\")\n\n    # Check for a collection where everything\
+    \ is a datetime\n\n    def all_datetime(x):\n        for x_i in x:\n         \
+    \   if not isinstance(x_i, (datetime, np.datetime64)):\n                return\
+    \ False\n        return True\n\n    if all_datetime(vector):\n        return VarType(\"\
+    datetime\")\n\n    # Otherwise, our final fallback is to consider things categorical\n\
+    \n    return VarType(\"categorical\")\n\n\ndef categorical_order(vector: Series,\
+    \ order: list | None = None) -> list:\n    \"\"\"\n    Return a list of unique\
+    \ data values using seaborn's ordering rules.\n\n    Parameters\n    ----------\n\
+    \    vector : Series\n        Vector of \"categorical\" values\n    order : list\n\
+    \        Desired order of category levels to override the order determined\n \
+    \       from the `data` object.\n\n    Returns\n    -------\n    order : list\n\
+    \        Ordered list of category levels not including null values.\n\n    \"\"\
+    \"\n    if order is not None:\n        return order\n\n    if vector.dtype.name\
+    \ == \"category\":\n        order = list(vector.cat.categories)\n    else:\n \
+    \       order = list(filter(pd.notnull, vector.unique()))\n        if variable_type(pd.Series(order))\
+    \ == \"numeric\":\n            order.sort()\n\n    return order\n\nOutput the\
+    \ complete test file, code only, no explanations.\n### Time\nCurrent time: 2025-03-14\
+    \ 17:22:28\n"
+  role: user

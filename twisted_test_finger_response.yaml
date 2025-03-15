@@ -1,0 +1,20 @@
+response: "```python\n# Copyright (c) Twisted Matrix Laboratories.\n# See LICENSE\
+  \ for details.\n\n\"\"\"Tests for L{twisted.protocols.finger}.\"\"\"\n\nfrom twisted.trial\
+  \ import unittest\nfrom twisted.test import proto_helpers\nfrom twisted.protocols\
+  \ import finger\n\n\nclass FingerTestCase(unittest.TestCase):\n    def setUp(self):\n\
+  \        self.finger = finger.Finger()\n        self.tr = proto_helpers.StringTransport()\n\
+  \        self.finger.makeConnection(self.tr)\n\n    def testGetUser(self):\n   \
+  \     self.finger.lineReceived(b\"exarkun\")\n        self.assertEqual(self.tr.value(),\
+  \ b\"Login: exarkun\\nNo such user\\n\")\n\n    def testGetDomain(self):\n     \
+  \   self.finger.lineReceived(b\"\")\n        self.assertEqual(self.tr.value(), b\"\
+  Finger online list denied\\n\")\n\n    def testForwardQuery(self):\n        self.finger.lineReceived(b\"\
+  exarkun@twistedmatrix.com\")\n        self.assertEqual(self.tr.value(), b\"Finger\
+  \ forwarding service denied\\n\")\n\n    def testEmptyQuery(self):\n        self.finger.lineReceived(b\"\
+  \")\n        self.assertEqual(self.tr.value(), b\"Finger online list denied\\n\"\
+  )\n\n    def testShortQuery(self):\n        self.finger.lineReceived(b\"/exarkun\"\
+  )\n        self.assertEqual(self.tr.value(), b\"Login: exarkun\\nNo such user\\\
+  n\")\n\n    def testShorterQuery(self):\n        self.finger.lineReceived(b\"/\"\
+  )\n        self.assertEqual(self.tr.value(), b\"Finger online list denied\\n\")\n\
+  \n    def testForwardQueryWithW(self):\n        self.finger.lineReceived(b\"/exarkun@twistedmatrix.com\"\
+  )\n        self.assertEqual(self.tr.value(), b\"Finger forwarding service denied\\\
+  n\")\n```"

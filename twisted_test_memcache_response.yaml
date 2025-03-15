@@ -1,0 +1,353 @@
+response: "```python\n# Copyright (c) Twisted Matrix Laboratories.\n# See LICENSE\
+  \ for details.\n\n\"\"\"\nTests for L{twisted.protocols.memcache}.\n\"\"\"\n\nfrom\
+  \ twisted.protocols.memcache import (\n    MemCacheProtocol,\n    Command,\n   \
+  \ NoSuchCommand,\n    ClientError,\n    ServerError,\n)\nfrom twisted.protocols.memcache\
+  \ import _Sentinel, _NO_RESULT, _CONTINUE\nfrom twisted.internet.defer import Deferred,\
+  \ TimeoutError\nfrom twisted.trial.unittest import TestCase\nfrom twisted.test.proto_helpers\
+  \ import StringTransport\nfrom twisted.python.failure import Failure\n\n\nclass\
+  \ CommandTestCase(TestCase):\n    \"\"\"\n    Tests for L{Command}.\n    \"\"\"\n\
+  \n    def test_init(self):\n        \"\"\"\n        L{Command.__init__} should accept\
+  \ a command and create a L{Deferred}.\n        \"\"\"\n        c = Command(b\"cmd\"\
+  )\n        self.assertEqual(c.command, b\"cmd\")\n        self.assertIsInstance(c._deferred,\
+  \ Deferred)\n\n    def test_kwargs(self):\n        \"\"\"\n        L{Command.__init__}\
+  \ should accept keyword arguments and set\n        them as instance attributes.\n\
+  \        \"\"\"\n        c = Command(b\"cmd\", attr1=1, attr2=\"value\")\n     \
+  \   self.assertEqual(c.attr1, 1)\n        self.assertEqual(c.attr2, \"value\")\n\
+  \n    def test_success(self):\n        \"\"\"\n        L{Command.success} should\
+  \ cause the L{Deferred} to callback\n        with the specified value.\n       \
+  \ \"\"\"\n        c = Command(b\"cmd\")\n        results = []\n        c._deferred.addCallback(results.append)\n\
+  \        c.success(\"value\")\n        self.assertEqual(results, [\"value\"])\n\n\
+  \    def test_fail(self):\n        \"\"\"\n        L{Command.fail} should cause\
+  \ the L{Deferred} to errback with\n        the specified error.\n        \"\"\"\n\
+  \        c = Command(b\"cmd\")\n        errors = []\n        c._deferred.addErrback(errors.append)\n\
+  \        c.fail(\"error\")\n        self.assertEqual(errors, [\"error\"])\n\n\n\
+  class MemCacheTestCase(TestCase):\n    \"\"\"\n    Tests for L{MemCacheProtocol}.\n\
+  \    \"\"\"\n\n    def setUp(self):\n        self.proto = MemCacheProtocol()\n \
+  \       self.tr = StringTransport()\n        self.proto.makeConnection(self.tr)\n\
+  \n    def tearDown(self):\n        self.proto.connectionLost(Failure(Exception(\"\
+  simulated lost connection\")))\n\n    def test_set(self):\n        \"\"\"\n    \
+  \    L{MemCacheProtocol.set} should send a C{set} command and the\n        value\
+  \ to the server.\n        \"\"\"\n        self.proto.set(b\"key\", b\"value\", 0,\
+  \ 1)\n        self.assertEqual(self.tr.value(), b\"set key 0 1 5\\r\\nvalue\\r\\\
+  n\")\n\n    def test_set_long_value(self):\n        \"\"\"\n        L{MemCacheProtocol.set}\
+  \ should send a C{set} command and the\n        value to the server, even if the\
+  \ value is very long.\n        \"\"\"\n        self.proto.set(b\"key\", b\"v\" *\
+  \ 1024 * 1024, 0, 1)\n        value = self.tr.value()\n        self.assertTrue(value.startswith(b\"\
+  set key 0 1 1048576\\r\\n\"))\n        self.assertTrue(value.endswith(b\"v\" * 1024\
+  \ * 1024 + b\"\\r\\n\"))\n\n    def test_set_no_expire(self):\n        \"\"\"\n\
+  \        L{MemCacheProtocol.set} should send a C{set} command and the\n        value\
+  \ to the server without the expire parameter.\n        \"\"\"\n        self.proto.set(b\"\
+  key\", b\"value\", 0, 0)\n        self.assertEqual(self.tr.value(), b\"set key 0\
+  \ 0 5\\r\\nvalue\\r\\n\")\n\n    def test_set_return(self):\n        \"\"\"\n  \
+  \      L{MemCacheProtocol.set} should return a L{Deferred}.\n        \"\"\"\n  \
+  \      d = self.proto.set(b\"key\", b\"value\")\n        self.assertIsInstance(d,\
+  \ Deferred)\n\n    def test_set_success(self):\n        \"\"\"\n        L{MemCacheProtocol.set}\
+  \ should call L{Command.success} when\n        the server returns C{STORED}.\n \
+  \       \"\"\"\n        d = self.proto.set(b\"key\", b\"value\")\n        self.proto.lineReceived(b\"\
+  STORED\")\n        results = []\n        d.addCallback(results.append)\n       \
+  \ self.assertEqual(results, [True])\n\n    def test_set_fail(self):\n        \"\"\
+  \"\n        L{MemCacheProtocol.set} should call L{Command.success} when\n      \
+  \  the server returns C{NOT_STORED}.\n        \"\"\"\n        d = self.proto.set(b\"\
+  key\", b\"value\")\n        self.proto.lineReceived(b\"NOT_STORED\")\n        results\
+  \ = []\n        d.addCallback(results.append)\n        self.assertEqual(results,\
+  \ [False])\n\n    def test_set_fail_exists(self):\n        \"\"\"\n        L{MemCacheProtocol.set}\
+  \ should call L{Command.success} when\n        the server returns C{EXISTS}.\n \
+  \       \"\"\"\n        d = self.proto.set(b\"key\", b\"value\")\n        self.proto.lineReceived(b\"\
+  EXISTS\")\n        results = []\n        d.addCallback(results.append)\n       \
+  \ self.assertEqual(results, [False])\n\n    def test_set_key_too_long(self):\n \
+  \       \"\"\"\n        L{MemCacheProtocol.set} should reject keys longer than the\n\
+  \        maximum.\n        \"\"\"\n        self.proto.set(b\"k\" * (self.proto.MAX_KEY_LENGTH\
+  \ + 1), b\"value\")\n        self.assertEqual(self.tr.value(), b\"\")\n\n    def\
+  \ test_set_disconnected(self):\n        \"\"\"\n        L{MemCacheProtocol.set}\
+  \ should reject commands if the\n        connection is lost.\n        \"\"\"\n \
+  \       self.proto.connectionLost(Failure(Exception(\"simulated lost connection\"\
+  )))\n        self.proto.set(b\"key\", b\"value\")\n        self.assertEqual(self.tr.value(),\
+  \ b\"\")\n\n    def test_get(self):\n        \"\"\"\n        L{MemCacheProtocol.get}\
+  \ should send a C{get} command to the\n        server.\n        \"\"\"\n       \
+  \ self.proto.get(b\"key\")\n        self.assertEqual(self.tr.value(), b\"get key\\\
+  r\\n\")\n\n    def test_get_multiple_keys(self):\n        \"\"\"\n        L{MemCacheProtocol.get}\
+  \ should send a C{get} command to the\n        server with multiple keys.\n    \
+  \    \"\"\"\n        self.proto.getMultiple([b\"key1\", b\"key2\"])\n        self.assertEqual(self.tr.value(),\
+  \ b\"get key1 key2\\r\\n\")\n\n    def test_get_return(self):\n        \"\"\"\n\
+  \        L{MemCacheProtocol.get} should return a L{Deferred}.\n        \"\"\"\n\
+  \        d = self.proto.get(b\"key\")\n        self.assertIsInstance(d, Deferred)\n\
+  \n    def test_get_success(self):\n        \"\"\"\n        L{MemCacheProtocol.get}\
+  \ should call L{Command.success} when\n        the server returns C{VALUE} and C{END}.\n\
+  \        \"\"\"\n        d = self.proto.get(b\"key\")\n        self.proto.lineReceived(b\"\
+  VALUE key 0 5\")\n        self.proto.rawDataReceived(b\"value\\r\\n\")\n       \
+  \ self.proto.lineReceived(b\"END\")\n        results = []\n        d.addCallback(results.append)\n\
+  \        self.assertEqual(results, [(0, b\"value\")])\n\n    def test_get_multiple_success(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol.get} should call L{Command.success}\
+  \ when\n        the server returns C{VALUE} and C{END} for multiple keys.\n    \
+  \    \"\"\"\n        d = self.proto.getMultiple([b\"key1\", b\"key2\"])\n      \
+  \  self.proto.lineReceived(b\"VALUE key1 0 5\")\n        self.proto.rawDataReceived(b\"\
+  value1\\r\\n\")\n        self.proto.lineReceived(b\"VALUE key2 0 5\")\n        self.proto.rawDataReceived(b\"\
+  value2\\r\\n\")\n        self.proto.lineReceived(b\"END\")\n        results = []\n\
+  \        d.addCallback(results.append)\n        self.assertEqual(results, [{b\"\
+  key1\": (0, b\"value1\"), b\"key2\": (0, b\"value2\")}])\n\n    def test_get_multiple_success_missing(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol.get} should call L{Command.success}\
+  \ when\n        the server returns C{VALUE} and C{END} for multiple keys, even\n\
+  \        if some keys are missing.\n        \"\"\"\n        d = self.proto.getMultiple([b\"\
+  key1\", b\"key2\"])\n        self.proto.lineReceived(b\"VALUE key1 0 5\")\n    \
+  \    self.proto.rawDataReceived(b\"value1\\r\\n\")\n        self.proto.lineReceived(b\"\
+  END\")\n        results = []\n        d.addCallback(results.append)\n        self.assertEqual(results,\
+  \ [{b\"key1\": (0, b\"value1\"), b\"key2\": (0, None)}])\n\n    def test_get_fail(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol.get} should call L{Command.success}\
+  \ when\n        the server returns C{END} without a C{VALUE}.\n        \"\"\"\n\
+  \        d = self.proto.get(b\"key\")\n        self.proto.lineReceived(b\"END\"\
+  )\n        results = []\n        d.addCallback(results.append)\n        self.assertEqual(results,\
+  \ [(0, None)])\n\n    def test_get_no_value(self):\n        \"\"\"\n        L{MemCacheProtocol.get}\
+  \ should return None if the server does\n        not return a C{VALUE}.\n      \
+  \  \"\"\"\n        d = self.proto.get(b\"key\")\n        self.proto.lineReceived(b\"\
+  END\")\n        results = []\n        d.addCallback(results.append)\n        self.assertEqual(results,\
+  \ [(0, None)])\n\n    def test_get_key_too_long(self):\n        \"\"\"\n       \
+  \ L{MemCacheProtocol.get} should reject keys longer than the\n        maximum.\n\
+  \        \"\"\"\n        self.proto.get(b\"k\" * (self.proto.MAX_KEY_LENGTH + 1))\n\
+  \        self.assertEqual(self.tr.value(), b\"\")\n\n    def test_get_disconnected(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol.get} should reject commands if the\n\
+  \        connection is lost.\n        \"\"\"\n        self.proto.connectionLost(Failure(Exception(\"\
+  simulated lost connection\")))\n        self.proto.get(b\"key\")\n        self.assertEqual(self.tr.value(),\
+  \ b\"\")\n\n    def test_append(self):\n        \"\"\"\n        L{MemCacheProtocol.append}\
+  \ should send an C{append} command\n        and the value to the server.\n     \
+  \   \"\"\"\n        self.proto.append(b\"key\", b\"value\")\n        self.assertEqual(self.tr.value(),\
+  \ b\"append key 0 0 5\\r\\nvalue\\r\\n\")\n\n    def test_append_success(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol.append} should call L{Command.success}\
+  \ when\n        the server returns C{STORED}.\n        \"\"\"\n        d = self.proto.append(b\"\
+  key\", b\"value\")\n        self.proto.lineReceived(b\"STORED\")\n        results\
+  \ = []\n        d.addCallback(results.append)\n        self.assertEqual(results,\
+  \ [True])\n\n    def test_append_fail(self):\n        \"\"\"\n        L{MemCacheProtocol.append}\
+  \ should call L{Command.success} when\n        the server returns C{NOT_STORED}.\n\
+  \        \"\"\"\n        d = self.proto.append(b\"key\", b\"value\")\n        self.proto.lineReceived(b\"\
+  NOT_STORED\")\n        results = []\n        d.addCallback(results.append)\n   \
+  \     self.assertEqual(results, [False])\n\n    def test_append_fail_exists(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol.append} should call L{Command.success}\
+  \ when\n        the server returns C{EXISTS}.\n        \"\"\"\n        d = self.proto.append(b\"\
+  key\", b\"value\")\n        self.proto.lineReceived(b\"EXISTS\")\n        results\
+  \ = []\n        d.addCallback(results.append)\n        self.assertEqual(results,\
+  \ [False])\n\n    def test_prepend(self):\n        \"\"\"\n        L{MemCacheProtocol.prepend}\
+  \ should send an C{prepend} command\n        and the value to the server.\n    \
+  \    \"\"\"\n        self.proto.prepend(b\"key\", b\"value\")\n        self.assertEqual(self.tr.value(),\
+  \ b\"prepend key 0 0 5\\r\\nvalue\\r\\n\")\n\n    def test_prepend_success(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol.prepend} should call L{Command.success}\
+  \ when\n        the server returns C{STORED}.\n        \"\"\"\n        d = self.proto.prepend(b\"\
+  key\", b\"value\")\n        self.proto.lineReceived(b\"STORED\")\n        results\
+  \ = []\n        d.addCallback(results.append)\n        self.assertEqual(results,\
+  \ [True])\n\n    def test_prepend_fail(self):\n        \"\"\"\n        L{MemCacheProtocol.prepend}\
+  \ should call L{Command.success} when\n        the server returns C{NOT_STORED}.\n\
+  \        \"\"\"\n        d = self.proto.prepend(b\"key\", b\"value\")\n        self.proto.lineReceived(b\"\
+  NOT_STORED\")\n        results = []\n        d.addCallback(results.append)\n   \
+  \     self.assertEqual(results, [False])\n\n    def test_prepend_fail_exists(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol.prepend} should call L{Command.success}\
+  \ when\n        the server returns C{EXISTS}.\n        \"\"\"\n        d = self.proto.prepend(b\"\
+  key\", b\"value\")\n        self.proto.lineReceived(b\"EXISTS\")\n        results\
+  \ = []\n        d.addCallback(results.append)\n        self.assertEqual(results,\
+  \ [False])\n\n    def test_replace(self):\n        \"\"\"\n        L{MemCacheProtocol.replace}\
+  \ should send a C{replace} command\n        and the value to the server.\n     \
+  \   \"\"\"\n        self.proto.replace(b\"key\", b\"value\", 0, 1)\n        self.assertEqual(self.tr.value(),\
+  \ b\"replace key 0 1 5\\r\\nvalue\\r\\n\")\n\n    def test_replace_success(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol.replace} should call L{Command.success}\
+  \ when\n        the server returns C{STORED}.\n        \"\"\"\n        d = self.proto.replace(b\"\
+  key\", b\"value\")\n        self.proto.lineReceived(b\"STORED\")\n        results\
+  \ = []\n        d.addCallback(results.append)\n        self.assertEqual(results,\
+  \ [True])\n\n    def test_replace_fail(self):\n        \"\"\"\n        L{MemCacheProtocol.replace}\
+  \ should call L{Command.success} when\n        the server returns C{NOT_STORED}.\n\
+  \        \"\"\"\n        d = self.proto.replace(b\"key\", b\"value\")\n        self.proto.lineReceived(b\"\
+  NOT_STORED\")\n        results = []\n        d.addCallback(results.append)\n   \
+  \     self.assertEqual(results, [False])\n\n    def test_replace_fail_exists(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol.replace} should call L{Command.success}\
+  \ when\n        the server returns C{EXISTS}.\n        \"\"\"\n        d = self.proto.replace(b\"\
+  key\", b\"value\")\n        self.proto.lineReceived(b\"EXISTS\")\n        results\
+  \ = []\n        d.addCallback(results.append)\n        self.assertEqual(results,\
+  \ [False])\n\n    def test_add(self):\n        \"\"\"\n        L{MemCacheProtocol.add}\
+  \ should send an C{add} command and the\n        value to the server.\n        \"\
+  \"\"\n        self.proto.add(b\"key\", b\"value\", 0, 1)\n        self.assertEqual(self.tr.value(),\
+  \ b\"add key 0 1 5\\r\\nvalue\\r\\n\")\n\n    def test_add_success(self):\n    \
+  \    \"\"\"\n        L{MemCacheProtocol.add} should call L{Command.success} when\n\
+  \        the server returns C{STORED}.\n        \"\"\"\n        d = self.proto.add(b\"\
+  key\", b\"value\")\n        self.proto.lineReceived(b\"STORED\")\n        results\
+  \ = []\n        d.addCallback(results.append)\n        self.assertEqual(results,\
+  \ [True])\n\n    def test_add_fail(self):\n        \"\"\"\n        L{MemCacheProtocol.add}\
+  \ should call L{Command.success} when\n        the server returns C{NOT_STORED}.\n\
+  \        \"\"\"\n        d = self.proto.add(b\"key\", b\"value\")\n        self.proto.lineReceived(b\"\
+  NOT_STORED\")\n        results = []\n        d.addCallback(results.append)\n   \
+  \     self.assertEqual(results, [False])\n\n    def test_add_fail_exists(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol.add} should call L{Command.success}\
+  \ when\n        the server returns C{EXISTS}.\n        \"\"\"\n        d = self.proto.add(b\"\
+  key\", b\"value\")\n        self.proto.lineReceived(b\"EXISTS\")\n        results\
+  \ = []\n        d.addCallback(results.append)\n        self.assertEqual(results,\
+  \ [False])\n\n    def test_checkAndSet(self):\n        \"\"\"\n        L{MemCacheProtocol.checkAndSet}\
+  \ should send an C{cas} command\n        and the value to the server.\n        \"\
+  \"\"\n        self.proto.checkAndSet(b\"key\", b\"value\", b\"1\", 0, 1)\n     \
+  \   self.assertEqual(self.tr.value(), b\"cas key 0 1 5 1\\r\\nvalue\\r\\n\")\n\n\
+  \    def test_checkAndSet_success(self):\n        \"\"\"\n        L{MemCacheProtocol.checkAndSet}\
+  \ should call L{Command.success} when\n        the server returns C{STORED}.\n \
+  \       \"\"\"\n        d = self.proto.checkAndSet(b\"key\", b\"value\", b\"1\"\
+  )\n        self.proto.lineReceived(b\"STORED\")\n        results = []\n        d.addCallback(results.append)\n\
+  \        self.assertEqual(results, [True])\n\n    def test_checkAndSet_fail(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol.checkAndSet} should call L{Command.success}\
+  \ when\n        the server returns C{NOT_STORED}.\n        \"\"\"\n        d = self.proto.checkAndSet(b\"\
+  key\", b\"value\", b\"1\")\n        self.proto.lineReceived(b\"NOT_STORED\")\n \
+  \       results = []\n        d.addCallback(results.append)\n        self.assertEqual(results,\
+  \ [False])\n\n    def test_checkAndSet_fail_exists(self):\n        \"\"\"\n    \
+  \    L{MemCacheProtocol.checkAndSet} should call L{Command.success} when\n     \
+  \   the server returns C{EXISTS}.\n        \"\"\"\n        d = self.proto.checkAndSet(b\"\
+  key\", b\"value\", b\"1\")\n        self.proto.lineReceived(b\"EXISTS\")\n     \
+  \   results = []\n        d.addCallback(results.append)\n        self.assertEqual(results,\
+  \ [False])\n\n    def test_checkAndSet_key_too_long(self):\n        \"\"\"\n   \
+  \     L{MemCacheProtocol.checkAndSet} should reject keys longer than the\n     \
+  \   maximum.\n        \"\"\"\n        self.proto.checkAndSet(b\"k\" * (self.proto.MAX_KEY_LENGTH\
+  \ + 1), b\"value\", b\"1\")\n        self.assertEqual(self.tr.value(), b\"\")\n\n\
+  \    def test_delete(self):\n        \"\"\"\n        L{MemCacheProtocol.delete}\
+  \ should send a C{delete} command to\n        the server.\n        \"\"\"\n    \
+  \    self.proto.delete(b\"key\")\n        self.assertEqual(self.tr.value(), b\"\
+  delete key\\r\\n\")\n\n    def test_delete_success(self):\n        \"\"\"\n    \
+  \    L{MemCacheProtocol.delete} should call L{Command.success} when\n        the\
+  \ server returns C{DELETED}.\n        \"\"\"\n        d = self.proto.delete(b\"\
+  key\")\n        self.proto.lineReceived(b\"DELETED\")\n        results = []\n  \
+  \      d.addCallback(results.append)\n        self.assertEqual(results, [True])\n\
+  \n    def test_delete_fail(self):\n        \"\"\"\n        L{MemCacheProtocol.delete}\
+  \ should call L{Command.success} when\n        the server returns C{NOT_FOUND}.\n\
+  \        \"\"\"\n        d = self.proto.delete(b\"key\")\n        self.proto.lineReceived(b\"\
+  NOT_FOUND\")\n        results = []\n        d.addCallback(results.append)\n    \
+  \    self.assertEqual(results, [False])\n\n    def test_delete_key_too_long(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol.delete} should reject keys longer than\
+  \ the\n        maximum.\n        \"\"\"\n        self.proto.delete(b\"k\" * (self.proto.MAX_KEY_LENGTH\
+  \ + 1))\n        self.assertEqual(self.tr.value(), b\"\")\n\n    def test_delete_disconnected(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol.delete} should reject commands if the\n\
+  \        connection is lost.\n        \"\"\"\n        self.proto.connectionLost(Failure(Exception(\"\
+  simulated lost connection\")))\n        self.proto.delete(b\"key\")\n        self.assertEqual(self.tr.value(),\
+  \ b\"\")\n\n    def test_increment(self):\n        \"\"\"\n        L{MemCacheProtocol.increment}\
+  \ should send an C{incr} command to\n        the server.\n        \"\"\"\n     \
+  \   self.proto.increment(b\"key\", 1)\n        self.assertEqual(self.tr.value(),\
+  \ b\"incr key 1\\r\\n\")\n\n    def test_increment_success(self):\n        \"\"\"\
+  \n        L{MemCacheProtocol.increment} should call L{Command.success} when\n  \
+  \      the server returns a value.\n        \"\"\"\n        d = self.proto.increment(b\"\
+  key\")\n        self.proto.lineReceived(b\"1\")\n        results = []\n        d.addCallback(results.append)\n\
+  \        self.assertEqual(results, [1])\n\n    def test_increment_fail(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol.increment} should call L{Command.success}\
+  \ when\n        the server returns C{NOT_FOUND}.\n        \"\"\"\n        d = self.proto.increment(b\"\
+  key\")\n        self.proto.lineReceived(b\"NOT_FOUND\")\n        results = []\n\
+  \        d.addCallback(results.append)\n        self.assertEqual(results, [False])\n\
+  \n    def test_increment_key_too_long(self):\n        \"\"\"\n        L{MemCacheProtocol.increment}\
+  \ should reject keys longer than the\n        maximum.\n        \"\"\"\n       \
+  \ self.proto.increment(b\"k\" * (self.proto.MAX_KEY_LENGTH + 1))\n        self.assertEqual(self.tr.value(),\
+  \ b\"\")\n\n    def test_increment_disconnected(self):\n        \"\"\"\n       \
+  \ L{MemCacheProtocol.increment} should reject commands if the\n        connection\
+  \ is lost.\n        \"\"\"\n        self.proto.connectionLost(Failure(Exception(\"\
+  simulated lost connection\")))\n        self.proto.increment(b\"key\")\n       \
+  \ self.assertEqual(self.tr.value(), b\"\")\n\n    def test_decrement(self):\n  \
+  \      \"\"\"\n        L{MemCacheProtocol.decrement} should send an C{decr} command\
+  \ to\n        the server.\n        \"\"\"\n        self.proto.decrement(b\"key\"\
+  , 1)\n        self.assertEqual(self.tr.value(), b\"decr key 1\\r\\n\")\n\n    def\
+  \ test_decrement_success(self):\n        \"\"\"\n        L{MemCacheProtocol.decrement}\
+  \ should call L{Command.success} when\n        the server returns a value.\n   \
+  \     \"\"\"\n        d = self.proto.decrement(b\"key\")\n        self.proto.lineReceived(b\"\
+  1\")\n        results = []\n        d.addCallback(results.append)\n        self.assertEqual(results,\
+  \ [1])\n\n    def test_decrement_fail(self):\n        \"\"\"\n        L{MemCacheProtocol.decrement}\
+  \ should call L{Command.success} when\n        the server returns C{NOT_FOUND}.\n\
+  \        \"\"\"\n        d = self.proto.decrement(b\"key\")\n        self.proto.lineReceived(b\"\
+  NOT_FOUND\")\n        results = []\n        d.addCallback(results.append)\n    \
+  \    self.assertEqual(results, [False])\n\n    def test_decrement_key_too_long(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol.decrement} should reject keys longer\
+  \ than the\n        maximum.\n        \"\"\"\n        self.proto.decrement(b\"k\"\
+  \ * (self.proto.MAX_KEY_LENGTH + 1))\n        self.assertEqual(self.tr.value(),\
+  \ b\"\")\n\n    def test_decrement_disconnected(self):\n        \"\"\"\n       \
+  \ L{MemCacheProtocol.decrement} should reject commands if the\n        connection\
+  \ is lost.\n        \"\"\"\n        self.proto.connectionLost(Failure(Exception(\"\
+  simulated lost connection\")))\n        self.proto.decrement(b\"key\")\n       \
+  \ self.assertEqual(self.tr.value(), b\"\")\n\n    def test_flush_all(self):\n  \
+  \      \"\"\"\n        L{MemCacheProtocol.flushAll} should send a C{flush_all} command\n\
+  \        to the server.\n        \"\"\"\n        self.proto.flushAll()\n       \
+  \ self.assertEqual(self.tr.value(), b\"flush_all\\r\\n\")\n\n    def test_flush_all_success(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol.flushAll} should call L{Command.success}\
+  \ when\n        the server returns C{OK}.\n        \"\"\"\n        d = self.proto.flushAll()\n\
+  \        self.proto.lineReceived(b\"OK\")\n        results = []\n        d.addCallback(results.append)\n\
+  \        self.assertEqual(results, [True])\n\n    def test_flush_all_disconnected(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol.flushAll} should reject commands if\
+  \ the\n        connection is lost.\n        \"\"\"\n        self.proto.connectionLost(Failure(Exception(\"\
+  simulated lost connection\")))\n        self.proto.flushAll()\n        self.assertEqual(self.tr.value(),\
+  \ b\"\")\n\n    def test_stats(self):\n        \"\"\"\n        L{MemCacheProtocol.stats}\
+  \ should send a C{stats} command to\n        the server.\n        \"\"\"\n     \
+  \   self.proto.stats()\n        self.assertEqual(self.tr.value(), b\"stats\\r\\\
+  n\")\n\n    def test_stats_return(self):\n        \"\"\"\n        L{MemCacheProtocol.stats}\
+  \ should return a L{Deferred}.\n        \"\"\"\n        d = self.proto.stats()\n\
+  \        self.assertIsInstance(d, Deferred)\n\n    def test_stats_success(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol.stats} should call L{Command.success}\
+  \ when\n        the server returns C{STAT} and C{END}.\n        \"\"\"\n       \
+  \ d = self.proto.stats()\n        self.proto.lineReceived(b\"STAT key1 value1\"\
+  )\n        self.proto.lineReceived(b\"STAT key2 value2\")\n        self.proto.lineReceived(b\"\
+  END\")\n        results = []\n        d.addCallback(results.append)\n        self.assertEqual(results,\
+  \ [{b\"key1\": b\"value1\", b\"key2\": b\"value2\"}])\n\n    def test_stats_fail(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol.stats} should call L{Command.success}\
+  \ when\n        the server returns C{END} without a C{STAT}.\n        \"\"\"\n \
+  \       d = self.proto.stats()\n        self.proto.lineReceived(b\"END\")\n    \
+  \    results = []\n        d.addCallback(results.append)\n        self.assertEqual(results,\
+  \ [{}])\n\n    def test_stats_disconnected(self):\n        \"\"\"\n        L{MemCacheProtocol.stats}\
+  \ should reject commands if the\n        connection is lost.\n        \"\"\"\n \
+  \       self.proto.connectionLost(Failure(Exception(\"simulated lost connection\"\
+  )))\n        self.proto.stats()\n        self.assertEqual(self.tr.value(), b\"\"\
+  )\n\n    def test_version(self):\n        \"\"\"\n        L{MemCacheProtocol.version}\
+  \ should send a C{version} command to\n        the server.\n        \"\"\"\n   \
+  \     self.proto.version()\n        self.assertEqual(self.tr.value(), b\"version\\\
+  r\\n\")\n\n    def test_version_return(self):\n        \"\"\"\n        L{MemCacheProtocol.version}\
+  \ should return a L{Deferred}.\n        \"\"\"\n        d = self.proto.version()\n\
+  \        self.assertIsInstance(d, Deferred)\n\n    def test_version_success(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol.version} should call L{Command.success}\
+  \ when\n        the server returns C{VERSION}.\n        \"\"\"\n        d = self.proto.version()\n\
+  \        self.proto.lineReceived(b\"VERSION 1.1.12\")\n        results = []\n  \
+  \      d.addCallback(results.append)\n        self.assertEqual(results, [b\"1.1.12\"\
+  ])\n\n    def test_version_disconnected(self):\n        \"\"\"\n        L{MemCacheProtocol.version}\
+  \ should reject commands if the\n        connection is lost.\n        \"\"\"\n \
+  \       self.proto.connectionLost(Failure(Exception(\"simulated lost connection\"\
+  )))\n        self.proto.version()\n        self.assertEqual(self.tr.value(), b\"\
+  \")\n\n    def test_no_such_command(self):\n        \"\"\"\n        L{MemCacheProtocol}\
+  \ should call L{Command.fail} when the server\n        returns C{ERROR}.\n     \
+  \   \"\"\"\n        d = self.proto.version()\n        self.proto.lineReceived(b\"\
+  ERROR\")\n        errors = []\n        d.addErrback(errors.append)\n        self.assertEqual(len(errors),\
+  \ 1)\n        self.assertIsInstance(errors[0].value, NoSuchCommand)\n\n    def test_client_error(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol} should call L{Command.fail} when the\
+  \ server\n        returns C{CLIENT_ERROR}.\n        \"\"\"\n        d = self.proto.version()\n\
+  \        self.proto.lineReceived(b\"CLIENT_ERROR bad command line format\")\n  \
+  \      errors = []\n        d.addErrback(errors.append)\n        self.assertEqual(len(errors),\
+  \ 1)\n        self.assertIsInstance(errors[0].value, ClientError)\n        self.assertEqual(str(errors[0].value),\
+  \ \"b'bad command line format'\")\n\n    def test_server_error(self):\n        \"\
+  \"\"\n        L{MemCacheProtocol} should call L{Command.fail} when the server\n\
+  \        returns C{SERVER_ERROR}.\n        \"\"\"\n        d = self.proto.version()\n\
+  \        self.proto.lineReceived(b\"SERVER_ERROR out of memory storing object\"\
+  )\n        errors = []\n        d.addErrback(errors.append)\n        self.assertEqual(len(errors),\
+  \ 1)\n        self.assertIsInstance(errors[0].value, ServerError)\n        self.assertEqual(str(errors[0].value),\
+  \ \"b'out of memory storing object'\")\n\n    def test_timeout(self):\n        \"\
+  \"\"\n        L{MemCacheProtocol} should fail with a C{TimeoutError} when a\n  \
+  \      timeout occurs.\n        \"\"\"\n        self.proto.timeoutConnection()\n\
+  \        errors = []\n        self.proto.version().addErrback(errors.append)\n \
+  \       self.assertEqual(len(errors), 1)\n        self.assertIsInstance(errors[0].value,\
+  \ TimeoutError)\n\n    def test_key_not_bytes(self):\n        \"\"\"\n        L{MemCacheProtocol}\
+  \ should fail with a C{ClientError} when the key is\n        not bytes.\n      \
+  \  \"\"\"\n        self.proto.delete(1)\n        errors = []\n        self.proto.version().addErrback(errors.append)\n\
+  \        self.assertEqual(len(errors), 1)\n        self.assertIsInstance(errors[0].value,\
+  \ ClientError)\n        self.assertEqual(str(errors[0].value), \"Invalid type for\
+  \ key: <class 'int'>, expecting bytes\")\n\n    def test_value_not_bytes(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol} should fail with a C{ClientError} when\
+  \ the value is\n        not bytes.\n        \"\"\"\n        self.proto.set(b\"key\"\
+  , 1)\n        errors = []\n        self.proto.version().addErrback(errors.append)\n\
+  \        self.assertEqual(len(errors), 1)\n        self.assertIsInstance(errors[0].value,\
+  \ ClientError)\n        self.assertEqual(str(errors[0].value), \"Invalid type for\
+  \ value: <class 'int'>, expecting bytes\")\n\n    def test_get_not_bytes(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol} should fail with a C{ClientError} when\
+  \ the key is\n        not bytes in get.\n        \"\"\"\n        self.proto.get(1)\n\
+  \        errors = []\n        self.proto.version().addErrback(errors.append)\n \
+  \       self.assertEqual(len(errors), 1)\n        self.assertIsInstance(errors[0].value,\
+  \ ClientError)\n        self.assertEqual(str(errors[0].value), \"Invalid type for\
+  \ key: <class 'int'>, expecting bytes\")\n\n    def test_getMultiple_not_bytes(self):\n\
+  \        \"\"\"\n        L{MemCacheProtocol} should fail with a C{ClientError} when\
+  \ the key is\n        not bytes in getMultiple.\n        \"\"\"\n        self.proto.getMultiple([1])\n\
+  \        errors = []\n        self.proto.version().addErrback(errors.append)\n \
+  \       self.assertEqual(len(errors), 1)\n        self.assertIsInstance(errors[0].value,\
+  \ ClientError)\n        self.assertEqual(str(errors[0].value), \"Invalid type for\
+  \ key: <class 'int'>, expecting bytes\")\n\n    def test_stats_arg(self):\n    \
+  \    \"\"\"\n        L{MemCacheProtocol.stats} should send a C{stats} command with\n\
+  \        an argument to the server.\n        \"\"\"\n        self.proto.stats(b\"\
+  foo\")\n        self.assertEqual(self.tr.value(), b\"stats foo\\r\\n\")\n\n    def\
+  \ test_stats_arg_not_bytes(self):\n        \"\"\"\n        L{MemCacheProtocol} should\
+  \ raise a C{TypeError} when the argument is\n        not bytes in stats.\n     \
+  \   \"\"\"\n        self.assertRaises(TypeError, self.proto.stats, 1)\n```\n"
