@@ -1,0 +1,932 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: pyinstaller\nTest File Path: pyinstaller\\\
+    test_makespec\\test_makespec.py\nProject Programming Language: Python\nTesting\
+    \ Framework: pytest\n### Source File Content\n### Source File Content:\n#-----------------------------------------------------------------------------\n\
+    # Copyright (c) 2005-2023, PyInstaller Development Team.\n#\n# Distributed under\
+    \ the terms of the GNU General Public License (version 2\n# or later) with exception\
+    \ for distributing the bootloader.\n#\n# The full license is in the file COPYING.txt,\
+    \ distributed with this software.\n#\n# SPDX-License-Identifier: (GPL-2.0-or-later\
+    \ WITH Bootloader-exception)\n#-----------------------------------------------------------------------------\n\
+    \"\"\"\nAutomatically build spec files containing a description of the project.\n\
+    \"\"\"\n\nimport argparse\nimport os\nimport re\nimport sys\n\nfrom PyInstaller\
+    \ import DEFAULT_SPECPATH, HOMEPATH\nfrom PyInstaller import log as logging\n\
+    from PyInstaller.building.templates import bundleexetmplt, bundletmplt, onedirtmplt,\
+    \ onefiletmplt, splashtmpl\nfrom PyInstaller.compat import is_darwin, is_win\n\
+    \nlogger = logging.getLogger(__name__)\n\n# This list gives valid choices for\
+    \ the ``--debug`` command-line option, except for the ``all`` choice.\nDEBUG_ARGUMENT_CHOICES\
+    \ = ['imports', 'bootloader', 'noarchive']\n# This is the ``all`` choice.\nDEBUG_ALL_CHOICE\
+    \ = ['all']\n\n\ndef escape_win_filepath(path):\n    # escape all \\ with another\
+    \ \\ after using normpath to clean up the path\n    return os.path.normpath(path).replace('\\\
+    \\', '\\\\\\\\')\n\n\ndef make_path_spec_relative(filename, spec_dir):\n    \"\
+    \"\"\n    Make the filename relative to the directory containing .spec file if\
+    \ filename is relative and not absolute.\n    Otherwise keep filename untouched.\n\
+    \    \"\"\"\n    if os.path.isabs(filename):\n        return filename\n    else:\n\
+    \        filename = os.path.abspath(filename)\n        # Make it relative.\n \
+    \       filename = os.path.relpath(filename, start=spec_dir)\n        return filename\n\
+    \n\n# Support for trying to avoid hard-coded paths in the .spec files. Eg, all\
+    \ files rooted in the Installer directory tree\n# will be written using \"HOMEPATH\"\
+    , thus allowing this spec file to be used with any Installer installation. Same\
+    \ thing\n# could be done for other paths too.\npath_conversions = ((HOMEPATH,\
+    \ \"HOMEPATH\"),)\n\n\nclass SourceDestAction(argparse.Action):\n    \"\"\"\n\
+    \    A command line option which takes multiple source:dest pairs.\n    \"\"\"\
+    \n    def __init__(self, *args, default=None, metavar=None, **kwargs):\n     \
+    \   super().__init__(*args, default=[], metavar='SOURCE:DEST', **kwargs)\n\n \
+    \   def __call__(self, parser, namespace, value, option_string=None):\n      \
+    \  try:\n            # Find the only separator that isn't a Windows drive.\n \
+    \           separator, = (m for m in re.finditer(rf\"(^\\w:[/\\\\])|[:{os.pathsep}]\"\
+    , value) if not m[1])\n        except ValueError:\n            # Split into SRC\
+    \ and DEST failed, wrong syntax\n            raise argparse.ArgumentError(self,\
+    \ f'Wrong syntax, should be {self.option_strings[0]}=SOURCE:DEST')\n        src\
+    \ = value[:separator.start()]\n        dest = value[separator.end():]\n      \
+    \  if not src or not dest:\n            # Syntax was correct, but one or both\
+    \ of SRC and DEST was not given\n            raise argparse.ArgumentError(self,\
+    \ \"You have to specify both SOURCE and DEST\")\n\n        # argparse is not particularly\
+    \ smart with copy by reference typed defaults. If the current list is the default,\n\
+    \        # replace it before modifying it to avoid changing the default.\n   \
+    \     if getattr(namespace, self.dest) is self.default:\n            setattr(namespace,\
+    \ self.dest, [])\n        getattr(namespace, self.dest).append((src, dest))\n\n\
+    \ndef make_variable_path(filename, conversions=path_conversions):\n    if not\
+    \ os.path.isabs(filename):\n        # os.path.commonpath can not compare relative\
+    \ and absolute paths, and if filename is not absolute, none of the\n        #\
+    \ paths in conversions will match anyway.\n        return None, filename\n   \
+    \ for (from_path, to_name) in conversions:\n        assert os.path.abspath(from_path)\
+    \ == from_path, (\"path '%s' should already be absolute\" % from_path)\n     \
+    \   try:\n            common_path = os.path.commonpath([filename, from_path])\n\
+    \        except ValueError:\n            # Per https://docs.python.org/3/library/os.path.html#os.path.commonpath,\
+    \ this raises ValueError in several\n            # cases which prevent computing\
+    \ a common path.\n            common_path = None\n        if common_path == from_path:\n\
+    \            rest = filename[len(from_path):]\n            if rest.startswith(('\\\
+    \\', '/')):\n                rest = rest[1:]\n            return to_name, rest\n\
+    \    return None, filename\n\n\ndef removed_key_option(x):\n    from PyInstaller.exceptions\
+    \ import RemovedCipherFeatureError\n    raise RemovedCipherFeatureError(\"Please\
+    \ remove your --key=xxx argument.\")\n\n\nclass _RemovedFlagAction(argparse.Action):\n\
+    \    def __init__(self, *args, **kwargs):\n        kwargs[\"help\"] = argparse.SUPPRESS\n\
+    \        kwargs[\"nargs\"] = 0\n        super().__init__(*args, **kwargs)\n\n\n\
+    class _RemovedNoEmbedManifestAction(_RemovedFlagAction):\n    def __call__(self,\
+    \ *args, **kwargs):\n        from PyInstaller.exceptions import RemovedExternalManifestError\n\
+    \        raise RemovedExternalManifestError(\"Please remove your --no-embed-manifest\
+    \ argument.\")\n\n\nclass _RemovedWinPrivateAssembliesAction(_RemovedFlagAction):\n\
+    \    def __call__(self, *args, **kwargs):\n        from PyInstaller.exceptions\
+    \ import RemovedWinSideBySideSupportError\n        raise RemovedWinSideBySideSupportError(\"\
+    Please remove your --win-private-assemblies argument.\")\n\n\nclass _RemovedWinNoPreferRedirectsAction(_RemovedFlagAction):\n\
+    \    def __call__(self, *args, **kwargs):\n        from PyInstaller.exceptions\
+    \ import RemovedWinSideBySideSupportError\n        raise RemovedWinSideBySideSupportError(\"\
+    Please remove your --win-no-prefer-redirects argument.\")\n\n\n# An object used\
+    \ in place of a \"path string\", which knows how to repr() itself using variable\
+    \ names instead of\n# hard-coded paths.\nclass Path:\n    def __init__(self, *parts):\n\
+    \        self.path = os.path.join(*parts)\n        self.variable_prefix = self.filename_suffix\
+    \ = None\n\n    def __repr__(self):\n        if self.filename_suffix is None:\n\
+    \            self.variable_prefix, self.filename_suffix = make_variable_path(self.path)\n\
+    \        if self.variable_prefix is None:\n            return repr(self.path)\n\
+    \        return \"os.path.join(\" + self.variable_prefix + \",\" + repr(self.filename_suffix)\
+    \ + \")\"\n\n\n# An object used to construct extra preamble for the spec file,\
+    \ in order to accommodate extra collect_*() calls from the\n# command-line\nclass\
+    \ Preamble:\n    def __init__(\n        self, datas, binaries, hiddenimports,\
+    \ collect_data, collect_binaries, collect_submodules, collect_all,\n        copy_metadata,\
+    \ recursive_copy_metadata\n    ):\n        # Initialize with literal values -\
+    \ will be switched to preamble variable name later, if necessary\n        self.binaries\
+    \ = binaries or []\n        self.hiddenimports = hiddenimports or []\n       \
+    \ self.datas = datas or []\n        # Preamble content\n        self.content =\
+    \ []\n\n        # Import statements\n        if collect_data:\n            self._add_hookutil_import('collect_data_files')\n\
+    \        if collect_binaries:\n            self._add_hookutil_import('collect_dynamic_libs')\n\
+    \        if collect_submodules:\n            self._add_hookutil_import('collect_submodules')\n\
+    \        if collect_all:\n            self._add_hookutil_import('collect_all')\n\
+    \        if copy_metadata or recursive_copy_metadata:\n            self._add_hookutil_import('copy_metadata')\n\
+    \        if self.content:\n            self.content += ['']  # empty line to separate\
+    \ the section\n        # Variables\n        if collect_data or copy_metadata or\
+    \ collect_all or recursive_copy_metadata:\n            self._add_var('datas',\
+    \ self.datas)\n            self.datas = 'datas'  # switch to variable\n      \
+    \  if collect_binaries or collect_all:\n            self._add_var('binaries',\
+    \ self.binaries)\n            self.binaries = 'binaries'  # switch to variable\n\
+    \        if collect_submodules or collect_all:\n            self._add_var('hiddenimports',\
+    \ self.hiddenimports)\n            self.hiddenimports = 'hiddenimports'  # switch\
+    \ to variable\n        # Content - collect_data_files\n        for entry in collect_data:\n\
+    \            self._add_collect_data(entry)\n        # Content - copy_metadata\n\
+    \        for entry in copy_metadata:\n            self._add_copy_metadata(entry)\n\
+    \        # Content - copy_metadata(..., recursive=True)\n        for entry in\
+    \ recursive_copy_metadata:\n            self._add_recursive_copy_metadata(entry)\n\
+    \        # Content - collect_binaries\n        for entry in collect_binaries:\n\
+    \            self._add_collect_binaries(entry)\n        # Content - collect_submodules\n\
+    \        for entry in collect_submodules:\n            self._add_collect_submodules(entry)\n\
+    \        # Content - collect_all\n        for entry in collect_all:\n        \
+    \    self._add_collect_all(entry)\n        # Merge\n        if self.content and\
+    \ self.content[-1] != '':\n            self.content += ['']  # empty line\n  \
+    \      self.content = '\\n'.join(self.content)\n\n    def _add_hookutil_import(self,\
+    \ name):\n        self.content += ['from PyInstaller.utils.hooks import {0}'.format(name)]\n\
+    \n    def _add_var(self, name, initial_value):\n        self.content += ['{0}\
+    \ = {1}'.format(name, initial_value)]\n\n    def _add_collect_data(self, name):\n\
+    \        self.content += ['datas += collect_data_files(\\'{0}\\')'.format(name)]\n\
+    \n    def _add_copy_metadata(self, name):\n        self.content += ['datas +=\
+    \ copy_metadata(\\'{0}\\')'.format(name)]\n\n    def _add_recursive_copy_metadata(self,\
+    \ name):\n        self.content += ['datas += copy_metadata(\\'{0}\\', recursive=True)'.format(name)]\n\
+    \n    def _add_collect_binaries(self, name):\n        self.content += ['binaries\
+    \ += collect_dynamic_libs(\\'{0}\\')'.format(name)]\n\n    def _add_collect_submodules(self,\
+    \ name):\n        self.content += ['hiddenimports += collect_submodules(\\'{0}\\\
+    ')'.format(name)]\n\n    def _add_collect_all(self, name):\n        self.content\
+    \ += [\n            'tmp_ret = collect_all(\\'{0}\\')'.format(name),\n       \
+    \     'datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]'\n\
+    \        ]\n\n\ndef __add_options(parser):\n    \"\"\"\n    Add the `Makespec`\
+    \ options to a option-parser instance or a option group.\n    \"\"\"\n    g =\
+    \ parser.add_argument_group('What to generate')\n    g.add_argument(\n       \
+    \ \"-D\",\n        \"--onedir\",\n        dest=\"onefile\",\n        action=\"\
+    store_false\",\n        default=None,\n        help=\"Create a one-folder bundle\
+    \ containing an executable (default)\",\n    )\n    g.add_argument(\n        \"\
+    -F\",\n        \"--onefile\",\n        dest=\"onefile\",\n        action=\"store_true\"\
+    ,\n        default=None,\n        help=\"Create a one-file bundled executable.\"\
+    ,\n    )\n    g.add_argument(\n        \"--specpath\",\n        metavar=\"DIR\"\
+    ,\n        help=\"Folder to store the generated spec file (default: current directory)\"\
+    ,\n    )\n    g.add_argument(\n        \"-n\",\n        \"--name\",\n        help=\"\
+    Name to assign to the bundled app and spec file (default: first script's basename)\"\
+    ,\n    )\n    g.add_argument(\n        \"--contents-directory\",\n        help=\"\
+    For onedir builds only, specify the name of the directory in which all supporting\
+    \ files (i.e. everything \"\n        \"except the executable itself) will be placed\
+    \ in. Use \\\".\\\" to re-enable old onedir layout without contents \"\n     \
+    \   \"directory.\",\n    )\n\n    g = parser.add_argument_group('What to bundle,\
+    \ where to search')\n    g.add_argument(\n        '--add-data',\n        action=SourceDestAction,\n\
+    \        dest='datas',\n        help=\"Additional data files or directories containing\
+    \ data files to be added to the application. The argument \"\n        'value should\
+    \ be in form of \"source:dest_dir\", where source is the path to file (or directory)\
+    \ to be '\n        \"collected, dest_dir is the destination directory relative\
+    \ to the top-level application directory, and both \"\n        \"paths are separated\
+    \ by a colon (:). To put a file in the top-level application directory, use .\
+    \ as a \"\n        \"dest_dir. This option can be used multiple times.\"\n   \
+    \ )\n    g.add_argument(\n        '--add-binary',\n        action=SourceDestAction,\n\
+    \        dest=\"binaries\",\n        help='Additional binary files to be added\
+    \ to the executable. See the ``--add-data`` option for the format. '\n       \
+    \ 'This option can be used multiple times.',\n    )\n    g.add_argument(\n   \
+    \     \"-p\",\n        \"--paths\",\n        dest=\"pathex\",\n        metavar=\"\
+    DIR\",\n        action=\"append\",\n        default=[],\n        help=\"A path\
+    \ to search for imports (like using PYTHONPATH). Multiple paths are allowed, separated\
+    \ by ``%s``, \"\n        \"or use this option multiple times. Equivalent to supplying\
+    \ the ``pathex`` argument in the spec file.\" %\n        repr(os.pathsep),\n \
+    \   )\n    g.add_argument(\n        '--hidden-import',\n        '--hiddenimport',\n\
+    \        action='append',\n        default=[],\n        metavar=\"MODULENAME\"\
+    ,\n        dest='hiddenimports',\n        help='Name an import not visible in\
+    \ the code of the script(s). This option can be used multiple times.',\n    )\n\
+    \    g.add_argument(\n        '--collect-submodules',\n        action=\"append\"\
+    ,\n        default=[],\n        metavar=\"MODULENAME\",\n        dest='collect_submodules',\n\
+    \        help='Collect all submodules from the specified package or module. This\
+    \ option can be used multiple times.',\n    )\n    g.add_argument(\n        '--collect-data',\n\
+    \        '--collect-datas',\n        action=\"append\",\n        default=[],\n\
+    \        metavar=\"MODULENAME\",\n        dest='collect_data',\n        help='Collect\
+    \ all data from the specified package or module. This option can be used multiple\
+    \ times.',\n    )\n    g.add_argument(\n        '--collect-binaries',\n      \
+    \  action=\"append\",\n        default=[],\n        metavar=\"MODULENAME\",\n\
+    \        dest='collect_binaries',\n        help='Collect all binaries from the\
+    \ specified package or module. This option can be used multiple times.',\n   \
+    \ )\n    g.add_argument(\n        '--collect-all',\n        action=\"append\"\
+    ,\n        default=[],\n        metavar=\"MODULENAME\",\n        dest='collect_all',\n\
+    \        help='Collect all submodules, data files, and binaries from the specified\
+    \ package or module. This option can '\n        'be used multiple times.',\n \
+    \   )\n    g.add_argument(\n        '--copy-metadata',\n        action=\"append\"\
+    ,\n        default=[],\n        metavar=\"PACKAGENAME\",\n        dest='copy_metadata',\n\
+    \        help='Copy metadata for the specified package. This option can be used\
+    \ multiple times.',\n    )\n    g.add_argument(\n        '--recursive-copy-metadata',\n\
+    \        action=\"append\",\n        default=[],\n        metavar=\"PACKAGENAME\"\
+    ,\n        dest='recursive_copy_metadata',\n        help='Copy metadata for the\
+    \ specified package and all its dependencies. This option can be used multiple\
+    \ '\n        'times.',\n    )\n    g.add_argument(\n        \"--additional-hooks-dir\"\
+    ,\n        action=\"append\",\n        dest=\"hookspath\",\n        default=[],\n\
+    \        help=\"An additional path to search for hooks. This option can be used\
+    \ multiple times.\",\n    )\n    g.add_argument(\n        '--runtime-hook',\n\
+    \        action='append',\n        dest='runtime_hooks',\n        default=[],\n\
+    \        help='Path to a custom runtime hook file. A runtime hook is code that\
+    \ is bundled with the executable and is '\n        'executed before any other\
+    \ code or module to set up special features of the runtime environment. This option\
+    \ '\n        'can be used multiple times.',\n    )\n    g.add_argument(\n    \
+    \    '--exclude-module',\n        dest='excludes',\n        action='append',\n\
+    \        default=[],\n        help='Optional module or package (the Python name,\
+    \ not the path name) that will be ignored (as though it was '\n        'not found).\
+    \ This option can be used multiple times.',\n    )\n    g.add_argument(\n    \
+    \    '--key',\n        dest='key',\n        help=argparse.SUPPRESS,\n        type=removed_key_option,\n\
+    \    )\n    g.add_argument(\n        '--splash',\n        dest='splash',\n   \
+    \     metavar=\"IMAGE_FILE\",\n        help=\"(EXPERIMENTAL) Add an splash screen\
+    \ with the image IMAGE_FILE to the application. The splash screen can \"\n   \
+    \     \"display progress updates while unpacking.\",\n    )\n\n    g = parser.add_argument_group('How\
+    \ to generate')\n    g.add_argument(\n        \"-d\",\n        \"--debug\",\n\
+    \        # If this option is not specified, then its default value is an empty\
+    \ list (no debug options selected).\n        default=[],\n        # Note that\
+    \ ``nargs`` is omitted. This produces a single item not stored in a list, as opposed\
+    \ to a list\n        # containing one item, as per `nargs <https://docs.python.org/3/library/argparse.html#nargs>`_.\n\
+    \        nargs=None,\n        # The options specified must come from this list.\n\
+    \        choices=DEBUG_ALL_CHOICE + DEBUG_ARGUMENT_CHOICES,\n        # Append\
+    \ choice, rather than storing them (which would overwrite any previous selections).\n\
+    \        action='append',\n        # Allow newlines in the help text; see the\
+    \ ``_SmartFormatter`` in ``__main__.py``.\n        help=(\n            \"R|Provide\
+    \ assistance with debugging a frozen\\n\"\n            \"application. This argument\
+    \ may be provided multiple\\n\"\n            \"times to select several of the\
+    \ following options.\\n\"\n            \"\\n\"\n            \"- all: All three\
+    \ of the following options.\\n\"\n            \"\\n\"\n            \"- imports:\
+    \ specify the -v option to the underlying\\n\"\n            \"  Python interpreter,\
+    \ causing it to print a message\\n\"\n            \"  each time a module is initialized,\
+    \ showing the\\n\"\n            \"  place (filename or built-in module) from which\
+    \ it\\n\"\n            \"  is loaded. See\\n\"\n            \"  https://docs.python.org/3/using/cmdline.html#id4.\\\
+    n\"\n            \"\\n\"\n            \"- bootloader: tell the bootloader to issue\
+    \ progress\\n\"\n            \"  messages while initializing and starting the\\\
+    n\"\n            \"  bundled app. Used to diagnose problems with\\n\"\n      \
+    \      \"  missing imports.\\n\"\n            \"\\n\"\n            \"- noarchive:\
+    \ instead of storing all frozen Python\\n\"\n            \"  source files as an\
+    \ archive inside the resulting\\n\"\n            \"  executable, store them as\
+    \ files in the resulting\\n\"\n            \"  output directory.\\n\"\n      \
+    \      \"\\n\"\n        ),\n    )\n    g.add_argument(\n        '--optimize',\n\
+    \        dest='optimize',\n        metavar='LEVEL',\n        type=int,\n     \
+    \   choices={-1, 0, 1, 2},\n        default=None,\n        help='Bytecode optimization\
+    \ level used for collected python modules and scripts. For details, see the section\
+    \ '\n        '“Bytecode Optimization Level” in PyInstaller manual.',\n    )\n\
+    \    g.add_argument(\n        '--python-option',\n        dest='python_options',\n\
+    \        metavar='PYTHON_OPTION',\n        action='append',\n        default=[],\n\
+    \        help='Specify a command-line option to pass to the Python interpreter\
+    \ at runtime. Currently supports '\n        '\"v\" (equivalent to \"--debug imports\"\
+    ), \"u\", \"W <warning control>\", \"X <xoption>\", and \"hash_seed=<value>\"\
+    . '\n        'For details, see the section \"Specifying Python Interpreter Options\"\
+    \ in PyInstaller manual.',\n    )\n    g.add_argument(\n        \"-s\",\n    \
+    \    \"--strip\",\n        action=\"store_true\",\n        help=\"Apply a symbol-table\
+    \ strip to the executable and shared libs (not recommended for Windows)\",\n \
+    \   )\n    g.add_argument(\n        \"--noupx\",\n        action=\"store_true\"\
+    ,\n        default=False,\n        help=\"Do not use UPX even if it is available\
+    \ (works differently between Windows and *nix)\",\n    )\n    g.add_argument(\n\
+    \        \"--upx-exclude\",\n        dest=\"upx_exclude\",\n        metavar=\"\
+    FILE\",\n        action=\"append\",\n        help=\"Prevent a binary from being\
+    \ compressed when using upx. This is typically used if upx corrupts certain \"\
+    \n        \"binaries during compression. FILE is the filename of the binary without\
+    \ path. This option can be used \"\n        \"multiple times.\",\n    )\n\n  \
+    \  g = parser.add_argument_group('Windows and macOS specific options')\n    g.add_argument(\n\
+    \        \"-c\",\n        \"--console\",\n        \"--nowindowed\",\n        dest=\"\
+    console\",\n        action=\"store_true\",\n        default=None,\n        help=\"\
+    Open a console window for standard i/o (default). On Windows this option has no\
+    \ effect if the first \"\n        \"script is a '.pyw' file.\",\n    )\n    g.add_argument(\n\
+    \        \"-w\",\n        \"--windowed\",\n        \"--noconsole\",\n        dest=\"\
+    console\",\n        action=\"store_false\",\n        default=None,\n        help=\"\
+    Windows and macOS: do not provide a console window for standard i/o. On macOS\
+    \ this also triggers \"\n        \"building a macOS .app bundle. On Windows this\
+    \ option is automatically set if the first script is a '.pyw' \"\n        \"file.\
+    \ This option is ignored on *NIX systems.\",\n    )\n    g.add_argument(\n   \
+    \     \"--hide-console\",\n        type=str,\n        choices={'hide-early', 'hide-late',\
+    \ 'minimize-early', 'minimize-late'},\n        default=None,\n        help=\"\
+    Windows only: in console-enabled executable, have bootloader automatically hide\
+    \ or minimize the console \"\n        \"window if the program owns the console\
+    \ window (i.e., was not launched from an existing console window).\",\n    )\n\
+    \    g.add_argument(\n        \"-i\",\n        \"--icon\",\n        action='append',\n\
+    \        dest=\"icon_file\",\n        metavar='<FILE.ico or FILE.exe,ID or FILE.icns\
+    \ or Image or \"NONE\">',\n        help=\"FILE.ico: apply the icon to a Windows\
+    \ executable. FILE.exe,ID: extract the icon with ID from an exe. \"\n        \"\
+    FILE.icns: apply the icon to the .app bundle on macOS. If an image file is entered\
+    \ that isn't in the \"\n        \"platform format (ico on Windows, icns on Mac),\
+    \ PyInstaller tries to use Pillow to translate the icon into \"\n        \"the\
+    \ correct format (if Pillow is installed). Use \\\"NONE\\\" to not apply any icon,\
+    \ thereby making the OS show \"\n        \"some default (default: apply PyInstaller's\
+    \ icon). This option can be used multiple times.\",\n    )\n    g.add_argument(\n\
+    \        \"--disable-windowed-traceback\",\n        dest=\"disable_windowed_traceback\"\
+    ,\n        action=\"store_true\",\n        default=False,\n        help=\"Disable\
+    \ traceback dump of unhandled exception in windowed (noconsole) mode (Windows\
+    \ and macOS only), \"\n        \"and instead display a message that this feature\
+    \ is disabled.\",\n    )\n\n    g = parser.add_argument_group('Windows specific\
+    \ options')\n    g.add_argument(\n        \"--version-file\",\n        dest=\"\
+    version_file\",\n        metavar=\"FILE\",\n        help=\"Add a version resource\
+    \ from FILE to the exe.\",\n    )\n    g.add_argument(\n        \"--manifest\"\
+    ,\n        metavar=\"<FILE or XML>\",\n        help=\"Add manifest FILE or XML\
+    \ to the exe.\",\n    )\n    g.add_argument(\n        \"-m\",\n        dest=\"\
+    shorthand_manifest\",\n        metavar=\"<FILE or XML>\",\n        help=\"Deprecated\
+    \ shorthand for --manifest.\",\n    )\n    g.add_argument(\n        \"--no-embed-manifest\"\
+    ,\n        action=_RemovedNoEmbedManifestAction,\n    )\n    g.add_argument(\n\
+    \        \"-r\",\n        \"--resource\",\n        dest=\"resources\",\n     \
+    \   metavar=\"RESOURCE\",\n        action=\"append\",\n        default=[],\n \
+    \       help=\"Add or update a resource to a Windows executable. The RESOURCE\
+    \ is one to four items, \"\n        \"FILE[,TYPE[,NAME[,LANGUAGE]]]. FILE can\
+    \ be a data file or an exe/dll. For data files, at least TYPE and NAME \"\n  \
+    \      \"must be specified. LANGUAGE defaults to 0 or may be specified as wildcard\
+    \ * to update all resources of the \"\n        \"given TYPE and NAME. For exe/dll\
+    \ files, all resources from FILE will be added/updated to the final executable\
+    \ \"\n        \"if TYPE, NAME and LANGUAGE are omitted or specified as wildcard\
+    \ *. This option can be used multiple times.\",\n    )\n    g.add_argument(\n\
+    \        '--uac-admin',\n        dest='uac_admin',\n        action=\"store_true\"\
+    ,\n        default=False,\n        help=\"Using this option creates a Manifest\
+    \ that will request elevation upon application start.\",\n    )\n    g.add_argument(\n\
+    \        '--uac-uiaccess',\n        dest='uac_uiaccess',\n        action=\"store_true\"\
+    ,\n        default=False,\n        help=\"Using this option allows an elevated\
+    \ application to work with Remote Desktop.\",\n    )\n\n    g = parser.add_argument_group('Windows\
+    \ Side-by-side Assembly searching options (advanced)')\n    g.add_argument(\n\
+    \        \"--win-private-assemblies\",\n        action=_RemovedWinPrivateAssembliesAction,\n\
+    \    )\n    g.add_argument(\n        \"--win-no-prefer-redirects\",\n        action=_RemovedWinNoPreferRedirectsAction,\n\
+    \    )\n\n    g = parser.add_argument_group('macOS specific options')\n    g.add_argument(\n\
+    \        \"--argv-emulation\",\n        dest=\"argv_emulation\",\n        action=\"\
+    store_true\",\n        default=False,\n        help=\"Enable argv emulation for\
+    \ macOS app bundles. If enabled, the initial open document/URL event is \"\n \
+    \       \"processed by the bootloader and the passed file paths or URLs are appended\
+    \ to sys.argv.\",\n    )\n\n    g.add_argument(\n        '--osx-bundle-identifier',\n\
+    \        dest='bundle_identifier',\n        help=\"macOS .app bundle identifier\
+    \ is used as the default unique program name for code signing purposes. \"\n \
+    \       \"The usual form is a hierarchical name in reverse DNS notation. For example:\
+    \ com.mycompany.department.appname \"\n        \"(default: first script's basename)\"\
+    ,\n    )\n\n    g.add_argument(\n        '--target-architecture',\n        '--target-arch',\n\
+    \        dest='target_arch',\n        metavar='ARCH',\n        default=None,\n\
+    \        help=\"Target architecture (macOS only; valid values: x86_64, arm64,\
+    \ universal2). Enables switching between \"\n        \"universal2 and single-arch\
+    \ version of frozen application (provided python installation supports the target\
+    \ \"\n        \"architecture). If not target architecture is not specified, the\
+    \ current running architecture is targeted.\",\n    )\n\n    g.add_argument(\n\
+    \        '--codesign-identity',\n        dest='codesign_identity',\n        metavar='IDENTITY',\n\
+    \        default=None,\n        help=\"Code signing identity (macOS only). Use\
+    \ the provided identity to sign collected binaries and generated \"\n        \"\
+    executable. If signing identity is not provided, ad-hoc signing is performed instead.\"\
+    ,\n    )\n\n    g.add_argument(\n        '--osx-entitlements-file',\n        dest='entitlements_file',\n\
+    \        metavar='FILENAME',\n        default=None,\n        help=\"Entitlements\
+    \ file to use when code-signing the collected binaries (macOS only).\",\n    )\n\
+    \n    g = parser.add_argument_group('Rarely used special options')\n    g.add_argument(\n\
+    \        \"--runtime-tmpdir\",\n        dest=\"runtime_tmpdir\",\n        metavar=\"\
+    PATH\",\n        help=\"Where to extract libraries and support files in `onefile`\
+    \ mode. If this option is given, the bootloader \"\n        \"will ignore any\
+    \ temp-folder location defined by the run-time OS. The ``_MEIxxxxxx``-folder will\
+    \ be created \"\n        \"here. Please use this option only if you know what\
+    \ you are doing. Note that on POSIX systems, PyInstaller's \"\n        \"bootloader\
+    \ does NOT perform shell-style environment variable expansion on the given path\
+    \ string. Therefore, \"\n        \"using environment variables (e.g., ``~`` or\
+    \ ``$HOME``) in path will NOT work.\",\n    )\n    g.add_argument(\n        \"\
+    --bootloader-ignore-signals\",\n        action=\"store_true\",\n        default=False,\n\
+    \        help=\"Tell the bootloader to ignore signals rather than forwarding them\
+    \ to the child process. Useful in \"\n        \"situations where for example a\
+    \ supervisor process signals both the bootloader and the child (e.g., via a \"\
+    \n        \"process group) to avoid signalling the child twice.\",\n    )\n\n\n\
+    def main(\n    scripts,\n    name=None,\n    onefile=False,\n    console=True,\n\
+    \    debug=[],\n    python_options=[],\n    strip=False,\n    noupx=False,\n \
+    \   upx_exclude=None,\n    runtime_tmpdir=None,\n    contents_directory=None,\n\
+    \    pathex=[],\n    version_file=None,\n    specpath=None,\n    bootloader_ignore_signals=False,\n\
+    \    disable_windowed_traceback=False,\n    datas=[],\n    binaries=[],\n    icon_file=None,\n\
+    \    manifest=None,\n    resources=[],\n    bundle_identifier=None,\n    hiddenimports=[],\n\
+    \    hookspath=[],\n    runtime_hooks=[],\n    excludes=[],\n    uac_admin=False,\n\
+    \    uac_uiaccess=False,\n    collect_submodules=[],\n    collect_binaries=[],\n\
+    \    collect_data=[],\n    collect_all=[],\n    copy_metadata=[],\n    splash=None,\n\
+    \    recursive_copy_metadata=[],\n    target_arch=None,\n    codesign_identity=None,\n\
+    \    entitlements_file=None,\n    argv_emulation=False,\n    hide_console=None,\n\
+    \    optimize=None,\n    **_kwargs\n):\n    # Default values for onefile and console\
+    \ when not explicitly specified on command-line (indicated by None)\n    if onefile\
+    \ is None:\n        onefile = False\n\n    if console is None:\n        console\
+    \ = True\n\n    # If appname is not specified - use the basename of the main script\
+    \ as name.\n    if name is None:\n        name = os.path.splitext(os.path.basename(scripts[0]))[0]\n\
+    \n    # If specpath not specified - use default value - current working directory.\n\
+    \    if specpath is None:\n        specpath = DEFAULT_SPECPATH\n    else:\n  \
+    \      # Expand starting tilde into user's home directory, as a work-around for\
+    \ tilde not being expanded by shell when\n        # using ˙--specpath=~/path/abc`\
+    \ instead of ˙--specpath ~/path/abc` (or when the path argument is quoted).\n\
+    \        specpath = os.path.expanduser(specpath)\n    # If cwd is the root directory\
+    \ of PyInstaller, generate the .spec file in ./appname/ subdirectory.\n    if\
+    \ specpath == HOMEPATH:\n        specpath = os.path.join(HOMEPATH, name)\n   \
+    \ # Create directory tree if missing.\n    if not os.path.exists(specpath):\n\
+    \        os.makedirs(specpath)\n\n    # Handle additional EXE options.\n    exe_options\
+    \ = ''\n    if version_file:\n        exe_options += \"\\n    version='%s',\"\
+    \ % escape_win_filepath(version_file)\n    if uac_admin:\n        exe_options\
+    \ += \"\\n    uac_admin=True,\"\n    if uac_uiaccess:\n        exe_options +=\
+    \ \"\\n    uac_uiaccess=True,\"\n    if icon_file:\n        # Icon file for Windows.\n\
+    \        # On Windows, the default icon is embedded in the bootloader executable.\n\
+    \        if icon_file[0] == 'NONE':\n            exe_options += \"\\n    icon='NONE',\"\
+    \n        else:\n            exe_options += \"\\n    icon=[%s],\" % ','.join(\"\
+    '%s'\" % escape_win_filepath(ic) for ic in icon_file)\n        # Icon file for\
+    \ macOS.\n        # We need to encapsulate it into apostrofes.\n        icon_file\
+    \ = \"'%s'\" % icon_file[0]\n    else:\n        # On macOS, the default icon has\
+    \ to be copied into the .app bundle.\n        # The the text value 'None' means\
+    \ - use default icon.\n        icon_file = 'None'\n    if contents_directory:\n\
+    \        exe_options += \"\\n    contents_directory='%s',\" % (contents_directory\
+    \ or \"_internal\")\n    if hide_console:\n        exe_options += \"\\n    hide_console='%s',\"\
+    \ % hide_console\n\n    if bundle_identifier:\n        # We need to encapsulate\
+    \ it into apostrofes.\n        bundle_identifier = \"'%s'\" % bundle_identifier\n\
+    \n    if _kwargs[\"shorthand_manifest\"]:\n        manifest = _kwargs[\"shorthand_manifest\"\
+    ]\n        logger.log(\n            logging.DEPRECATION, \"PyInstaller v7 will\
+    \ remove the -m shorthand flag. Please use --manifest=%s instead\",\n        \
+    \    manifest\n        )\n    if manifest:\n        if \"<\" in manifest:\n  \
+    \          # Assume XML string\n            exe_options += \"\\n    manifest='%s',\"\
+    \ % manifest.replace(\"'\", \"\\\\'\")\n        else:\n            # Assume filename\n\
+    \            exe_options += \"\\n    manifest='%s',\" % escape_win_filepath(manifest)\n\
+    \    if resources:\n        resources = list(map(escape_win_filepath, resources))\n\
+    \        exe_options += \"\\n    resources=%s,\" % repr(resources)\n\n    hiddenimports\
+    \ = hiddenimports or []\n    upx_exclude = upx_exclude or []\n\n    # If file\
+    \ extension of the first script is '.pyw', force --windowed option.\n    if is_win\
+    \ and os.path.splitext(scripts[0])[-1] == '.pyw':\n        console = False\n\n\
+    \    # If script paths are relative, make them relative to the directory containing\
+    \ .spec file.\n    scripts = [make_path_spec_relative(x, specpath) for x in scripts]\n\
+    \    # With absolute paths replace prefix with variable HOMEPATH.\n    scripts\
+    \ = list(map(Path, scripts))\n\n    # Translate the default of ``debug=None``\
+    \ to an empty list.\n    if debug is None:\n        debug = []\n    # Translate\
+    \ the ``all`` option.\n    if DEBUG_ALL_CHOICE[0] in debug:\n        debug = DEBUG_ARGUMENT_CHOICES\n\
+    \n    # Create preamble (for collect_*() calls)\n    preamble = Preamble(\n  \
+    \      datas, binaries, hiddenimports, collect_data, collect_binaries, collect_submodules,\
+    \ collect_all, copy_metadata,\n        recursive_copy_metadata\n    )\n\n    if\
+    \ splash:\n        splash_init = splashtmpl % {'splash_image': splash}\n     \
+    \   splash_binaries = \"\\n    splash.binaries,\"\n        splash_target = \"\\\
+    n    splash,\"\n    else:\n        splash_init = splash_binaries = splash_target\
+    \ = \"\"\n\n    # Infer byte-code optimization level.\n    opt_level = sum([opt\
+    \ == 'O' for opt in python_options])\n    if opt_level > 2:\n        logger.warning(\n\
+    \            \"The switch '--python-option O' has been specified %d times - it\
+    \ should be specified at most twice!\",\n            opt_level,\n        )\n \
+    \       opt_level = 2\n\n    if optimize is None:\n        if opt_level == 0:\n\
+    \            # Infer from running python process\n            optimize = sys.flags.optimize\n\
+    \        else:\n            # Infer from `--python-option O` switch(es).\n   \
+    \         optimize = opt_level\n    elif optimize != opt_level and opt_level !=\
+    \ 0:\n        logger.warning(\n            \"Mismatch between optimization level\
+    \ passed via --optimize switch (%d) and number of '--python-option O' \"\n   \
+    \         \"switches (%d)!\",\n            optimize,\n            opt_level,\n\
+    \        )\n\n    if optimize >= 0:\n        # Ensure OPTIONs passed to bootloader\
+    \ match the optimization settings.\n        python_options += max(0, optimize\
+    \ - opt_level) * ['O']\n\n    # Create OPTIONs array\n    if 'imports' in debug\
+    \ and 'v' not in python_options:\n        python_options.append('v')\n    python_options_array\
+    \ = [(opt, None, 'OPTION') for opt in python_options]\n\n    d = {\n        'scripts':\
+    \ scripts,\n        'pathex': pathex or [],\n        'binaries': preamble.binaries,\n\
+    \        'datas': preamble.datas,\n        'hiddenimports': preamble.hiddenimports,\n\
+    \        'preamble': preamble.content,\n        'name': name,\n        'noarchive':\
+    \ 'noarchive' in debug,\n        'optimize': optimize,\n        'options': python_options_array,\n\
+    \        'debug_bootloader': 'bootloader' in debug,\n        'bootloader_ignore_signals':\
+    \ bootloader_ignore_signals,\n        'strip': strip,\n        'upx': not noupx,\n\
+    \        'upx_exclude': upx_exclude,\n        'runtime_tmpdir': runtime_tmpdir,\n\
+    \        'exe_options': exe_options,\n        # Directory with additional custom\
+    \ import hooks.\n        'hookspath': hookspath,\n        # List with custom runtime\
+    \ hook files.\n        'runtime_hooks': runtime_hooks or [],\n        # List of\
+    \ modules/packages to ignore.\n        'excludes': excludes or [],\n        #\
+    \ only Windows and macOS distinguish windowed and console apps\n        'console':\
+    \ console,\n        'disable_windowed_traceback': disable_windowed_traceback,\n\
+    \        # Icon filename. Only macOS uses this item.\n        'icon': icon_file,\n\
+    \        # .app bundle identifier. Only macOS uses this item.\n        'bundle_identifier':\
+    \ bundle_identifier,\n        # argv emulation (macOS only)\n        'argv_emulation':\
+    \ argv_emulation,\n        # Target architecture (macOS only)\n        'target_arch':\
+    \ target_arch,\n        # Code signing identity (macOS only)\n        'codesign_identity':\
+    \ codesign_identity,\n        # Entitlements file (macOS only)\n        'entitlements_file':\
+    \ entitlements_file,\n        # splash screen\n        'splash_init': splash_init,\n\
+    \        'splash_target': splash_target,\n        'splash_binaries': splash_binaries,\n\
+    \    }\n\n    # Write down .spec file to filesystem.\n    specfnm = os.path.join(specpath,\
+    \ name + '.spec')\n    with open(specfnm, 'w', encoding='utf-8') as specfile:\n\
+    \        if onefile:\n            specfile.write(onefiletmplt % d)\n         \
+    \   # For macOS create .app bundle.\n            if is_darwin and not console:\n\
+    \                specfile.write(bundleexetmplt % d)\n        else:\n         \
+    \   specfile.write(onedirtmplt % d)\n            # For macOS create .app bundle.\n\
+    \            if is_darwin and not console:\n                specfile.write(bundletmplt\
+    \ % d)\n\n    return specfnm\n\n### Source File Dependency Files Content\n###\
+    \ Dependency File: compat.py\n# ----------------------------------------------------------------------------\n\
+    # Copyright (c) 2005-2023, PyInstaller Development Team.\n#\n# Distributed under\
+    \ the terms of the GNU General Public License (version 2\n# or later) with exception\
+    \ for distributing the bootloader.\n#\n# The full license is in the file COPYING.txt,\
+    \ distributed with this software.\n#\n# SPDX-License-Identifier: (GPL-2.0-or-later\
+    \ WITH Bootloader-exception)\n# ----------------------------------------------------------------------------\n\
+    \"\"\"\nVarious classes and functions to provide some backwards-compatibility\
+    \ with previous versions of Python onward.\n\"\"\"\nfrom __future__ import annotations\n\
+    \nimport errno\n\nimport importlib.machinery\nimport importlib.util\nimport os\n\
+    import platform\nimport site\nimport subprocess\nimport sys\nimport sysconfig\n\
+    import shutil\nimport types\n\nfrom PyInstaller._shared_with_waf import _pyi_machine\n\
+    from PyInstaller.exceptions import ExecCommandFailed\n\n# setup.py sets this environment\
+    \ variable to avoid errors due to unmet run-time dependencies. The PyInstaller.compat\n\
+    # module is imported by setup.py to build wheels, and some dependencies that are\
+    \ otherwise required at run-time\n# (importlib-metadata on python < 3.10, pywin32-ctypes\
+    \ on Windows) might not be present while building wheels,\n# nor are they required\
+    \ during that phase.\n_setup_py_mode = os.environ.get('_PYINSTALLER_SETUP_PY',\
+    \ '0') != '0'\n\n# PyInstaller requires importlib.metadata from python >= 3.10\
+    \ stdlib, or equivalent importlib-metadata >= 4.6.\nif _setup_py_mode:\n    importlib_metadata\
+    \ = None\nelse:\n    if sys.version_info >= (3, 10):\n        import importlib.metadata\
+    \ as importlib_metadata\n    else:\n        try:\n            import importlib_metadata\n\
+    \        except ImportError as e:\n            from PyInstaller.exceptions import\
+    \ ImportlibMetadataError\n            raise ImportlibMetadataError() from e\n\n\
+    \        import packaging.version  # For importlib_metadata version check\n\n\
+    \        # Validate the version\n        if packaging.version.parse(importlib_metadata.version(\"\
+    importlib-metadata\")) < packaging.version.parse(\"4.6\"):\n            from PyInstaller.exceptions\
+    \ import ImportlibMetadataError\n            raise ImportlibMetadataError()\n\n\
+    # Strict collect mode, which raises error when trying to collect duplicate files\
+    \ into PKG/CArchive or COLLECT.\nstrict_collect_mode = os.environ.get(\"PYINSTALLER_STRICT_COLLECT_MODE\"\
+    , \"0\") != \"0\"\n\n# Copied from https://docs.python.org/3/library/platform.html#cross-platform.\n\
+    is_64bits: bool = sys.maxsize > 2**32\n\n# Distinguish specific code for various\
+    \ Python versions. Variables 'is_pyXY' mean that Python X.Y and up is supported.\n\
+    # Keep even unsupported versions here to keep 3rd-party hooks working.\nis_py35\
+    \ = sys.version_info >= (3, 5)\nis_py36 = sys.version_info >= (3, 6)\nis_py37\
+    \ = sys.version_info >= (3, 7)\nis_py38 = sys.version_info >= (3, 8)\nis_py39\
+    \ = sys.version_info >= (3, 9)\nis_py310 = sys.version_info >= (3, 10)\nis_py311\
+    \ = sys.version_info >= (3, 11)\nis_py312 = sys.version_info >= (3, 12)\nis_py313\
+    \ = sys.version_info >= (3, 13)\n\nis_win = sys.platform.startswith('win')\nis_win_10\
+    \ = is_win and (platform.win32_ver()[0] == '10')\nis_win_11 = is_win and (platform.win32_ver()[0]\
+    \ == '11')\nis_win_wine = False  # Running under Wine; determined later on.\n\
+    is_cygwin = sys.platform == 'cygwin'\nis_darwin = sys.platform == 'darwin'  #\
+    \ macOS\n\n# Unix platforms\nis_linux = sys.platform.startswith('linux')\nis_solar\
+    \ = sys.platform.startswith('sun')  # Solaris\nis_aix = sys.platform.startswith('aix')\n\
+    is_freebsd = sys.platform.startswith('freebsd')\nis_openbsd = sys.platform.startswith('openbsd')\n\
+    is_hpux = sys.platform.startswith('hp-ux')\n\n# Some code parts are similar to\
+    \ several unix platforms (e.g. Linux, Solaris, AIX).\n# macOS is not considered\
+    \ as unix since there are many platform-specific details for Mac in PyInstaller.\n\
+    is_unix = is_linux or is_solar or is_aix or is_freebsd or is_hpux or is_openbsd\n\
+    \n# Linux distributions such as Alpine or OpenWRT use musl as their libc implementation\
+    \ and resultantly need specially\n# compiled bootloaders. On musl systems, ldd\
+    \ with no arguments prints 'musl' and its version.\nis_musl = is_linux and \"\
+    musl\" in subprocess.run([\"ldd\"], capture_output=True, encoding=\"utf-8\").stderr\n\
+    \n# macOS version\n_macos_ver = tuple(int(x) for x in platform.mac_ver()[0].split('.'))\
+    \ if is_darwin else None\n\n# macOS 11 (Big Sur): if python is not compiled with\
+    \ Big Sur support, it ends up in compatibility mode by default, which\n# is indicated\
+    \ by platform.mac_ver() returning '10.16'. The lack of proper Big Sur support\
+    \ breaks find_library()\n# function from ctypes.util module, as starting with\
+    \ Big Sur, shared libraries are not visible on disk anymore. Support\n# for the\
+    \ new library search mechanism was added in python 3.9 when compiled with Big\
+    \ Sur support. In such cases,\n# platform.mac_ver() reports version as '11.x'.\
+    \ The behavior can be further modified via SYSTEM_VERSION_COMPAT\n# environment\
+    \ variable; which allows explicitly enabling or disabling the compatibility mode.\
+    \ However, note that\n# disabling the compatibility mode and using python that\
+    \ does not properly support Big Sur still leaves find_library()\n# broken (which\
+    \ is a scenario that we ignore at the moment).\n# The same logic applies to macOS\
+    \ 12 (Monterey).\nis_macos_11_compat = bool(_macos_ver) and _macos_ver[0:2] ==\
+    \ (10, 16)  # Big Sur or newer in compat mode\nis_macos_11_native = bool(_macos_ver)\
+    \ and _macos_ver[0:2] >= (11, 0)  # Big Sur or newer in native mode\nis_macos_11\
+    \ = is_macos_11_compat or is_macos_11_native  # Big Sur or newer\n\n# Check if\
+    \ python >= 3.13 was built with Py_GIL_DISABLED / free-threading (PEP703).\n#\n\
+    # This affects the shared library name, which has the \"t\" ABI suffix, as per:\n\
+    # https://github.com/python/steering-council/issues/221#issuecomment-1841593283\n\
+    #\n# It also affects the layout of PyConfig structure used by bootloader; consequently\n\
+    #  a) we need to inform bootloader what kind of build it is dealing with\n#  b)\
+    \ we must not mix up shared libraries, in case multiple builds are present on\
+    \ the system. Thus, strictly enforce the\n#     \"t\" ABI suffix in the PYDYLIB_NAMES,\
+    \ if applicable.\nis_nogil = bool(sysconfig.get_config_var('Py_GIL_DISABLED'))\n\
+    \n_py_suffix = \"t\" if is_nogil else \"\"\n\n# On different platforms is different\
+    \ file for dynamic python library.\n_py_major, _py_minor = sys.version_info[:2]\n\
+    if is_win or is_cygwin:\n    PYDYLIB_NAMES = {\n        f'python{_py_major}{_py_minor}{_py_suffix}.dll',\n\
+    \        f'libpython{_py_major}{_py_minor}{_py_suffix}.dll',\n        f'libpython{_py_major}.{_py_minor}{_py_suffix}.dll',\n\
+    \    }  # For MSYS2 environment\nelif is_darwin:\n    # The suffix in .framework\
+    \ library name is capitalized, e.g., PythonT for freethreading-enabled build.\n\
+    \    # The `libpython%d.%d%s.dylib` is there primarily for Anaconda installations,\
+    \ but it also serves as a fallback in\n    # .framework builds, where `/Library/Frameworks/Python.framework/Versions/3.X/lib/libpython3.13.dylib`\
+    \ is a symbolic\n    # link that points to `../Python`.\n    PYDYLIB_NAMES = {\n\
+    \        f'Python{_py_suffix.upper()}',\n        f'.Python{_py_suffix.upper()}',\n\
+    \        f'Python{_py_major}{_py_suffix.upper()}',\n        f'libpython{_py_major}.{_py_minor}{_py_suffix}.dylib',\n\
+    \    }\nelif is_aix:\n    # Shared libs on AIX may be archives with shared object\
+    \ members, hence the \".a\" suffix. However, starting with\n    # python 2.7.11\
+    \ libpython?.?.so and Python3 libpython?.?m.so files are produced.\n    PYDYLIB_NAMES\
+    \ = {\n        f'libpython{_py_major}.{_py_minor}{_py_suffix}.a',\n        f'libpython{_py_major}.{_py_minor}{_py_suffix}.so',\n\
+    \    }\nelif is_freebsd:\n    PYDYLIB_NAMES = {\n        f'libpython{_py_major}.{_py_minor}{_py_suffix}.so.1',\n\
+    \        f'libpython{_py_major}.{_py_minor}{_py_suffix}.so.1.0',\n    }\nelif\
+    \ is_openbsd:\n    PYDYLIB_NAMES = {\n        f'libpython{_py_major}.{_py_minor}{_py_suffix}.so.0.0',\n\
+    \    }\nelif is_hpux:\n    PYDYLIB_NAMES = {\n        f'libpython{_py_major}.{_py_minor}{_py_suffix}.so',\n\
+    \    }\nelif is_unix:\n    # Other *nix platforms.\n    # Python 2 .so library\
+    \ on Linux is: libpython2.7.so.1.0\n    # Python 3 .so library on Linux is: libpython3.3.so.1.0\n\
+    \    PYDYLIB_NAMES = {\n        f'libpython{_py_major}.{_py_minor}{_py_suffix}.so.1.0',\n\
+    \        f'libpython{_py_major}.{_py_minor}{_py_suffix}.so',\n    }\nelse:\n \
+    \   raise SystemExit('Your platform is not yet supported. Please define constant\
+    \ PYDYLIB_NAMES for your platform.')\n\ndel _py_major, _py_minor, _py_suffix\n\
+    \n# In a virtual environment created by virtualenv (github.com/pypa/virtualenv)\
+    \ there exists sys.real_prefix with the path\n# to the base Python installation\
+    \ from which the virtual environment was created. This is true regardless of the\
+    \ version\n# of Python used to execute the virtualenv command.\n#\n# In a virtual\
+    \ environment created by the venv module available in the Python standard lib,\
+    \ there exists sys.base_prefix\n# with the path to the base implementation. This\
+    \ does not exist in a virtual environment created by virtualenv.\n#\n# The following\
+    \ code creates compat.is_venv and is.virtualenv that are True when running a virtual\
+    \ environment, and also\n# compat.base_prefix with the path to the base Python\
+    \ installation.\n\nbase_prefix: str = os.path.abspath(getattr(sys, 'real_prefix',\
+    \ getattr(sys, 'base_prefix', sys.prefix)))\n# Ensure `base_prefix` is not containing\
+    \ any relative parts.\nis_venv = is_virtualenv = base_prefix != os.path.abspath(sys.prefix)\n\
+    \n# Conda environments sometimes have different paths or apply patches to packages\
+    \ that can affect how a hook or package\n# should access resources. Method for\
+    \ determining conda taken from https://stackoverflow.com/questions/47610844#47610844\n\
+    is_conda = os.path.isdir(os.path.join(base_prefix, 'conda-meta'))\n\n# Similar\
+    \ to ``is_conda`` but is ``False`` using another ``venv``-like manager on top.\
+    \ In this case, no packages\n# encountered will be conda packages meaning that\
+    \ the default non-conda behaviour is generally desired from PyInstaller.\nis_pure_conda\
+    \ = os.path.isdir(os.path.join(sys.prefix, 'conda-meta'))\n\n# Full path to python\
+    \ interpreter.\npython_executable = getattr(sys, '_base_executable', sys.executable)\n\
+    \n# Is this Python from Microsoft App Store (Windows only)? Python from Microsoft\
+    \ App Store has executable pointing at\n# empty shims.\nis_ms_app_store = is_win\
+    \ and os.path.getsize(python_executable) == 0\n\nif is_ms_app_store:\n    # Locate\
+    \ the actual executable inside base_prefix.\n    python_executable = os.path.join(base_prefix,\
+    \ os.path.basename(python_executable))\n    if not os.path.exists(python_executable):\n\
+    \        raise SystemExit(\n            'PyInstaller cannot locate real python\
+    \ executable belonging to Python from Microsoft App Store!'\n        )\n\n# Bytecode\
+    \ magic value\nBYTECODE_MAGIC = importlib.util.MAGIC_NUMBER\n\n# List of suffixes\
+    \ for Python C extension modules.\nEXTENSION_SUFFIXES = importlib.machinery.EXTENSION_SUFFIXES\n\
+    ALL_SUFFIXES = importlib.machinery.all_suffixes()\n\n# On Windows we require pywin32-ctypes.\n\
+    # -> all pyinstaller modules should use win32api from PyInstaller.compat to\n\
+    #    ensure that it can work on MSYS2 (which requires pywin32-ctypes)\nif is_win:\n\
+    \    if _setup_py_mode:\n        pywintypes = None\n        win32api = None\n\
+    \    else:\n        try:\n            # Hide the `cffi` package from win32-ctypes\
+    \ by temporarily blocking its import. This ensures that `ctypes`\n           \
+    \ # backend is always used, even if `cffi` is available. The `cffi` backend uses\
+    \ `pycparser`, which is\n            # incompatible with -OO mode (2nd optimization\
+    \ level) due to its removal of docstrings.\n            # See https://github.com/pyinstaller/pyinstaller/issues/6345\n\
+    \            # On the off chance that `cffi` has already been imported, store\
+    \ the `sys.modules` entry so we can restore\n            # it after importing\
+    \ `pywin32-ctypes` modules.\n            orig_cffi = sys.modules.get('cffi')\n\
+    \            sys.modules['cffi'] = None\n\n            from win32ctypes.pywin32\
+    \ import pywintypes  # noqa: F401, E402\n            from win32ctypes.pywin32\
+    \ import win32api  # noqa: F401, E402\n        except ImportError as e:\n    \
+    \        raise SystemExit(\n                'Could not import `pywintypes` or\
+    \ `win32api` from `win32ctypes.pywin32`.\\n'\n                'Please make sure\
+    \ that `pywin32-ctypes` is installed and importable, for example:\\n\\n'\n   \
+    \             'pip install pywin32-ctypes\\n'\n            ) from e\n        finally:\n\
+    \            # Unblock `cffi`.\n            if orig_cffi is not None:\n      \
+    \          sys.modules['cffi'] = orig_cffi\n            else:\n              \
+    \  del sys.modules['cffi']\n            del orig_cffi\n\n# macOS's platform.architecture()\
+    \ can be buggy, so we do this manually here. Based off the python documentation:\n\
+    # https://docs.python.org/3/library/platform.html#platform.architecture\nif is_darwin:\n\
+    \    architecture = '64bit' if sys.maxsize > 2**32 else '32bit'\nelse:\n    architecture\
+    \ = platform.architecture()[0]\n\n# Cygwin needs special handling, because platform.system()\
+    \ contains identifiers such as MSYS_NT-10.0-19042 and\n# CYGWIN_NT-10.0-19042\
+    \ that do not fit PyInstaller's OS naming scheme. Explicitly set `system` to 'Cygwin'.\n\
+    system = 'Cygwin' if is_cygwin else platform.system()\n\n# Machine suffix for\
+    \ bootloader.\nif is_win:\n    # On Windows ARM64 using an x64 Python environment,\
+    \ platform.machine() returns ARM64 but\n    # we really want the bootloader that\
+    \ matches the Python environment instead of the OS.\n    machine = _pyi_machine(os.environ.get(\"\
+    PROCESSOR_ARCHITECTURE\", platform.machine()), platform.system())\nelse:\n   \
+    \ machine = _pyi_machine(platform.machine(), platform.system())\n\n\n# Wine detection\
+    \ and support\ndef is_wine_dll(filename: str | os.PathLike):\n    \"\"\"\n   \
+    \ Check if the given PE file is a Wine DLL (PE-converted built-in, or fake/placeholder\
+    \ one).\n\n    Returns True if the given file is a Wine DLL, False if not (or\
+    \ if file cannot be analyzed or does not exist).\n    \"\"\"\n    _WINE_SIGNATURES\
+    \ = (\n        b'Wine builtin DLL',  # PE-converted Wine DLL\n        b'Wine placeholder\
+    \ DLL',  # Fake/placeholder Wine DLL\n    )\n    _MAX_LEN = max([len(sig) for\
+    \ sig in _WINE_SIGNATURES])\n\n    # Wine places their DLL signature in the padding\
+    \ area between the IMAGE_DOS_HEADER and IMAGE_NT_HEADERS. So we need\n    # to\
+    \ compare the bytes that come right after IMAGE_DOS_HEADER, i.e., after initial\
+    \ 64 bytes. We can read the file\n    # directly and avoid using the pefile library\
+    \ to avoid performance penalty associated with full header parsing.\n    try:\n\
+    \        with open(filename, 'rb') as fp:\n            fp.seek(64)\n         \
+    \   signature = fp.read(_MAX_LEN)\n        return signature.startswith(_WINE_SIGNATURES)\n\
+    \    except Exception:\n        pass\n    return False\n\n\nif is_win:\n    try:\n\
+    \        import ctypes.util  # noqa: E402\n        is_win_wine = is_wine_dll(ctypes.util.find_library('kernel32'))\n\
+    \    except Exception:\n        pass\n\n# Set and get environment variables does\
+    \ not handle unicode strings correctly on Windows.\n\n# Acting on os.environ instead\
+    \ of using getenv()/setenv()/unsetenv(), as suggested in\n# <http://docs.python.org/library/os.html#os.environ>:\
+    \ \"Calling putenv() directly does not change os.environ, so it is\n# better to\
+    \ modify os.environ.\" (Same for unsetenv.)\n\n\ndef getenv(name: str, default:\
+    \ str | None = None):\n    \"\"\"\n    Returns unicode string containing value\
+    \ of environment variable 'name'.\n    \"\"\"\n    return os.environ.get(name,\
+    \ default)\n\n\ndef setenv(name: str, value: str):\n    \"\"\"\n    Accepts unicode\
+    \ string and set it as environment variable 'name' containing value 'value'.\n\
+    \    \"\"\"\n    os.environ[name] = value\n\n\ndef unsetenv(name: str):\n    \"\
+    \"\"\n    Delete the environment variable 'name'.\n    \"\"\"\n    # Some platforms\
+    \ (e.g., AIX) do not support `os.unsetenv()` and thus `del os.environ[name]` has\
+    \ no effect on the\n    # real environment. For this case, we set the value to\
+    \ the empty string.\n    os.environ[name] = \"\"\n    del os.environ[name]\n\n\
+    \n# Exec commands in subprocesses.\n\n\ndef exec_command(\n    *cmdargs: str,\
+    \ encoding: str | None = None, raise_enoent: bool | None = None, **kwargs: int\
+    \ | bool | list | None\n):\n    \"\"\"\n    Run the command specified by the passed\
+    \ positional arguments, optionally configured by the passed keyword arguments.\n\
+    \n    .. DANGER::\n       **Ignore this function's return value** -- unless this\
+    \ command's standard output contains _only_ pathnames, in\n       which case this\
+    \ function returns the correct filesystem-encoded string expected by PyInstaller.\
+    \ In all other\n       cases, this function's return value is _not_ safely usable.\n\
+    \n       For backward compatibility, this function's return value non-portably\
+    \ depends on the current Python version and\n       passed keyword arguments:\n\
+    \n       * Under Python 3.x, this value is a **decoded `str` string**. However,\
+    \ even this value is _not_ necessarily\n         safely usable:\n         * If\
+    \ the `encoding` parameter is passed, this value is guaranteed to be safely usable.\n\
+    \         * Else, this value _cannot_ be safely used for any purpose (e.g., string\
+    \ manipulation or parsing), except to be\n           passed directly to another\
+    \ non-Python command. Why? Because this value has been decoded with the encoding\n\
+    \           specified by `sys.getfilesystemencoding()`, the encoding used by `os.fsencode()`\
+    \ and `os.fsdecode()` to\n           convert from platform-agnostic to platform-specific\
+    \ pathnames. This is _not_ necessarily the encoding with\n           which this\
+    \ command's standard output was encoded. Cue edge-case decoding exceptions.\n\n\
+    \    Parameters\n    ----------\n    cmdargs :\n        Variadic list whose:\n\
+    \        1. Mandatory first element is the absolute path, relative path, or basename\
+    \ in the current `${PATH}` of the\n           command to run.\n        2. Optional\
+    \ remaining elements are arguments to pass to this command.\n    encoding : str,\
+    \ optional\n        Optional keyword argument specifying the encoding with which\
+    \ to decode this command's standard output under\n        Python 3. As this function's\
+    \ return value should be ignored, this argument should _never_ be passed.\n  \
+    \  raise_enoent : boolean, optional\n        Optional keyword argument to simply\
+    \ raise the exception if the executing the command fails since to the command\n\
+    \        is not found. This is useful to checking id a command exists.\n\n   \
+    \ All remaining keyword arguments are passed as is to the `subprocess.Popen()`\
+    \ constructor.\n\n    Returns\n    ----------\n    str\n        Ignore this value.\
+    \ See discussion above.\n    \"\"\"\n\n    proc = subprocess.Popen(cmdargs, stdout=subprocess.PIPE,\
+    \ **kwargs)\n    try:\n        out = proc.communicate(timeout=60)[0]\n    except\
+    \ OSError as e:\n        if raise_enoent and e.errno == errno.ENOENT:\n      \
+    \      raise\n        print('--' * 20, file=sys.stderr)\n        print(\"Error\
+    \ running '%s':\" % \" \".join(cmdargs), file=sys.stderr)\n        print(e, file=sys.stderr)\n\
+    \        print('--' * 20, file=sys.stderr)\n        raise ExecCommandFailed(\"\
+    Error: Executing command failed!\") from e\n    except subprocess.TimeoutExpired:\n\
+    \        proc.kill()\n        raise\n\n    # stdout/stderr are returned as a byte\
+    \ array NOT as string, so we need to convert that to proper encoding.\n    try:\n\
+    \        if encoding:\n            out = out.decode(encoding)\n        else:\n\
+    \            # If no encoding is given, assume we are reading filenames from stdout\
+    \ only because it is the common case.\n            out = os.fsdecode(out)\n  \
+    \  except UnicodeDecodeError as e:\n        # The sub-process used a different\
+    \ encoding; provide more information to ease debugging.\n        print('--' *\
+    \ 20, file=sys.stderr)\n        print(str(e), file=sys.stderr)\n        print('These\
+    \ are the bytes around the offending byte:', file=sys.stderr)\n        print('--'\
+    \ * 20, file=sys.stderr)\n        raise\n    return out\n\n\ndef exec_command_rc(*cmdargs:\
+    \ str, **kwargs: float | bool | list | None):\n    \"\"\"\n    Return the exit\
+    \ code of the command specified by the passed positional arguments, optionally\
+    \ configured by the\n    passed keyword arguments.\n\n    Parameters\n    ----------\n\
+    \    cmdargs : list\n        Variadic list whose:\n        1. Mandatory first\
+    \ element is the absolute path, relative path, or basename in the current `${PATH}`\
+    \ of the\n           command to run.\n        2. Optional remaining elements are\
+    \ arguments to pass to this command.\n\n    All keyword arguments are passed as\
+    \ is to the `subprocess.call()` function.\n\n    Returns\n    ----------\n   \
+    \ int\n        This command's exit code as an unsigned byte in the range `[0,\
+    \ 255]`, where 0 signifies success and all other\n        values signal a failure.\n\
+    \    \"\"\"\n\n    # 'encoding' keyword is not supported for 'subprocess.call';\
+    \ remove it from kwargs.\n    if 'encoding' in kwargs:\n        kwargs.pop('encoding')\n\
+    \    return subprocess.call(cmdargs, **kwargs)\n\n\ndef exec_command_all(*cmdargs:\
+    \ str, encoding: str | None = None, **kwargs: int | bool | list | None):\n   \
+    \ \"\"\"\n    Run the command specified by the passed positional arguments, optionally\
+    \ configured by the passed keyword arguments.\n\n    .. DANGER::\n       **Ignore\
+    \ this function's return value.** If this command's standard output consists solely\
+    \ of pathnames, consider\n       calling `exec_command()`\n\n    Parameters\n\
+    \    ----------\n    cmdargs : str\n        Variadic list whose:\n        1. Mandatory\
+    \ first element is the absolute path, relative path, or basename in the current\
+    \ `${PATH}` of the\n           command to run.\n        2. Optional remaining\
+    \ elements are arguments to pass to this command.\n    encoding : str, optional\n\
+    \        Optional keyword argument specifying the encoding with which to decode\
+    \ this command's standard output. As this\n        function's return value should\
+    \ be ignored, this argument should _never_ be passed.\n\n    All remaining keyword\
+    \ arguments are passed as is to the `subprocess.Popen()` constructor.\n\n    Returns\n\
+    \    ----------\n    (int, str, str)\n        Ignore this 3-element tuple `(exit_code,\
+    \ stdout, stderr)`. See the `exec_command()` function for discussion.\n    \"\"\
+    \"\n    proc = subprocess.Popen(\n        cmdargs,\n        bufsize=-1,  # Default\
+    \ OS buffer size.\n        stdout=subprocess.PIPE,\n        stderr=subprocess.PIPE,\n\
+    \        **kwargs\n    )\n    # Waits for subprocess to complete.\n    try:\n\
+    \        out, err = proc.communicate(timeout=60)\n    except subprocess.TimeoutExpired:\n\
+    \        proc.kill()\n        raise\n    # stdout/stderr are returned as a byte\
+    \ array NOT as string. Thus we need to convert that to proper encoding.\n    try:\n\
+    \        if encoding:\n            out = out.decode(encoding)\n            err\
+    \ = err.decode(encoding)\n        else:\n            # If no encoding is given,\
+    \ assume we're reading filenames from stdout only because it's the common case.\n\
+    \            out = os.fsdecode(out)\n            err = os.fsdecode(err)\n    except\
+    \ UnicodeDecodeError as e:\n        # The sub-process used a different encoding,\
+    \ provide more information to ease debugging.\n        print('--' * 20, file=sys.stderr)\n\
+    \        print(str(e), file=sys.stderr)\n        print('These are the bytes around\
+    \ the offending byte:', file=sys.stderr)\n        print('--' * 20, file=sys.stderr)\n\
+    \        raise\n\n    return proc.returncode, out, err\n\n\ndef __wrap_python(args,\
+    \ kwargs):\n    cmdargs = [sys.executable]\n\n    # macOS supports universal binaries\
+    \ (binary for multiple architectures. We need to ensure that subprocess\n    #\
+    \ binaries are running for the same architecture as python executable. It is necessary\
+    \ to run binaries with 'arch'\n    # command.\n    if is_darwin:\n        if architecture\
+    \ == '64bit':\n            if platform.machine() == 'arm64':\n               \
+    \ py_prefix = ['arch', '-arm64']  # Apple M1\n            else:\n            \
+    \    py_prefix = ['arch', '-x86_64']  # Intel\n        elif architecture == '32bit':\n\
+    \            py_prefix = ['arch', '-i386']\n        else:\n            py_prefix\
+    \ = []\n        # Since macOS 10.11, the environment variable DYLD_LIBRARY_PATH\
+    \ is no more inherited by child processes, so we\n        # proactively propagate\
+    \ the current value using the `-e` option of the `arch` command.\n        if 'DYLD_LIBRARY_PATH'\
+    \ in os.environ:\n            path = os.environ['DYLD_LIBRARY_PATH']\n       \
+    \     py_prefix += ['-e', 'DYLD_LIBRARY_PATH=%s' % path]\n        cmdargs = py_prefix\
+    \ + cmdargs\n\n    if not __debug__:\n        cmdargs.append('-O')\n\n    cmdargs.extend(args)\n\
+    \n    env = kwargs.get('env')\n    if env is None:\n        env = dict(**os.environ)\n\
+    \n    # Ensure python 3 subprocess writes 'str' as utf-8\n    env['PYTHONIOENCODING']\
+    \ = 'UTF-8'\n    # ... and ensure we read output as utf-8\n    kwargs['encoding']\
+    \ = 'UTF-8'\n\n    return cmdargs, kwargs\n\n\ndef exec_python(*args: str, **kwargs:\
+    \ str | None):\n    \"\"\"\n    Wrap running python script in a subprocess.\n\n\
+    \    Return stdout of the invoked command.\n    \"\"\"\n    cmdargs, kwargs =\
+    \ __wrap_python(args, kwargs)\n    return exec_command(*cmdargs, **kwargs)\n\n\
+    \ndef exec_python_rc(*args: str, **kwargs: str | None):\n    \"\"\"\n    Wrap\
+    \ running python script in a subprocess.\n\n    Return exit code of the invoked\
+    \ command.\n    \"\"\"\n    cmdargs, kwargs = __wrap_python(args, kwargs)\n  \
+    \  return exec_command_rc(*cmdargs, **kwargs)\n\n\n# Path handling.\n\n\n# Site-packages\
+    \ functions - use native function if available.\ndef getsitepackages(prefixes:\
+    \ list | None = None):\n    \"\"\"\n    Returns a list containing all global site-packages\
+    \ directories.\n\n    For each directory present in ``prefixes`` (or the global\
+    \ ``PREFIXES``), this function finds its `site-packages`\n    subdirectory depending\
+    \ on the system environment, and returns a list of full paths.\n    \"\"\"\n \
+    \   # This implementation was copied from the ``site`` module, python 3.7.3.\n\
+    \    sitepackages = []\n    seen = set()\n\n    if prefixes is None:\n       \
+    \ prefixes = [sys.prefix, sys.exec_prefix]\n\n    for prefix in prefixes:\n  \
+    \      if not prefix or prefix in seen:\n            continue\n        seen.add(prefix)\n\
+    \n        if os.sep == '/':\n            sitepackages.append(os.path.join(prefix,\
+    \ \"lib\", \"python%d.%d\" % sys.version_info[:2], \"site-packages\"))\n     \
+    \   else:\n            sitepackages.append(prefix)\n            sitepackages.append(os.path.join(prefix,\
+    \ \"lib\", \"site-packages\"))\n    return sitepackages\n\n\n# Backported for\
+    \ virtualenv. Module 'site' in virtualenv might not have this attribute.\ngetsitepackages\
+    \ = getattr(site, 'getsitepackages', getsitepackages)\n\n\n# Wrapper to load a\
+    \ module from a Python source file. This function loads import hooks when processing\
+    \ them.\ndef importlib_load_source(name: str, pathname: str):\n    # Import module\
+    \ from a file.\n    mod_loader = importlib.machinery.SourceFileLoader(name, pathname)\n\
+    \    mod = types.ModuleType(mod_loader.name)\n    mod.__file__ = mod_loader.get_filename()\
+    \  # Some hooks require __file__ attribute in their namespace\n    mod_loader.exec_module(mod)\n\
+    \    return mod\n\n\n# Patterns of module names that should be bundled into the\
+    \ base_library.zip to be available during bootstrap.\n# These modules include\
+    \ direct or indirect dependencies of encodings.* modules. The encodings modules\
+    \ must be\n# recursively included to set the I/O encoding during python startup.\
+    \ Similarly, this list should include\n# modules used by PyInstaller's bootstrap\
+    \ scripts and modules (loader/pyi*.py)\n\nPY3_BASE_MODULES = {\n    '_collections_abc',\n\
+    \    '_weakrefset',\n    'abc',\n    'codecs',\n    'collections',\n    'copyreg',\n\
+    \    'encodings',\n    'enum',\n    'functools',\n    'genericpath',  # dependency\
+    \ of os.path\n    'io',\n    'heapq',\n    'keyword',\n    'linecache',\n    'locale',\n\
+    \    'ntpath',  # dependency of os.path\n    'operator',\n    'os',\n    'posixpath',\
+    \  # dependency of os.path\n    're',\n    'reprlib',\n    'sre_compile',\n  \
+    \  'sre_constants',\n    'sre_parse',\n    'stat',  # dependency of os.path\n\
+    \    'traceback',  # for startup errors\n    'types',\n    'weakref',\n    'warnings',\n\
+    }\n\nif not is_py310:\n    PY3_BASE_MODULES.add('_bootlocale')\n\n# Object types\
+    \ of Pure Python modules in modulegraph dependency graph.\n# Pure Python modules\
+    \ have code object (attribute co_code).\nPURE_PYTHON_MODULE_TYPES = {\n    'SourceModule',\n\
+    \    'CompiledModule',\n    'Package',\n    'NamespacePackage',\n    # Deprecated.\n\
+    \    # TODO Could these module types be removed?\n    'FlatPackage',\n    'ArchiveModule',\n\
+    }\n# Object types of special Python modules (built-in, run-time, namespace package)\
+    \ in modulegraph dependency graph that do\n# not have code object.\nSPECIAL_MODULE_TYPES\
+    \ = {\n    # Omit AliasNode from here (and consequently from VALID_MODULE_TYPES),\
+    \ in order to prevent PyiModuleGraph from\n    # running standard hooks for aliased\
+    \ modules.\n    #'AliasNode',\n    'BuiltinModule',\n    'RuntimeModule',\n  \
+    \  'RuntimePackage',\n\n    # PyInstaller handles scripts differently and not\
+    \ as standard Python modules.\n    'Script',\n}\n# Object types of Binary Python\
+    \ modules (extensions, etc) in modulegraph dependency graph.\nBINARY_MODULE_TYPES\
+    \ = {\n    'Extension',\n    'ExtensionPackage',\n}\n# Object types of valid Python\
+    \ modules in modulegraph dependency graph.\nVALID_MODULE_TYPES = PURE_PYTHON_MODULE_TYPES\
+    \ | SPECIAL_MODULE_TYPES | BINARY_MODULE_TYPES\n# Object types of bad/missing/invalid\
+    \ Python modules in modulegraph dependency graph.\n# TODO: should be 'Invalid'\
+    \ module types also in the 'MISSING' set?\nBAD_MODULE_TYPES = {\n    'BadModule',\n\
+    \    'ExcludedModule',\n    'InvalidSourceModule',\n    'InvalidCompiledModule',\n\
+    \    'MissingModule',\n\n    # Runtime modules and packages are technically valid\
+    \ rather than bad, but exist only in-memory rather than on-disk\n    # (typically\
+    \ due to pre_safe_import_module() hooks), and hence cannot be physically frozen.\
+    \ For simplicity, these\n    # nodes are categorized as bad rather than valid.\n\
+    \    'RuntimeModule',\n    'RuntimePackage',\n}\nALL_MODULE_TYPES = VALID_MODULE_TYPES\
+    \ | BAD_MODULE_TYPES\n# TODO: review this mapping to TOC, remove useless entries.\n\
+    # Dictionary to map ModuleGraph node types to TOC typecodes.\nMODULE_TYPES_TO_TOC_DICT\
+    \ = {\n    # Pure modules.\n    'AliasNode': 'PYMODULE',\n    'Script': 'PYSOURCE',\n\
+    \    'SourceModule': 'PYMODULE',\n    'CompiledModule': 'PYMODULE',\n    'Package':\
+    \ 'PYMODULE',\n    'FlatPackage': 'PYMODULE',\n    'ArchiveModule': 'PYMODULE',\n\
+    \    # Binary modules.\n    'Extension': 'EXTENSION',\n    'ExtensionPackage':\
+    \ 'EXTENSION',\n    # Special valid modules.\n    'BuiltinModule': 'BUILTIN',\n\
+    \    'NamespacePackage': 'PYMODULE',\n    # Bad modules.\n    'BadModule': 'bad',\n\
+    \    'ExcludedModule': 'excluded',\n    'InvalidSourceModule': 'invalid',\n  \
+    \  'InvalidCompiledModule': 'invalid',\n    'MissingModule': 'missing',\n    'RuntimeModule':\
+    \ 'runtime',\n    'RuntimePackage': 'runtime',\n    # Other.\n    'does not occur':\
+    \ 'BINARY',\n}\n\n\ndef check_requirements():\n    \"\"\"\n    Verify that all\
+    \ requirements to run PyInstaller are met.\n\n    Fail hard if any requirement\
+    \ is not met.\n    \"\"\"\n    # Fail hard if Python does not have minimum required\
+    \ version\n    if sys.version_info < (3, 8):\n        raise EnvironmentError('PyInstaller\
+    \ requires Python 3.8 or newer.')\n\n    # There are some old packages which used\
+    \ to be backports of libraries which are now part of the standard library.\n \
+    \   # These backports are now unmaintained and contain only an older subset of\
+    \ features leading to obscure errors like\n    # \"enum has not attribute IntFlag\"\
+    \ if installed.\n    from importlib.metadata import distribution, PackageNotFoundError\n\
+    \n    for name in [\"enum34\", \"typing\", \"pathlib\"]:\n        try:\n     \
+    \       dist = distribution(name)\n        except PackageNotFoundError:\n    \
+    \        continue\n        remove = \"conda remove\" if is_conda else f'\"{sys.executable}\"\
+    \ -m pip uninstall {name}'\n        raise SystemExit(\n            f\"The '{name}'\
+    \ package is an obsolete backport of a standard library package and is incompatible\
+    \ with \"\n            f\"PyInstaller. Please remove this package (located in\
+    \ {dist.locate_file('')}) using\\n    {remove}\\n\"\n            \"then try again.\"\
+    \n        )\n\n    # Bail out if binutils is not installed.\n    if is_linux and\
+    \ shutil.which(\"objdump\") is None:\n        raise SystemExit(\n            \"\
+    On Linux, objdump is required. It is typically provided by the 'binutils' package\
+    \ \"\n            \"installable via your Linux distribution's package manager.\"\
+    \n        )\n\n\n### Dependency File: log.py\n#-----------------------------------------------------------------------------\n\
+    # Copyright (c) 2013-2023, PyInstaller Development Team.\n#\n# Distributed under\
+    \ the terms of the GNU General Public License (version 2\n# or later) with exception\
+    \ for distributing the bootloader.\n#\n# The full license is in the file COPYING.txt,\
+    \ distributed with this software.\n#\n# SPDX-License-Identifier: (GPL-2.0-or-later\
+    \ WITH Bootloader-exception)\n#-----------------------------------------------------------------------------\n\
+    \"\"\"\nLogging module for PyInstaller.\n\"\"\"\n\n__all__ = ['getLogger', 'INFO',\
+    \ 'WARN', 'DEBUG', 'TRACE', 'ERROR', 'FATAL', 'DEPRECATION']\n\nimport os\nimport\
+    \ logging\nfrom logging import DEBUG, ERROR, FATAL, INFO, WARN, getLogger\n\n\
+    TRACE = DEBUG - 5\nlogging.addLevelName(TRACE, 'TRACE')\nDEPRECATION = WARN +\
+    \ 5\nlogging.addLevelName(DEPRECATION, 'DEPRECATION')\nLEVELS = {\n    'TRACE':\
+    \ TRACE,\n    'DEBUG': DEBUG,\n    'INFO': INFO,\n    'WARN': WARN,\n    'DEPRECATION':\
+    \ DEPRECATION,\n    'ERROR': ERROR,\n    'FATAL': FATAL,\n}\n\nFORMAT = '%(relativeCreated)d\
+    \ %(levelname)s: %(message)s'\n_env_level = os.environ.get(\"PYI_LOG_LEVEL\",\
+    \ \"INFO\")\ntry:\n    level = LEVELS[_env_level.upper()]\nexcept KeyError:\n\
+    \    raise SystemExit(f\"Invalid PYI_LOG_LEVEL value '{_env_level}'. Should be\
+    \ one of {list(LEVELS)}.\")\nlogging.basicConfig(format=FORMAT, level=level)\n\
+    logger = getLogger('PyInstaller')\n\n\ndef __add_options(parser):\n    parser.add_argument(\n\
+    \        '--log-level',\n        choices=LEVELS,\n        metavar=\"LEVEL\",\n\
+    \        dest='loglevel',\n        help='Amount of detail in build-time console\
+    \ messages. LEVEL may be one of %s (default: INFO). '\n        'Also settable\
+    \ via and overrides the PYI_LOG_LEVEL environment variable.' % ', '.join(LEVELS),\n\
+    \    )\n\n\ndef __process_options(parser, opts):\n    if opts.loglevel:\n    \
+    \    try:\n            level = opts.loglevel.upper()\n            _level = LEVELS[level]\n\
+    \        except KeyError:\n            parser.error('Unknown log level `%s`' %\
+    \ opts.loglevel)\n        logger.setLevel(_level)\n        os.environ[\"PYI_LOG_LEVEL\"\
+    ] = level\n\n\n### Dependency File: templates.py\n#-----------------------------------------------------------------------------\n\
+    # Copyright (c) 2005-2023, PyInstaller Development Team.\n#\n# Distributed under\
+    \ the terms of the GNU General Public License (version 2\n# or later) with exception\
+    \ for distributing the bootloader.\n#\n# The full license is in the file COPYING.txt,\
+    \ distributed with this software.\n#\n# SPDX-License-Identifier: (GPL-2.0-or-later\
+    \ WITH Bootloader-exception)\n#-----------------------------------------------------------------------------\n\
+    \"\"\"\nTemplates to generate .spec files.\n\"\"\"\n\nonefiletmplt = \"\"\"# -*-\
+    \ mode: python ; coding: utf-8 -*-\n%(preamble)s\n\na = Analysis(\n    %(scripts)s,\n\
+    \    pathex=%(pathex)s,\n    binaries=%(binaries)s,\n    datas=%(datas)s,\n  \
+    \  hiddenimports=%(hiddenimports)s,\n    hookspath=%(hookspath)r,\n    hooksconfig={},\n\
+    \    runtime_hooks=%(runtime_hooks)r,\n    excludes=%(excludes)s,\n    noarchive=%(noarchive)s,\n\
+    \    optimize=%(optimize)r,\n)\npyz = PYZ(a.pure)\n%(splash_init)s\nexe = EXE(\n\
+    \    pyz,\n    a.scripts,\n    a.binaries,\n    a.datas,%(splash_target)s%(splash_binaries)s\n\
+    \    %(options)s,\n    name='%(name)s',\n    debug=%(debug_bootloader)s,\n   \
+    \ bootloader_ignore_signals=%(bootloader_ignore_signals)s,\n    strip=%(strip)s,\n\
+    \    upx=%(upx)s,\n    upx_exclude=%(upx_exclude)s,\n    runtime_tmpdir=%(runtime_tmpdir)r,\n\
+    \    console=%(console)s,\n    disable_windowed_traceback=%(disable_windowed_traceback)s,\n\
+    \    argv_emulation=%(argv_emulation)r,\n    target_arch=%(target_arch)r,\n  \
+    \  codesign_identity=%(codesign_identity)r,\n    entitlements_file=%(entitlements_file)r,%(exe_options)s\n\
+    )\n\"\"\"\n\nonedirtmplt = \"\"\"# -*- mode: python ; coding: utf-8 -*-\n%(preamble)s\n\
+    \na = Analysis(\n    %(scripts)s,\n    pathex=%(pathex)s,\n    binaries=%(binaries)s,\n\
+    \    datas=%(datas)s,\n    hiddenimports=%(hiddenimports)s,\n    hookspath=%(hookspath)r,\n\
+    \    hooksconfig={},\n    runtime_hooks=%(runtime_hooks)r,\n    excludes=%(excludes)s,\n\
+    \    noarchive=%(noarchive)s,\n    optimize=%(optimize)r,\n)\npyz = PYZ(a.pure)\n\
+    %(splash_init)s\nexe = EXE(\n    pyz,\n    a.scripts,%(splash_target)s\n    %(options)s,\n\
+    \    exclude_binaries=True,\n    name='%(name)s',\n    debug=%(debug_bootloader)s,\n\
+    \    bootloader_ignore_signals=%(bootloader_ignore_signals)s,\n    strip=%(strip)s,\n\
+    \    upx=%(upx)s,\n    console=%(console)s,\n    disable_windowed_traceback=%(disable_windowed_traceback)s,\n\
+    \    argv_emulation=%(argv_emulation)r,\n    target_arch=%(target_arch)r,\n  \
+    \  codesign_identity=%(codesign_identity)r,\n    entitlements_file=%(entitlements_file)r,%(exe_options)s\n\
+    )\ncoll = COLLECT(\n    exe,\n    a.binaries,\n    a.datas,%(splash_binaries)s\n\
+    \    strip=%(strip)s,\n    upx=%(upx)s,\n    upx_exclude=%(upx_exclude)s,\n  \
+    \  name='%(name)s',\n)\n\"\"\"\n\nbundleexetmplt = \"\"\"app = BUNDLE(\n    exe,\n\
+    \    name='%(name)s.app',\n    icon=%(icon)s,\n    bundle_identifier=%(bundle_identifier)s,\n\
+    )\n\"\"\"\n\nbundletmplt = \"\"\"app = BUNDLE(\n    coll,\n    name='%(name)s.app',\n\
+    \    icon=%(icon)s,\n    bundle_identifier=%(bundle_identifier)s,\n)\n\"\"\"\n\
+    \nsplashtmpl = \"\"\"splash = Splash(\n    %(splash_image)r,\n    binaries=a.binaries,\n\
+    \    datas=a.datas,\n    text_pos=None,\n    text_size=12,\n    minify_script=True,\n\
+    \    always_on_top=True,\n)\n\"\"\"\n\nOutput the complete test file, code only,\
+    \ no explanations.\n### Time\nCurrent time: 2025-03-15 16:13:40\n"
+  role: user

@@ -1,0 +1,820 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: pyinstaller\nTest File Path: pyinstaller\\\
+    test_Tree\\test_Tree.py\nProject Programming Language: Python\nTesting Framework:\
+    \ pytest\n### Source File Content\n### Source File Content:\n#-----------------------------------------------------------------------------\n\
+    # Copyright (c) 2005-2023, PyInstaller Development Team.\n#\n# Distributed under\
+    \ the terms of the GNU General Public License (version 2\n# or later) with exception\
+    \ for distributing the bootloader.\n#\n# The full license is in the file COPYING.txt,\
+    \ distributed with this software.\n#\n# SPDX-License-Identifier: (GPL-2.0-or-later\
+    \ WITH Bootloader-exception)\n#-----------------------------------------------------------------------------\n\
+    \nimport os\nimport pathlib\nimport warnings\n\nfrom PyInstaller import log as\
+    \ logging\nfrom PyInstaller.building.utils import _check_guts_eq\nfrom PyInstaller.utils\
+    \ import misc\n\nlogger = logging.getLogger(__name__)\n\n\ndef unique_name(entry):\n\
+    \    \"\"\"\n    Return the filename used to enforce uniqueness for the given\
+    \ TOC entry.\n\n    Parameters\n    ----------\n    entry : tuple\n\n    Returns\n\
+    \    -------\n    unique_name: str\n    \"\"\"\n    name, path, typecode = entry\n\
+    \    if typecode in ('BINARY', 'DATA', 'EXTENSION', 'DEPENDENCY'):\n        name\
+    \ = os.path.normcase(name)\n\n    return name\n\n\n# This class is deprecated\
+    \ and has been replaced by plain lists with explicit normalization (de-duplication)\
+    \ via\n# `normalize_toc` and `normalize_pyz_toc` helper functions.\nclass TOC(list):\n\
+    \    \"\"\"\n    TOC (Table of Contents) class is a list of tuples of the form\
+    \ (name, path, typecode).\n\n    typecode    name                   path     \
+    \                   description\n    --------------------------------------------------------------------------------------\n\
+    \    EXTENSION   Python internal name.  Full path name in build.    Extension\
+    \ module.\n    PYSOURCE    Python internal name.  Full path name in build.   \
+    \ Script.\n    PYMODULE    Python internal name.  Full path name in build.   \
+    \ Pure Python module (including __init__ modules).\n    PYZ         Runtime name.\
+    \          Full path name in build.    A .pyz archive (ZlibArchive data structure).\n\
+    \    PKG         Runtime name.          Full path name in build.    A .pkg archive\
+    \ (Carchive data structure).\n    BINARY      Runtime name.          Full path\
+    \ name in build.    Shared library.\n    DATA        Runtime name.          Full\
+    \ path name in build.    Arbitrary files.\n    OPTION      The option.       \
+    \     Unused.                     Python runtime option (frozen into executable).\n\
+    \n    A TOC contains various types of files. A TOC contains no duplicates and\
+    \ preserves order.\n    PyInstaller uses TOC data type to collect necessary files\
+    \ bundle them into an executable.\n    \"\"\"\n    def __init__(self, initlist=None):\n\
+    \        super().__init__()\n\n        # Deprecation warning\n        warnings.warn(\n\
+    \            \"TOC class is deprecated. Use a plain list of 3-element tuples instead.\"\
+    ,\n            DeprecationWarning,\n            stacklevel=2,\n        )\n\n \
+    \       self.filenames = set()\n        if initlist:\n            for entry in\
+    \ initlist:\n                self.append(entry)\n\n    def append(self, entry):\n\
+    \        if not isinstance(entry, tuple):\n            logger.info(\"TOC found\
+    \ a %s, not a tuple\", entry)\n            raise TypeError(\"Expected tuple, not\
+    \ %s.\" % type(entry).__name__)\n\n        unique = unique_name(entry)\n\n   \
+    \     if unique not in self.filenames:\n            self.filenames.add(unique)\n\
+    \            super().append(entry)\n\n    def insert(self, pos, entry):\n    \
+    \    if not isinstance(entry, tuple):\n            logger.info(\"TOC found a %s,\
+    \ not a tuple\", entry)\n            raise TypeError(\"Expected tuple, not %s.\"\
+    \ % type(entry).__name__)\n        unique = unique_name(entry)\n\n        if unique\
+    \ not in self.filenames:\n            self.filenames.add(unique)\n           \
+    \ super().insert(pos, entry)\n\n    def __add__(self, other):\n        result\
+    \ = TOC(self)\n        result.extend(other)\n        return result\n\n    def\
+    \ __radd__(self, other):\n        result = TOC(other)\n        result.extend(self)\n\
+    \        return result\n\n    def __iadd__(self, other):\n        for entry in\
+    \ other:\n            self.append(entry)\n        return self\n\n    def extend(self,\
+    \ other):\n        # TODO: look if this can be done more efficient with out the\
+    \ loop, e.g. by not using a list as base at all.\n        for entry in other:\n\
+    \            self.append(entry)\n\n    def __sub__(self, other):\n        # Construct\
+    \ new TOC with entries not contained in the other TOC\n        other = TOC(other)\n\
+    \        return TOC([entry for entry in self if unique_name(entry) not in other.filenames])\n\
+    \n    def __rsub__(self, other):\n        result = TOC(other)\n        return\
+    \ result.__sub__(self)\n\n    def __setitem__(self, key, value):\n        if isinstance(key,\
+    \ slice):\n            if key == slice(None, None, None):\n                # special\
+    \ case: set the entire list\n                self.filenames = set()\n        \
+    \        self.clear()\n                self.extend(value)\n                return\n\
+    \            else:\n                raise KeyError(\"TOC.__setitem__ doesn't handle\
+    \ slices\")\n\n        else:\n            old_value = self[key]\n            old_name\
+    \ = unique_name(old_value)\n            self.filenames.remove(old_name)\n\n  \
+    \          new_name = unique_name(value)\n            if new_name not in self.filenames:\n\
+    \                self.filenames.add(new_name)\n                super(TOC, self).__setitem__(key,\
+    \ value)\n\n\nclass Target:\n    invcnum = 0\n\n    def __init__(self):\n    \
+    \    from PyInstaller.config import CONF\n\n        # Get a (per class) unique\
+    \ number to avoid conflicts between toc objects\n        self.invcnum = self.__class__.invcnum\n\
+    \        self.__class__.invcnum += 1\n        self.tocfilename = os.path.join(CONF['workpath'],\
+    \ '%s-%02d.toc' % (self.__class__.__name__, self.invcnum))\n        self.tocbasename\
+    \ = os.path.basename(self.tocfilename)\n        self.dependencies = []\n\n   \
+    \ def __postinit__(self):\n        \"\"\"\n        Check if the target need to\
+    \ be rebuild and if so, re-assemble.\n\n        `__postinit__` is to be called\
+    \ at the end of `__init__` of every subclass of Target. `__init__` is meant to\n\
+    \        setup the parameters and `__postinit__` is checking if rebuild is required\
+    \ and in case calls `assemble()`\n        \"\"\"\n        logger.info(\"checking\
+    \ %s\", self.__class__.__name__)\n        data = None\n        last_build = misc.mtime(self.tocfilename)\n\
+    \        if last_build == 0:\n            logger.info(\"Building %s because %s\
+    \ is non existent\", self.__class__.__name__, self.tocbasename)\n        else:\n\
+    \            try:\n                data = misc.load_py_data_struct(self.tocfilename)\n\
+    \            except Exception:\n                logger.info(\"Building because\
+    \ %s is bad\", self.tocbasename)\n            else:\n                # create\
+    \ a dict for easier access\n                data = dict(zip((g[0] for g in self._GUTS),\
+    \ data))\n        # assemble if previous data was not found or is outdated\n \
+    \       if not data or self._check_guts(data, last_build):\n            self.assemble()\n\
+    \            self._save_guts()\n\n    _GUTS = []\n\n    def _check_guts(self,\
+    \ data, last_build):\n        \"\"\"\n        Returns True if rebuild/assemble\
+    \ is required.\n        \"\"\"\n        if len(data) != len(self._GUTS):\n   \
+    \         logger.info(\"Building because %s is bad\", self.tocbasename)\n    \
+    \        return True\n        for attr, func in self._GUTS:\n            if func\
+    \ is None:\n                # no check for this value\n                continue\n\
+    \            if func(attr, data[attr], getattr(self, attr), last_build):\n   \
+    \             return True\n        return False\n\n    def _save_guts(self):\n\
+    \        \"\"\"\n        Save the input parameters and the work-product of this\
+    \ run to maybe avoid regenerating it later.\n        \"\"\"\n        data = tuple(getattr(self,\
+    \ g[0]) for g in self._GUTS)\n        misc.save_py_data_struct(self.tocfilename,\
+    \ data)\n\n\nclass Tree(Target, list):\n    \"\"\"\n    This class is a way of\
+    \ creating a TOC (Table of Contents) list that describes some or all of the files\
+    \ within a\n    directory.\n    \"\"\"\n    def __init__(self, root=None, prefix=None,\
+    \ excludes=None, typecode='DATA'):\n        \"\"\"\n        root\n           \
+    \     The root of the tree (on the build system).\n        prefix\n          \
+    \      Optional prefix to the names of the target system.\n        excludes\n\
+    \                A list of names to exclude. Two forms are allowed:\n\n      \
+    \              name\n                        Files with this basename will be\
+    \ excluded (do not include the path).\n                    *.ext\n           \
+    \             Any file with the given extension will be excluded.\n        typecode\n\
+    \                The typecode to be used for all files found in this tree. See\
+    \ the TOC class for for information about\n                the typcodes.\n   \
+    \     \"\"\"\n        Target.__init__(self)\n        list.__init__(self)\n   \
+    \     self.root = root\n        self.prefix = prefix\n        self.excludes =\
+    \ excludes\n        self.typecode = typecode\n        if excludes is None:\n \
+    \           self.excludes = []\n        self.__postinit__()\n\n    _GUTS = ( \
+    \ # input parameters\n        ('root', _check_guts_eq),\n        ('prefix', _check_guts_eq),\n\
+    \        ('excludes', _check_guts_eq),\n        ('typecode', _check_guts_eq),\n\
+    \        ('data', None),  # tested below\n        # no calculated/analysed values\n\
+    \    )\n\n    def _check_guts(self, data, last_build):\n        if Target._check_guts(self,\
+    \ data, last_build):\n            return True\n        # Walk the collected directories\
+    \ as check if they have been changed - which means files have been added or\n\
+    \        # removed. There is no need to check for the files, since `Tree` is only\
+    \ about the directory contents (which is\n        # the list of files).\n    \
+    \    stack = [data['root']]\n        while stack:\n            d = stack.pop()\n\
+    \            if misc.mtime(d) > last_build:\n                logger.info(\"Building\
+    \ %s because directory %s changed\", self.tocbasename, d)\n                return\
+    \ True\n            for nm in os.listdir(d):\n                path = os.path.join(d,\
+    \ nm)\n                if os.path.isdir(path):\n                    stack.append(path)\n\
+    \        self[:] = data['data']  # collected files\n        return False\n\n \
+    \   def _save_guts(self):\n        # Use the attribute `data` to save the list\n\
+    \        self.data = self\n        super()._save_guts()\n        del self.data\n\
+    \n    def assemble(self):\n        logger.info(\"Building Tree %s\", self.tocbasename)\n\
+    \        stack = [(self.root, self.prefix)]\n        excludes = set()\n      \
+    \  xexcludes = set()\n        for name in self.excludes:\n            if name.startswith('*'):\n\
+    \                xexcludes.add(name[1:])\n            else:\n                excludes.add(name)\n\
+    \        result = []\n        while stack:\n            dir, prefix = stack.pop()\n\
+    \            for filename in os.listdir(dir):\n                if filename in\
+    \ excludes:\n                    continue\n                ext = os.path.splitext(filename)[1]\n\
+    \                if ext in xexcludes:\n                    continue\n        \
+    \        fullfilename = os.path.join(dir, filename)\n                if prefix:\n\
+    \                    resfilename = os.path.join(prefix, filename)\n          \
+    \      else:\n                    resfilename = filename\n                if os.path.isdir(fullfilename):\n\
+    \                    stack.append((fullfilename, resfilename))\n             \
+    \   else:\n                    result.append((resfilename, fullfilename, self.typecode))\n\
+    \        self[:] = result\n\n\ndef normalize_toc(toc):\n    # Default priority:\
+    \ 0\n    _TOC_TYPE_PRIORITIES = {\n        # DEPENDENCY entries need to replace\
+    \ original entries, so they need the highest priority.\n        'DEPENDENCY':\
+    \ 3,\n        # SYMLINK entries have higher priority than other regular entries\n\
+    \        'SYMLINK': 2,\n        # BINARY/EXTENSION entries undergo additional\
+    \ processing, so give them precedence over DATA and other entries.\n        'BINARY':\
+    \ 1,\n        'EXTENSION': 1,\n    }\n\n    def _type_case_normalization_fcn(typecode):\n\
+    \        # Case-normalize all entries except OPTION.\n        return typecode\
+    \ not in {\n            \"OPTION\",\n        }\n\n    return _normalize_toc(toc,\
+    \ _TOC_TYPE_PRIORITIES, _type_case_normalization_fcn)\n\n\ndef normalize_pyz_toc(toc):\n\
+    \    # Default priority: 0\n    _TOC_TYPE_PRIORITIES = {\n        # Ensure that\
+    \ entries with higher optimization level take precedence.\n        'PYMODULE-2':\
+    \ 2,\n        'PYMODULE-1': 1,\n        'PYMODULE': 0,\n    }\n\n    return _normalize_toc(toc,\
+    \ _TOC_TYPE_PRIORITIES)\n\n\ndef _normalize_toc(toc, toc_type_priorities, type_case_normalization_fcn=lambda\
+    \ typecode: False):\n    options_toc = []\n    tmp_toc = dict()\n    for dest_name,\
+    \ src_name, typecode in toc:\n        # Exempt OPTION entries from de-duplication\
+    \ processing. Some options might allow being specified multiple times.\n     \
+    \   if typecode == 'OPTION':\n            options_toc.append(((dest_name, src_name,\
+    \ typecode)))\n            continue\n\n        # Always sanitize the dest_name\
+    \ with `os.path.normpath` to remove any local loops with parent directory path\n\
+    \        # components. `pathlib` does not seem to offer equivalent functionality.\n\
+    \        dest_name = os.path.normpath(dest_name)\n\n        # Normalize the destination\
+    \ name for uniqueness. Use `pathlib.PurePath` to ensure that keys are both\n \
+    \       # case-normalized (on OSes where applicable) and directory-separator normalized\
+    \ (just in case).\n        if type_case_normalization_fcn(typecode):\n       \
+    \     entry_key = pathlib.PurePath(dest_name)\n        else:\n            entry_key\
+    \ = dest_name\n\n        existing_entry = tmp_toc.get(entry_key)\n        if existing_entry\
+    \ is None:\n            # Entry does not exist - insert\n            tmp_toc[entry_key]\
+    \ = (dest_name, src_name, typecode)\n        else:\n            # Entry already\
+    \ exists - replace if its typecode has higher priority\n            _, _, existing_typecode\
+    \ = existing_entry\n            if toc_type_priorities.get(typecode, 0) > toc_type_priorities.get(existing_typecode,\
+    \ 0):\n                tmp_toc[entry_key] = (dest_name, src_name, typecode)\n\n\
+    \    # Return the items as list. The order matches the original order due to python\
+    \ dict maintaining the insertion order.\n    # The exception are OPTION entries,\
+    \ which are now placed at the beginning of the TOC.\n    return options_toc +\
+    \ list(tmp_toc.values())\n\n\ndef toc_process_symbolic_links(toc):\n    \"\"\"\
+    \n    Process TOC entries and replace entries whose files are symbolic links with\
+    \ SYMLINK entries (provided original file\n    is also being collected).\n   \
+    \ \"\"\"\n    # Dictionary of all destination names, for a fast look-up.\n   \
+    \ all_dest_files = set([dest_name for dest_name, src_name, typecode in toc])\n\
+    \n    # Process the TOC to create SYMLINK entries\n    new_toc = []\n    for entry\
+    \ in toc:\n        dest_name, src_name, typecode = entry\n\n        # Skip entries\
+    \ that are already symbolic links\n        if typecode == 'SYMLINK':\n       \
+    \     new_toc.append(entry)\n            continue\n\n        # Skip entries without\
+    \ valid source name (e.g., OPTION)\n        if not src_name:\n            new_toc.append(entry)\n\
+    \            continue\n\n        # Source path is not a symbolic link (i.e., it\
+    \ is a regular file or directory)\n        if not os.path.islink(src_name):\n\
+    \            new_toc.append(entry)\n            continue\n\n        # Try preserving\
+    \ the symbolic link, under strict relative-relationship-preservation check\n \
+    \       symlink_entry = _try_preserving_symbolic_link(dest_name, src_name, all_dest_files)\n\
+    \n        if symlink_entry:\n            new_toc.append(symlink_entry)\n     \
+    \   else:\n            new_toc.append(entry)\n\n    return new_toc\n\n\ndef _try_preserving_symbolic_link(dest_name,\
+    \ src_name, all_dest_files):\n    seen_src_files = set()\n\n    # Set initial\
+    \ values for the loop\n    ref_src_file = src_name\n    ref_dest_file = dest_name\n\
+    \n    while True:\n        # Guard against cyclic links...\n        if ref_src_file\
+    \ in seen_src_files:\n            break\n        seen_src_files.add(ref_src_file)\n\
+    \n        # Stop when referenced source file is not a symbolic link anymore.\n\
+    \        if not os.path.islink(ref_src_file):\n            break\n\n        #\
+    \ Read the symbolic link's target, but do not fully resolve it using os.path.realpath(),\
+    \ because there might be\n        # other symbolic links involved as well (for\
+    \ example, /lib64 -> /usr/lib64 whereas we are processing\n        # /lib64/liba.so\
+    \ -> /lib64/liba.so.1)\n        symlink_target = os.readlink(ref_src_file)\n \
+    \       if os.path.isabs(symlink_target):\n            break  # We support only\
+    \ relative symbolic links.\n\n        ref_dest_file = os.path.join(os.path.dirname(ref_dest_file),\
+    \ symlink_target)\n        ref_dest_file = os.path.normpath(ref_dest_file)  #\
+    \ remove any '..'\n\n        ref_src_file = os.path.join(os.path.dirname(ref_src_file),\
+    \ symlink_target)\n        ref_src_file = os.path.normpath(ref_src_file)  # remove\
+    \ any '..'\n\n        # Check if referenced destination file is valid (i.e., we\
+    \ are collecting a file under referenced name).\n        if ref_dest_file in all_dest_files:\n\
+    \            # Sanity check: original source name and current referenced source\
+    \ name must, after complete resolution,\n            # point to the same file.\n\
+    \            if os.path.realpath(src_name) == os.path.realpath(ref_src_file):\n\
+    \                # Compute relative link for the destination file (might be modified,\
+    \ if we went over non-collected\n                # intermediate links).\n    \
+    \            rel_link = os.path.relpath(ref_dest_file, os.path.dirname(dest_name))\n\
+    \                return dest_name, rel_link, 'SYMLINK'\n\n        # If referenced\
+    \ destination is not valid, do another iteration in case we are dealing with chained\
+    \ links and we\n        # are not collecting an intermediate link...\n\n    return\
+    \ None\n\n### Source File Dependency Files Content\n### Dependency File: log.py\n\
+    #-----------------------------------------------------------------------------\n\
+    # Copyright (c) 2013-2023, PyInstaller Development Team.\n#\n# Distributed under\
+    \ the terms of the GNU General Public License (version 2\n# or later) with exception\
+    \ for distributing the bootloader.\n#\n# The full license is in the file COPYING.txt,\
+    \ distributed with this software.\n#\n# SPDX-License-Identifier: (GPL-2.0-or-later\
+    \ WITH Bootloader-exception)\n#-----------------------------------------------------------------------------\n\
+    \"\"\"\nLogging module for PyInstaller.\n\"\"\"\n\n__all__ = ['getLogger', 'INFO',\
+    \ 'WARN', 'DEBUG', 'TRACE', 'ERROR', 'FATAL', 'DEPRECATION']\n\nimport os\nimport\
+    \ logging\nfrom logging import DEBUG, ERROR, FATAL, INFO, WARN, getLogger\n\n\
+    TRACE = DEBUG - 5\nlogging.addLevelName(TRACE, 'TRACE')\nDEPRECATION = WARN +\
+    \ 5\nlogging.addLevelName(DEPRECATION, 'DEPRECATION')\nLEVELS = {\n    'TRACE':\
+    \ TRACE,\n    'DEBUG': DEBUG,\n    'INFO': INFO,\n    'WARN': WARN,\n    'DEPRECATION':\
+    \ DEPRECATION,\n    'ERROR': ERROR,\n    'FATAL': FATAL,\n}\n\nFORMAT = '%(relativeCreated)d\
+    \ %(levelname)s: %(message)s'\n_env_level = os.environ.get(\"PYI_LOG_LEVEL\",\
+    \ \"INFO\")\ntry:\n    level = LEVELS[_env_level.upper()]\nexcept KeyError:\n\
+    \    raise SystemExit(f\"Invalid PYI_LOG_LEVEL value '{_env_level}'. Should be\
+    \ one of {list(LEVELS)}.\")\nlogging.basicConfig(format=FORMAT, level=level)\n\
+    logger = getLogger('PyInstaller')\n\n\ndef __add_options(parser):\n    parser.add_argument(\n\
+    \        '--log-level',\n        choices=LEVELS,\n        metavar=\"LEVEL\",\n\
+    \        dest='loglevel',\n        help='Amount of detail in build-time console\
+    \ messages. LEVEL may be one of %s (default: INFO). '\n        'Also settable\
+    \ via and overrides the PYI_LOG_LEVEL environment variable.' % ', '.join(LEVELS),\n\
+    \    )\n\n\ndef __process_options(parser, opts):\n    if opts.loglevel:\n    \
+    \    try:\n            level = opts.loglevel.upper()\n            _level = LEVELS[level]\n\
+    \        except KeyError:\n            parser.error('Unknown log level `%s`' %\
+    \ opts.loglevel)\n        logger.setLevel(_level)\n        os.environ[\"PYI_LOG_LEVEL\"\
+    ] = level\n\n\n### Dependency File: misc.py\n#-----------------------------------------------------------------------------\n\
+    # Copyright (c) 2013-2023, PyInstaller Development Team.\n#\n# Distributed under\
+    \ the terms of the GNU General Public License (version 2\n# or later) with exception\
+    \ for distributing the bootloader.\n#\n# The full license is in the file COPYING.txt,\
+    \ distributed with this software.\n#\n# SPDX-License-Identifier: (GPL-2.0-or-later\
+    \ WITH Bootloader-exception)\n#-----------------------------------------------------------------------------\n\
+    \"\"\"\nThis module contains miscellaneous functions that do not fit anywhere\
+    \ else.\n\"\"\"\n\nimport glob\nimport os\nimport pprint\nimport codecs\nimport\
+    \ re\nimport tokenize\nimport io\nimport pathlib\n\nfrom PyInstaller import log\
+    \ as logging\nfrom PyInstaller.compat import is_win\n\nlogger = logging.getLogger(__name__)\n\
+    \n\ndef dlls_in_subdirs(directory):\n    \"\"\"\n    Returns a list *.dll, *.so,\
+    \ *.dylib in the given directory and its subdirectories.\n    \"\"\"\n    filelist\
+    \ = []\n    for root, dirs, files in os.walk(directory):\n        filelist.extend(dlls_in_dir(root))\n\
+    \    return filelist\n\n\ndef dlls_in_dir(directory):\n    \"\"\"\n    Returns\
+    \ a list of *.dll, *.so, *.dylib in the given directory.\n    \"\"\"\n    return\
+    \ files_in_dir(directory, [\"*.so\", \"*.dll\", \"*.dylib\"])\n\n\ndef files_in_dir(directory,\
+    \ file_patterns=None):\n    \"\"\"\n    Returns a list of files in the given directory\
+    \ that match the given pattern.\n    \"\"\"\n\n    file_patterns = file_patterns\
+    \ or []\n\n    files = []\n    for file_pattern in file_patterns:\n        files.extend(glob.glob(os.path.join(directory,\
+    \ file_pattern)))\n    return files\n\n\ndef get_path_to_toplevel_modules(filename):\n\
+    \    \"\"\"\n    Return the path to top-level directory that contains Python modules.\n\
+    \n    It will look in parent directories for __init__.py files. The first parent\
+    \ directory without __init__.py is the\n    top-level directory.\n\n    Returned\
+    \ directory might be used to extend the PYTHONPATH.\n    \"\"\"\n    curr_dir\
+    \ = os.path.dirname(os.path.abspath(filename))\n    pattern = '__init__.py'\n\n\
+    \    # Try max. 10 levels up.\n    try:\n        for i in range(10):\n       \
+    \     files = set(os.listdir(curr_dir))\n            # 'curr_dir' is still not\
+    \ top-level; go to parent dir.\n            if pattern in files:\n           \
+    \     curr_dir = os.path.dirname(curr_dir)\n            # Top-level dir found;\
+    \ return it.\n            else:\n                return curr_dir\n    except IOError:\n\
+    \        pass\n    # No top-level directory found, or error was encountered.\n\
+    \    return None\n\n\ndef mtime(fnm):\n    try:\n        # TODO: explain why this\
+    \ does not use os.path.getmtime() ?\n        #       - It is probably not used\
+    \ because it returns float and not int.\n        return os.stat(fnm)[8]\n    except\
+    \ Exception:\n        return 0\n\n\ndef save_py_data_struct(filename, data):\n\
+    \    \"\"\"\n    Save data into text file as Python data structure.\n    :param\
+    \ filename:\n    :param data:\n    :return:\n    \"\"\"\n    dirname = os.path.dirname(filename)\n\
+    \    if not os.path.exists(dirname):\n        os.makedirs(dirname)\n    with open(filename,\
+    \ 'w', encoding='utf-8') as f:\n        pprint.pprint(data, f)\n\n\ndef load_py_data_struct(filename):\n\
+    \    \"\"\"\n    Load data saved as python code and interpret that code.\n   \
+    \ :param filename:\n    :return:\n    \"\"\"\n    with open(filename, 'r', encoding='utf-8')\
+    \ as f:\n        if is_win:\n            # import versioninfo so that VSVersionInfo\
+    \ can parse correctly.\n            from PyInstaller.utils.win32 import versioninfo\
+    \  # noqa: F401\n\n        return eval(f.read())\n\n\ndef absnormpath(apath):\n\
+    \    return os.path.abspath(os.path.normpath(apath))\n\n\ndef module_parent_packages(full_modname):\n\
+    \    \"\"\"\n    Return list of parent package names.\n        'aaa.bb.c.dddd'\
+    \ ->  ['aaa', 'aaa.bb', 'aaa.bb.c']\n    :param full_modname: Full name of a module.\n\
+    \    :return: List of parent module names.\n    \"\"\"\n    prefix = ''\n    parents\
+    \ = []\n    # Ignore the last component in module name and get really just parent,\
+    \ grandparent, great grandparent, etc.\n    for pkg in full_modname.split('.')[0:-1]:\n\
+    \        # Ensure that first item does not start with dot '.'\n        prefix\
+    \ += '.' + pkg if prefix else pkg\n        parents.append(prefix)\n    return\
+    \ parents\n\n\ndef is_file_qt_plugin(filename):\n    \"\"\"\n    Check if the\
+    \ given file is a Qt plugin file.\n    :param filename: Full path to file to check.\n\
+    \    :return: True if given file is a Qt plugin file, False if not.\n    \"\"\"\
+    \n\n    # Check the file contents; scan for QTMETADATA string. The scan is based\
+    \ on the brute-force Windows codepath of\n    # findPatternUnloaded() from qtbase/src/corelib/plugin/qlibrary.cpp\
+    \ in Qt5.\n    with open(filename, 'rb') as fp:\n        fp.seek(0, os.SEEK_END)\n\
+    \        end_pos = fp.tell()\n\n        SEARCH_CHUNK_SIZE = 8192\n        QTMETADATA_MAGIC\
+    \ = b'QTMETADATA '\n\n        magic_offset = -1\n        while end_pos >= len(QTMETADATA_MAGIC):\n\
+    \            start_pos = max(end_pos - SEARCH_CHUNK_SIZE, 0)\n            chunk_size\
+    \ = end_pos - start_pos\n            # Is the remaining chunk large enough to\
+    \ hold the pattern?\n            if chunk_size < len(QTMETADATA_MAGIC):\n    \
+    \            break\n            # Read and scan the chunk\n            fp.seek(start_pos,\
+    \ os.SEEK_SET)\n            buf = fp.read(chunk_size)\n            pos = buf.rfind(QTMETADATA_MAGIC)\n\
+    \            if pos != -1:\n                magic_offset = start_pos + pos\n \
+    \               break\n            # Adjust search location for next chunk; ensure\
+    \ proper overlap.\n            end_pos = start_pos + len(QTMETADATA_MAGIC) - 1\n\
+    \        if magic_offset == -1:\n            return False\n\n        return True\n\
+    \n\nBOM_MARKERS_TO_DECODERS = {\n    codecs.BOM_UTF32_LE: codecs.utf_32_le_decode,\n\
+    \    codecs.BOM_UTF32_BE: codecs.utf_32_be_decode,\n    codecs.BOM_UTF32: codecs.utf_32_decode,\n\
+    \    codecs.BOM_UTF16_LE: codecs.utf_16_le_decode,\n    codecs.BOM_UTF16_BE: codecs.utf_16_be_decode,\n\
+    \    codecs.BOM_UTF16: codecs.utf_16_decode,\n    codecs.BOM_UTF8: codecs.utf_8_decode,\n\
+    }\nBOM_RE = re.compile(rb\"\\A(%s)?(.*)\" % b\"|\".join(map(re.escape, BOM_MARKERS_TO_DECODERS)),\
+    \ re.DOTALL)\n\n\ndef decode(raw: bytes):\n    \"\"\"\n    Decode bytes to string,\
+    \ respecting and removing any byte-order marks if present, or respecting but not\
+    \ removing any\n    PEP263 encoding comments (# encoding: cp1252).\n    \"\"\"\
+    \n    bom, raw = BOM_RE.match(raw).groups()\n    if bom:\n        return BOM_MARKERS_TO_DECODERS[bom](raw)[0]\n\
+    \n    encoding, _ = tokenize.detect_encoding(io.BytesIO(raw).readline)\n    return\
+    \ raw.decode(encoding)\n\n\ndef is_iterable(arg):\n    \"\"\"\n    Check if the\
+    \ passed argument is an iterable.\"\n    \"\"\"\n    try:\n        iter(arg)\n\
+    \    except TypeError:\n        return False\n    return True\n\n\ndef path_to_parent_archive(filename):\n\
+    \    \"\"\"\n    Check if the given file path points to a file inside an existing\
+    \ archive file. Returns first path from the set of\n    parent paths that points\
+    \ to an existing file, or `None` if no such path exists (i.e., file is an actual\
+    \ stand-alone\n    file).\n    \"\"\"\n    for parent in pathlib.Path(filename).parents:\n\
+    \        if parent.is_file():\n            return parent\n    return None\n\n\n\
+    ### Dependency File: utils.py\n#-----------------------------------------------------------------------------\n\
+    # Copyright (c) 2005-2023, PyInstaller Development Team.\n#\n# Distributed under\
+    \ the terms of the GNU General Public License (version 2\n# or later) with exception\
+    \ for distributing the bootloader.\n#\n# The full license is in the file COPYING.txt,\
+    \ distributed with this software.\n#\n# SPDX-License-Identifier: (GPL-2.0-or-later\
+    \ WITH Bootloader-exception)\n#-----------------------------------------------------------------------------\n\
+    \nimport fnmatch\nimport glob\nimport hashlib\nimport io\nimport marshal\nimport\
+    \ os\nimport pathlib\nimport platform\nimport shutil\nimport struct\nimport subprocess\n\
+    import sys\nimport zipfile\n\nfrom PyInstaller import compat\nfrom PyInstaller\
+    \ import log as logging\nfrom PyInstaller.compat import EXTENSION_SUFFIXES, is_darwin,\
+    \ is_win, is_linux\nfrom PyInstaller.config import CONF\nfrom PyInstaller.exceptions\
+    \ import InvalidSrcDestTupleError\nfrom PyInstaller.utils import misc\n\nif is_win:\n\
+    \    from PyInstaller.utils.win32 import versioninfo\n\nif is_darwin:\n    import\
+    \ PyInstaller.utils.osx as osxutils\n\nlogger = logging.getLogger(__name__)\n\n\
+    # -- Helpers for checking guts.\n#\n# NOTE: by _GUTS it is meant intermediate\
+    \ files and data structures that PyInstaller creates for bundling files and\n\
+    # creating final executable.\n\n\ndef _check_guts_eq(attr_name, old_value, new_value,\
+    \ last_build):\n    \"\"\"\n    Rebuild is required if values differ.\n    \"\"\
+    \"\n    if old_value != new_value:\n        logger.info(\"Building because %s\
+    \ changed\", attr_name)\n        return True\n    return False\n\n\ndef _check_guts_toc_mtime(attr_name,\
+    \ old_toc, new_toc, last_build):\n    \"\"\"\n    Rebuild is required if mtimes\
+    \ of files listed in old TOC are newer than last_build.\n\n    Use this for calculated/analysed\
+    \ values read from cache.\n    \"\"\"\n    for dest_name, src_name, typecode in\
+    \ old_toc:\n        if misc.mtime(src_name) > last_build:\n            logger.info(\"\
+    Building because %s changed\", src_name)\n            return True\n    return\
+    \ False\n\n\ndef _check_guts_toc(attr_name, old_toc, new_toc, last_build):\n \
+    \   \"\"\"\n    Rebuild is required if either TOC content changed or mtimes of\
+    \ files listed in old TOC are newer than last_build.\n\n    Use this for input\
+    \ parameters.\n    \"\"\"\n    return _check_guts_eq(attr_name, old_toc, new_toc,\
+    \ last_build) or \\\n        _check_guts_toc_mtime(attr_name, old_toc, new_toc,\
+    \ last_build)\n\n\ndef add_suffix_to_extension(dest_name, src_name, typecode):\n\
+    \    \"\"\"\n    Take a TOC entry (dest_name, src_name, typecode) and adjust the\
+    \ dest_name for EXTENSION to include the full library\n    suffix.\n    \"\"\"\
+    \n    # No-op for non-extension\n    if typecode != 'EXTENSION':\n        return\
+    \ dest_name, src_name, typecode\n\n    # If dest_name completely fits into end\
+    \ of the src_name, it has already been processed.\n    if src_name.endswith(dest_name):\n\
+    \        return dest_name, src_name, typecode\n\n    # Change the dotted name\
+    \ into a relative path. This places C extensions in the Python-standard location.\n\
+    \    dest_name = dest_name.replace('.', os.sep)\n    # In some rare cases extension\
+    \ might already contain a suffix. Skip it in this case.\n    if os.path.splitext(dest_name)[1]\
+    \ not in EXTENSION_SUFFIXES:\n        # Determine the base name of the file.\n\
+    \        base_name = os.path.basename(dest_name)\n        assert '.' not in base_name\n\
+    \        # Use this file's existing extension. For extensions such as ``libzmq.cp36-win_amd64.pyd``,\
+    \ we cannot use\n        # ``os.path.splitext``, which would give only the ```.pyd``\
+    \ part of the extension.\n        dest_name = dest_name + os.path.basename(src_name)[len(base_name):]\n\
+    \n    return dest_name, src_name, typecode\n\n\ndef process_collected_binary(\n\
+    \    src_name,\n    dest_name,\n    use_strip=False,\n    use_upx=False,\n   \
+    \ upx_exclude=None,\n    target_arch=None,\n    codesign_identity=None,\n    entitlements_file=None,\n\
+    \    strict_arch_validation=False\n):\n    \"\"\"\n    Process the collected binary\
+    \ using strip or UPX (or both), and apply any platform-specific processing. On\
+    \ macOS,\n    this rewrites the library paths in the headers, and (re-)signs the\
+    \ binary. On-disk cache is used to avoid processing\n    the same binary with\
+    \ same options over and over.\n\n    In addition to given arguments, this function\
+    \ also uses CONF['cachedir'] and CONF['upx_dir'].\n    \"\"\"\n    from PyInstaller.config\
+    \ import CONF\n\n    # We need to use cache in the following scenarios:\n    #\
+    \  * extra binary processing due to use of `strip` or `upx`\n    #  * building\
+    \ on macOS, where we need to rewrite library paths in binaries' headers and (re-)sign\
+    \ the binaries.\n    if not use_strip and not use_upx and not is_darwin:\n   \
+    \     return src_name\n\n    # Match against provided UPX exclude patterns.\n\
+    \    upx_exclude = upx_exclude or []\n    if use_upx:\n        src_path = pathlib.PurePath(src_name)\n\
+    \        for upx_exclude_entry in upx_exclude:\n            # pathlib.PurePath.match()\
+    \ matches from right to left, and supports * wildcard, but does not support the\n\
+    \            # \"**\" syntax for directory recursion. Case sensitivity follows\
+    \ the OS default.\n            if src_path.match(upx_exclude_entry):\n       \
+    \         logger.info(\"Disabling UPX for %s due to match in exclude pattern:\
+    \ %s\", src_name, upx_exclude_entry)\n                use_upx = False\n      \
+    \          break\n\n    # Additional automatic disablement rules for UPX and strip.\n\
+    \n    # On Windows, avoid using UPX with binaries that have control flow guard\
+    \ (CFG) enabled.\n    if use_upx and is_win and versioninfo.pefile_check_control_flow_guard(src_name):\n\
+    \        logger.info('Disabling UPX for %s due to CFG!', src_name)\n        use_upx\
+    \ = False\n\n    # Avoid using UPX with Qt plugins, as it strips the data required\
+    \ by the Qt plugin loader.\n    if use_upx and misc.is_file_qt_plugin(src_name):\n\
+    \        logger.info('Disabling UPX for %s due to it being a Qt plugin!', src_name)\n\
+    \        use_upx = False\n\n    # On linux, if a binary has an accompanying HMAC\
+    \ or CHK file, avoid modifying it in any way.\n    if (use_upx or use_strip) and\
+    \ is_linux:\n        src_path = pathlib.Path(src_name)\n        hmac_path = src_path.with_name(f\"\
+    .{src_path.name}.hmac\")\n        chk_path = src_path.with_suffix(\".chk\")\n\
+    \        if hmac_path.is_file():\n            logger.info('Disabling UPX and/or\
+    \ strip for %s due to accompanying .hmac file!', src_name)\n            use_upx\
+    \ = use_strip = False\n        elif chk_path.is_file():\n            logger.info('Disabling\
+    \ UPX and/or strip for %s due to accompanying .chk file!', src_name)\n       \
+    \     use_upx = use_strip = False\n        del src_path, hmac_path, chk_path\n\
+    \n    # Exit early if no processing is required after above rules are applied.\n\
+    \    if not use_strip and not use_upx and not is_darwin:\n        return src_name\n\
+    \n    # Prepare cache directory path. Cache is tied to python major/minor version,\
+    \ but also to various processing options.\n    pyver = f'py{sys.version_info[0]}{sys.version_info[1]}'\n\
+    \    arch = platform.architecture()[0]\n    cache_dir = os.path.join(\n      \
+    \  CONF['cachedir'],\n        f'bincache{use_strip:d}{use_upx:d}{pyver}{arch}',\n\
+    \    )\n    if target_arch:\n        cache_dir = os.path.join(cache_dir, target_arch)\n\
+    \    if is_darwin:\n        # Separate by codesign identity\n        if codesign_identity:\n\
+    \            # Compute hex digest of codesign identity string to prevent issues\
+    \ with invalid characters.\n            csi_hash = hashlib.sha256(codesign_identity.encode('utf-8'))\n\
+    \            cache_dir = os.path.join(cache_dir, csi_hash.hexdigest())\n     \
+    \   else:\n            cache_dir = os.path.join(cache_dir, 'adhoc')  # ad-hoc\
+    \ signing\n        # Separate by entitlements\n        if entitlements_file:\n\
+    \            # Compute hex digest of entitlements file contents\n            with\
+    \ open(entitlements_file, 'rb') as fp:\n                ef_hash = hashlib.sha256(fp.read())\n\
+    \            cache_dir = os.path.join(cache_dir, ef_hash.hexdigest())\n      \
+    \  else:\n            cache_dir = os.path.join(cache_dir, 'no-entitlements')\n\
+    \    os.makedirs(cache_dir, exist_ok=True)\n\n    # Load cache index, if available\n\
+    \    cache_index_file = os.path.join(cache_dir, \"index.dat\")\n    try:\n   \
+    \     cache_index = misc.load_py_data_struct(cache_index_file)\n    except FileNotFoundError:\n\
+    \        cache_index = {}\n    except Exception:\n        # Tell the user they\
+    \ may want to fix their cache... However, do not delete it for them; if it keeps\
+    \ getting\n        # corrupted, we will never find out.\n        logger.warning(\"\
+    PyInstaller bincache may be corrupted; use pyinstaller --clean to fix it.\")\n\
+    \        raise\n\n    # Look up the file in cache; use case-normalized destination\
+    \ name as identifier.\n    cached_id = os.path.normcase(dest_name)\n    cached_name\
+    \ = os.path.join(cache_dir, dest_name)\n    src_digest = _compute_file_digest(src_name)\n\
+    \n    if cached_id in cache_index:\n        # If digest matches to the cached\
+    \ digest, return the cached file...\n        if src_digest == cache_index[cached_id]:\n\
+    \            return cached_name\n\n        # ... otherwise remove it.\n      \
+    \  os.remove(cached_name)\n\n    # Ensure parent path exists\n    os.makedirs(os.path.dirname(cached_name),\
+    \ exist_ok=True)\n\n    # Use `shutil.copyfile` to copy the file with default\
+    \ permissions bits, then manually set executable\n    # bits. This way, we avoid\
+    \ copying permission bits and metadata from the original file, which might be\
+    \ too\n    # restrictive for further processing (read-only permissions, immutable\
+    \ flag on FreeBSD, and so on).\n    shutil.copyfile(src_name, cached_name)\n \
+    \   os.chmod(cached_name, 0o755)\n\n    # Apply strip\n    if use_strip:\n   \
+    \     strip_options = []\n        if is_darwin:\n            # The default strip\
+    \ behavior breaks some shared libraries under macOS.\n            strip_options\
+    \ = [\"-S\"]  # -S = strip only debug symbols.\n\n        cmd = [\"strip\", *strip_options,\
+    \ cached_name]\n        logger.info(\"Executing: %s\", \" \".join(cmd))\n    \
+    \    try:\n            p = subprocess.run(\n                cmd,\n           \
+    \     stdin=subprocess.DEVNULL,\n                stdout=subprocess.PIPE,\n   \
+    \             stderr=subprocess.STDOUT,\n                check=True,\n       \
+    \         errors='ignore',\n                encoding='utf-8',\n            )\n\
+    \            logger.debug(\"Output from strip command:\\n%s\", p.stdout)\n   \
+    \     except subprocess.CalledProcessError as e:\n            logger.warning(\"\
+    Failed to run strip on %r!\", cached_name, exc_info=True)\n            logger.warning(\"\
+    Output from strip command:\\n%s\", e.stdout)\n        except Exception:\n    \
+    \        logger.warning(\"Failed to run strip on %r!\", cached_name, exc_info=True)\n\
+    \n    # Apply UPX\n    if use_upx:\n        upx_exe = 'upx'\n        upx_dir =\
+    \ CONF['upx_dir']\n        if upx_dir:\n            upx_exe = os.path.join(upx_dir,\
+    \ upx_exe)\n\n        upx_options = [\n            # Do not compress icons, so\
+    \ that they can still be accessed externally.\n            '--compress-icons=0',\n\
+    \            # Use LZMA compression.\n            '--lzma',\n            # Quiet\
+    \ mode.\n            '-q',\n        ]\n        if is_win:\n            # Binaries\
+    \ built with Visual Studio 7.1 require --strip-loadconf or they will not compress.\n\
+    \            upx_options.append('--strip-loadconf')\n\n        cmd = [upx_exe,\
+    \ *upx_options, cached_name]\n        logger.info(\"Executing: %s\", \" \".join(cmd))\n\
+    \        try:\n            p = subprocess.run(\n                cmd,\n       \
+    \         stdin=subprocess.DEVNULL,\n                stdout=subprocess.PIPE,\n\
+    \                stderr=subprocess.STDOUT,\n                check=True,\n    \
+    \            errors='ignore',\n                encoding='utf-8',\n           \
+    \ )\n            logger.debug(\"Output from upx command:\\n%s\", p.stdout)\n \
+    \       except subprocess.CalledProcessError as e:\n            logger.warning(\"\
+    Failed to upx strip on %r!\", cached_name, exc_info=True)\n            logger.warning(\"\
+    Output from upx command:\\n%s\", e.stdout)\n        except Exception:\n      \
+    \      logger.warning(\"Failed to run upx on %r!\", cached_name, exc_info=True)\n\
+    \n    # On macOS, we need to modify the given binary's paths to the dependent\
+    \ libraries, in order to ensure they are\n    # relocatable and always refer to\
+    \ location within the frozen application. Specifically, we make all dependent\n\
+    \    # library paths relative to @rpath, and set @rpath to point to the top-level\
+    \ application directory, relative to\n    # the binary's location (i.e., @loader_path).\n\
+    \    #\n    # While modifying the headers invalidates existing signatures, we\
+    \ avoid removing them in order to speed things up\n    # (and to avoid potential\
+    \ bugs in the codesign utility, like the one reported on macOS 10.13 in #6167).\n\
+    \    # The forced re-signing at the end should take care of the invalidated signatures.\n\
+    \    if is_darwin:\n        try:\n            osxutils.binary_to_target_arch(cached_name,\
+    \ target_arch, display_name=src_name)\n            #osxutils.remove_signature_from_binary(cached_name)\
+    \  # Disabled as per comment above.\n            target_rpath = str(\n       \
+    \         pathlib.PurePath('@loader_path', *['..' for level in pathlib.PurePath(dest_name).parent.parts])\n\
+    \            )\n            osxutils.set_dylib_dependency_paths(cached_name, target_rpath)\n\
+    \            osxutils.sign_binary(cached_name, codesign_identity, entitlements_file)\n\
+    \        except osxutils.InvalidBinaryError:\n            # Raised by osxutils.binary_to_target_arch\
+    \ when the given file is not a valid macOS binary (for example,\n            #\
+    \ a linux .so file; see issue #6327). The error prevents any further processing,\
+    \ so just ignore it.\n            pass\n        except osxutils.IncompatibleBinaryArchError:\n\
+    \            # Raised by osxutils.binary_to_target_arch when the given file does\
+    \ not contain (all) required arch slices.\n            # Depending on the strict\
+    \ validation mode, re-raise or swallow the error.\n            #\n           \
+    \ # Strict validation should be enabled only for binaries where the architecture\
+    \ *must* match the target one,\n            # i.e., the extension modules. Everything\
+    \ else is pretty much a gray area, for example:\n            #  * a universal2\
+    \ extension may have its x86_64 and arm64 slices linked against distinct single-arch/thin\n\
+    \            #    shared libraries\n            #  * a collected executable that\
+    \ is launched by python code via a subprocess can be x86_64-only, even though\n\
+    \            #    the actual python code is running on M1 in native arm64 mode.\n\
+    \            if strict_arch_validation:\n                raise\n            logger.debug(\"\
+    File %s failed optional architecture validation - collecting as-is!\", src_name)\n\
+    \        except Exception as e:\n            raise SystemError(f\"Failed to process\
+    \ binary {cached_name!r}!\") from e\n\n    # Update cache index\n    cache_index[cached_id]\
+    \ = src_digest\n    misc.save_py_data_struct(cache_index_file, cache_index)\n\n\
+    \    return cached_name\n\n\ndef _compute_file_digest(filename):\n    hasher =\
+    \ hashlib.sha1()\n    with open(filename, \"rb\") as fp:\n        for chunk in\
+    \ iter(lambda: fp.read(16 * 1024), b\"\"):\n            hasher.update(chunk)\n\
+    \    return bytearray(hasher.digest())\n\n\ndef _check_path_overlap(path):\n \
+    \   \"\"\"\n    Check that path does not overlap with WORKPATH or SPECPATH (i.e.,\
+    \ WORKPATH and SPECPATH may not start with path,\n    which could be caused by\
+    \ a faulty hand-edited specfile).\n\n    Raise SystemExit if there is overlap,\
+    \ return True otherwise\n    \"\"\"\n    from PyInstaller.config import CONF\n\
+    \    specerr = 0\n    if CONF['workpath'].startswith(path):\n        logger.error('Specfile\
+    \ error: The output path \"%s\" contains WORKPATH (%s)', path, CONF['workpath'])\n\
+    \        specerr += 1\n    if CONF['specpath'].startswith(path):\n        logger.error('Specfile\
+    \ error: The output path \"%s\" contains SPECPATH (%s)', path, CONF['specpath'])\n\
+    \        specerr += 1\n    if specerr:\n        raise SystemExit(\n          \
+    \  'Error: Please edit/recreate the specfile (%s) and set a different output name\
+    \ (e.g. \"dist\").' %\n            CONF['spec']\n        )\n    return True\n\n\
+    \ndef _make_clean_directory(path):\n    \"\"\"\n    Create a clean directory from\
+    \ the given directory name.\n    \"\"\"\n    if _check_path_overlap(path):\n \
+    \       if os.path.isdir(path) or os.path.isfile(path):\n            try:\n  \
+    \              os.remove(path)\n            except OSError:\n                _rmtree(path)\n\
+    \n        os.makedirs(path, exist_ok=True)\n\n\ndef _rmtree(path):\n    \"\"\"\
+    \n    Remove directory and all its contents, but only after user confirmation,\
+    \ or if the -y option is set.\n    \"\"\"\n    from PyInstaller.config import\
+    \ CONF\n    if CONF['noconfirm']:\n        choice = 'y'\n    elif sys.stdout.isatty():\n\
+    \        choice = input(\n            'WARNING: The output directory \"%s\" and\
+    \ ALL ITS CONTENTS will be REMOVED! Continue? (y/N)' % path\n        )\n    else:\n\
+    \        raise SystemExit(\n            'Error: The output directory \"%s\" is\
+    \ not empty. Please remove all its contents or use the -y option (remove'\n  \
+    \          ' output directory without confirmation).' % path\n        )\n    if\
+    \ choice.strip().lower() == 'y':\n        if not CONF['noconfirm']:\n        \
+    \    print(\"On your own risk, you can use the option `--noconfirm` to get rid\
+    \ of this question.\")\n        logger.info('Removing dir %s', path)\n       \
+    \ shutil.rmtree(path)\n    else:\n        raise SystemExit('User aborted')\n\n\
+    \n# TODO Refactor to prohibit empty target directories. As the docstring below\
+    \ documents, this function currently permits\n# the second item of each 2-tuple\
+    \ in \"hook.datas\" to be the empty string, in which case the target directory\
+    \ defaults to\n# the source directory's basename. However, this functionality\
+    \ is very fragile and hence bad. Instead:\n#\n# * An exception should be raised\
+    \ if such item is empty.\n# * All hooks currently passing the empty string for\
+    \ such item (e.g.,\n#   \"hooks/hook-babel.py\", \"hooks/hook-matplotlib.py\"\
+    ) should be refactored\n#   to instead pass such basename.\ndef format_binaries_and_datas(binaries_or_datas,\
+    \ workingdir=None):\n    \"\"\"\n    Convert the passed list of hook-style 2-tuples\
+    \ into a returned set of `TOC`-style 2-tuples.\n\n    Elements of the passed list\
+    \ are 2-tuples `(source_dir_or_glob, target_dir)`.\n    Elements of the returned\
+    \ set are 2-tuples `(target_file, source_file)`.\n    For backwards compatibility,\
+    \ the order of elements in the former tuples are the reverse of the order of elements\
+    \ in\n    the latter tuples!\n\n    Parameters\n    ----------\n    binaries_or_datas\
+    \ : list\n        List of hook-style 2-tuples (e.g., the top-level `binaries`\
+    \ and `datas` attributes defined by hooks) whose:\n        * The first element\
+    \ is either:\n          * A glob matching only the absolute or relative paths\
+    \ of source non-Python data files.\n          * The absolute or relative path\
+    \ of a source directory containing only source non-Python data files.\n      \
+    \  * The second element is the relative path of the target directory into which\
+    \ these source files will be\n          recursively copied.\n\n        If the\
+    \ optional `workingdir` parameter is passed, source paths may be either absolute\
+    \ or relative; else, source\n        paths _must_ be absolute.\n    workingdir\
+    \ : str\n        Optional absolute path of the directory to which all relative\
+    \ source paths in the `binaries_or_datas`\n        parameter will be prepended\
+    \ by (and hence converted into absolute paths) _or_ `None` if these paths are\
+    \ to be\n        preserved as relative. Defaults to `None`.\n\n    Returns\n \
+    \   ----------\n    set\n        Set of `TOC`-style 2-tuples whose:\n        *\
+    \ First element is the absolute or relative path of a target file.\n        *\
+    \ Second element is the absolute or relative path of the corresponding source\
+    \ file to be copied to this target\n          file.\n    \"\"\"\n    toc_datas\
+    \ = set()\n\n    for src_root_path_or_glob, trg_root_dir in binaries_or_datas:\n\
+    \        # Disallow empty source path. Those are typically result of errors, and\
+    \ result in implicit collection of the\n        # whole current working directory,\
+    \ which is never a good idea.\n        if not src_root_path_or_glob:\n       \
+    \     raise InvalidSrcDestTupleError(\n                (src_root_path_or_glob,\
+    \ trg_root_dir),\n                \"Empty SRC is not allowed when adding binary\
+    \ and data files, as it would result in collection of the \"\n               \
+    \ \"whole current working directory.\"\n            )\n        if not trg_root_dir:\n\
+    \            raise InvalidSrcDestTupleError(\n                (src_root_path_or_glob,\
+    \ trg_root_dir),\n                \"Empty DEST_DIR is not allowed - to collect\
+    \ files into application's top-level directory, use \"\n                f\"{os.curdir!r}.\"\
+    \n            )\n        # Disallow absolute target paths, as well as target paths\
+    \ that would end up pointing outside of the\n        # application's top-level\
+    \ directory.\n        if os.path.isabs(trg_root_dir):\n            raise InvalidSrcDestTupleError((src_root_path_or_glob,\
+    \ trg_root_dir), \"DEST_DIR must be a relative path!\")\n        if os.path.normpath(trg_root_dir).startswith('..'):\n\
+    \            raise InvalidSrcDestTupleError(\n                (src_root_path_or_glob,\
+    \ trg_root_dir),\n                \"DEST_DIR must not point outside of application's\
+    \ top-level directory!\",\n            )\n\n        # Convert relative to absolute\
+    \ paths if required.\n        if workingdir and not os.path.isabs(src_root_path_or_glob):\n\
+    \            src_root_path_or_glob = os.path.join(workingdir, src_root_path_or_glob)\n\
+    \n        # Normalize paths.\n        src_root_path_or_glob = os.path.normpath(src_root_path_or_glob)\n\
+    \        if os.path.isfile(src_root_path_or_glob):\n            src_root_paths\
+    \ = [src_root_path_or_glob]\n        else:\n            # List of the absolute\
+    \ paths of all source paths matching the current glob.\n            src_root_paths\
+    \ = glob.glob(src_root_path_or_glob)\n\n        if not src_root_paths:\n     \
+    \       raise SystemExit(f'Unable to find {src_root_path_or_glob!r} when adding\
+    \ binary and data files.')\n\n        for src_root_path in src_root_paths:\n \
+    \           if os.path.isfile(src_root_path):\n                # Normalizing the\
+    \ result to remove redundant relative paths (e.g., removing \"./\" from \"trg/./file\"\
+    ).\n                toc_datas.add((\n                    os.path.normpath(os.path.join(trg_root_dir,\
+    \ os.path.basename(src_root_path))),\n                    os.path.normpath(src_root_path),\n\
+    \                ))\n            elif os.path.isdir(src_root_path):\n        \
+    \        for src_dir, src_subdir_basenames, src_file_basenames in os.walk(src_root_path):\n\
+    \                    # Ensure the current source directory is a subdirectory of\
+    \ the passed top-level source directory.\n                    # Since os.walk()\
+    \ does *NOT* follow symlinks by default, this should be the case. (But let's make\n\
+    \                    # sure.)\n                    assert src_dir.startswith(src_root_path)\n\
+    \n                    # Relative path of the current target directory, obtained\
+    \ by:\n                    #\n                    # * Stripping the top-level\
+    \ source directory from the current source directory (e.g., removing\n       \
+    \             #   \"/top\" from \"/top/dir\").\n                    # * Normalizing\
+    \ the result to remove redundant relative paths (e.g., removing \"./\" from\n\
+    \                    #   \"trg/./file\").\n                    trg_dir = os.path.normpath(os.path.join(trg_root_dir,\
+    \ os.path.relpath(src_dir, src_root_path)))\n\n                    for src_file_basename\
+    \ in src_file_basenames:\n                        src_file = os.path.join(src_dir,\
+    \ src_file_basename)\n                        if os.path.isfile(src_file):\n \
+    \                           # Normalize the result to remove redundant relative\
+    \ paths (e.g., removing \"./\" from\n                            # \"trg/./file\"\
+    ).\n                            toc_datas.add((\n                            \
+    \    os.path.normpath(os.path.join(trg_dir, src_file_basename)), os.path.normpath(src_file)\n\
+    \                            ))\n\n    return toc_datas\n\n\ndef get_code_object(modname,\
+    \ filename, optimize):\n    \"\"\"\n    Get the code-object for a module.\n\n\
+    \    This is a simplifed non-performant version which circumvents __pycache__.\n\
+    \    \"\"\"\n\n    if filename in ('-', None):\n        # This is a NamespacePackage,\
+    \ modulegraph marks them by using the filename '-'. (But wants to use None, so\n\
+    \        # check for None, too, to be forward-compatible.)\n        logger.debug('Compiling\
+    \ namespace package %s', modname)\n        txt = '#\\n'\n        code_object =\
+    \ compile(txt, filename, 'exec', optimize=optimize)\n    else:\n        _, ext\
+    \ = os.path.splitext(filename)\n        ext = ext.lower()\n\n        if ext ==\
+    \ '.pyc':\n            # The module is available in binary-only form. Read the\
+    \ contents of .pyc file using helper function, which\n            # supports reading\
+    \ from either stand-alone or archive-embedded .pyc files.\n            logger.debug('Reading\
+    \ code object from .pyc file %s', filename)\n            pyc_data = _read_pyc_data(filename)\n\
+    \            code_object = marshal.loads(pyc_data[16:])\n        else:\n     \
+    \       # Assume this is a source .py file, but allow an arbitrary extension (other\
+    \ than .pyc, which is taken in\n            # the above branch). This allows entry-point\
+    \ scripts to have an arbitrary (or no) extension, as tested by\n            #\
+    \ the `test_arbitrary_ext` in `test_basic.py`.\n            logger.debug('Compiling\
+    \ python script/module file %s', filename)\n\n            with open(filename,\
+    \ 'rb') as f:\n                source = f.read()\n\n            # If entry-point\
+    \ script has no suffix, append .py when compiling the source. In POSIX builds,\
+    \ the executable\n            # has no suffix either; this causes issues with\
+    \ `traceback` module, as it tries to read the executable file\n            # when\
+    \ trying to look up the code for the entry-point script (when current working\
+    \ directory contains the\n            # executable).\n            _, ext = os.path.splitext(filename)\n\
+    \            if not ext:\n                logger.debug(\"Appending .py to compiled\
+    \ entry-point name...\")\n                filename += '.py'\n\n            try:\n\
+    \                code_object = compile(source, filename, 'exec', optimize=optimize)\n\
+    \            except SyntaxError:\n                logger.warning(\"Sytnax error\
+    \ while compiling %s\", filename)\n                raise\n\n    return code_object\n\
+    \n\ndef strip_paths_in_code(co, new_filename=None):\n    # Paths to remove from\
+    \ filenames embedded in code objects\n    replace_paths = sys.path + CONF['pathex']\n\
+    \    # Make sure paths end with os.sep and the longest paths are first\n    replace_paths\
+    \ = sorted((os.path.join(f, '') for f in replace_paths), key=len, reverse=True)\n\
+    \n    if new_filename is None:\n        original_filename = os.path.normpath(co.co_filename)\n\
+    \        for f in replace_paths:\n            if original_filename.startswith(f):\n\
+    \                new_filename = original_filename[len(f):]\n                break\n\
+    \n        else:\n            return co\n\n    code_func = type(co)\n\n    consts\
+    \ = tuple(\n        strip_paths_in_code(const_co, new_filename) if isinstance(const_co,\
+    \ code_func) else const_co\n        for const_co in co.co_consts\n    )\n\n  \
+    \  return co.replace(co_consts=consts, co_filename=new_filename)\n\n\ndef _should_include_system_binary(binary_tuple,\
+    \ exceptions):\n    \"\"\"\n    Return True if the given binary_tuple describes\
+    \ a system binary that should be included.\n\n    Exclude all system library binaries\
+    \ other than those with \"lib-dynload\" in the destination or \"python\" in the\n\
+    \    source, except for those matching the patterns in the exceptions list. Intended\
+    \ to be used from the Analysis\n    exclude_system_libraries method.\n    \"\"\
+    \"\n    dest = binary_tuple[0]\n    if dest.startswith('lib-dynload'):\n     \
+    \   return True\n    src = binary_tuple[1]\n    if fnmatch.fnmatch(src, '*python*'):\n\
+    \        return True\n    if not src.startswith('/lib') and not src.startswith('/usr/lib'):\n\
+    \        return True\n    for exception in exceptions:\n        if fnmatch.fnmatch(dest,\
+    \ exception):\n            return True\n    return False\n\n\ndef compile_pymodule(name,\
+    \ src_path, workpath, optimize, code_cache=None):\n    \"\"\"\n    Given the name\
+    \ and source file for a pure-python module, compile the module in the specified\
+    \ working directory,\n    and return the name of resulting .pyc file. The paths\
+    \ in the resulting .pyc module are anonymized by having their\n    absolute prefix\
+    \ removed.\n\n    If a .pyc file with matching name already exists in the target\
+    \ working directory, it is re-used (provided it has\n    compatible bytecode magic\
+    \ in the header, and that its modification time is newer than that of the source\
+    \ file).\n\n    If the specified module is available in binary-only form, the\
+    \ input .pyc file is copied to the target working\n    directory and post-processed.\
+    \ If the specified module is available in source form, it is compiled only if\n\
+    \    corresponding code object is not available in the optional code-object cache;\
+    \ otherwise, it is copied from cache\n    and post-processed. When compiling the\
+    \ module, the specified byte-code optimization level is used.\n\n    It is up\
+    \ to caller to ensure that the optional code-object cache contains only code-objects\
+    \ of target optimization\n    level, and that if the specified working directory\
+    \ already contains .pyc files, that they were created with target\n    optimization\
+    \ level.\n    \"\"\"\n\n    # Construct the target .pyc filename in the workpath\n\
+    \    split_name = name.split(\".\")\n    if \"__init__\" in src_path:\n      \
+    \  # __init__ module; use \"__init__\" as module name, and construct parent path\
+    \ using all components of the\n        # fully-qualified name\n        parent_dirs\
+    \ = split_name\n        mod_basename = \"__init__\"\n    else:\n        # Regular\
+    \ module; use last component of the fully-qualified name as module name, and the\
+    \ rest as the parent\n        # path.\n        parent_dirs = split_name[:-1]\n\
+    \        mod_basename = split_name[-1]\n    pyc_path = os.path.join(workpath,\
+    \ *parent_dirs, mod_basename + '.pyc')\n\n    # Check if optional cache contains\
+    \ module entry\n    code_object = code_cache.get(name, None) if code_cache else\
+    \ None\n\n    if code_object is None:\n        _, ext = os.path.splitext(src_path)\n\
+    \        ext = ext.lower()\n\n        if ext == '.py':\n            # Source py\
+    \ file; read source and compile it.\n            with open(src_path, 'rb') as\
+    \ f:\n                src_data = f.read()\n            code_object = compile(src_data,\
+    \ src_path, 'exec', optimize=optimize)\n        elif ext == '.pyc':\n        \
+    \    # The module is available in binary-only form. Read the contents of .pyc\
+    \ file using helper function, which\n            # supports reading from either\
+    \ stand-alone or archive-embedded .pyc files.\n            pyc_data = _read_pyc_data(src_path)\n\
+    \            # Unmarshal code object; this is necessary if we want to strip paths\
+    \ from it\n            code_object = marshal.loads(pyc_data[16:])\n        else:\n\
+    \            raise ValueError(f\"Invalid python module file {src_path}; unhandled\
+    \ extension {ext}!\")\n\n    # Strip code paths from the code object\n    code_object\
+    \ = strip_paths_in_code(code_object)\n\n    # Write complete .pyc module to in-memory\
+    \ stream. Then, check if .pyc file already exists, compare contents, and\n   \
+    \ # (re)write it only if different. This avoids unnecessary (re)writing of the\
+    \ file, and in turn also avoids\n    # unnecessary cache invalidation for targets\
+    \ that make use of the .pyc file (e.g., PKG, COLLECT).\n    with io.BytesIO()\
+    \ as pyc_stream:\n        pyc_stream.write(compat.BYTECODE_MAGIC)\n        pyc_stream.write(struct.pack('<I',\
+    \ 0b01))  # PEP-552: hash-based pyc, check_source=False\n        pyc_stream.write(b'\\\
+    00' * 8)  # Zero the source hash\n        marshal.dump(code_object, pyc_stream)\n\
+    \        pyc_data = pyc_stream.getvalue()\n\n    if os.path.isfile(pyc_path):\n\
+    \        with open(pyc_path, 'rb') as fh:\n            existing_pyc_data = fh.read()\n\
+    \        if pyc_data == existing_pyc_data:\n            return pyc_path  # Return\
+    \ path to (existing) file.\n\n    # Ensure the existence of parent directories\
+    \ for the target pyc path\n    os.makedirs(os.path.dirname(pyc_path), exist_ok=True)\n\
+    \n    # Write\n    with open(pyc_path, 'wb') as fh:\n        fh.write(pyc_data)\n\
+    \n    # Return output path\n    return pyc_path\n\n\ndef _read_pyc_data(filename):\n\
+    \    \"\"\"\n    Helper for reading data from .pyc files. Supports both stand-alone\
+    \ and archive-embedded .pyc files. Used by\n    `compile_pymodule` and `get_code_object`\
+    \ helper functions.\n    \"\"\"\n    src_file = pathlib.Path(filename)\n\n   \
+    \ if src_file.is_file():\n        # Stand-alone .pyc file.\n        pyc_data =\
+    \ src_file.read_bytes()\n    else:\n        # Check if .pyc file is stored in\
+    \ a .zip archive, as is the case for stdlib modules in embeddable\n        # python\
+    \ on Windows.\n        parent_zip_file = misc.path_to_parent_archive(src_file)\n\
+    \        if parent_zip_file is not None and zipfile.is_zipfile(parent_zip_file):\n\
+    \            with zipfile.ZipFile(parent_zip_file, 'r') as zip_archive:\n    \
+    \            # NOTE: zip entry names must be in POSIX format, even on Windows!\n\
+    \                zip_entry_name = str(src_file.relative_to(parent_zip_file).as_posix())\n\
+    \                pyc_data = zip_archive.read(zip_entry_name)\n        else:\n\
+    \            raise FileNotFoundError(f\"Cannot find .pyc file {filename!r}!\"\
+    )\n\n        # Verify the python version\n        if pyc_data[:4] != compat.BYTECODE_MAGIC:\n\
+    \            raise ValueError(f\"The .pyc module {filename} was compiled for incompatible\
+    \ version of python!\")\n\n    return pyc_data\n\n\ndef postprocess_binaries_toc_pywin32(binaries):\n\
+    \    \"\"\"\n    Process the given `binaries` TOC list to apply work around for\
+    \ `pywin32` package, fixing the target directory\n    for collected extensions.\n\
+    \    \"\"\"\n    # Ensure that all files collected from `win32`  or `pythonwin`\
+    \ into top-level directory are put back into\n    # their corresponding directories.\
+    \ They end up in top-level directory because `pywin32.pth` adds both\n    # directories\
+    \ to the `sys.path`, so they end up visible as top-level directories. But these\
+    \ extensions\n    # might in fact be linked against each other, so we should preserve\
+    \ the directory layout for consistency\n    # between modulegraph-discovered extensions\
+    \ and linked binaries discovered by link-time dependency analysis.\n    # Within\
+    \ the same framework, also consider `pywin32_system32`, just in case.\n    PYWIN32_SUBDIRS\
+    \ = {'win32', 'pythonwin', 'pywin32_system32'}\n\n    processed_binaries = []\n\
+    \    for dest_name, src_name, typecode in binaries:\n        dest_path = pathlib.PurePath(dest_name)\n\
+    \        src_path = pathlib.PurePath(src_name)\n\n        if dest_path.parent\
+    \ == pathlib.PurePath('.') and src_path.parent.name.lower() in PYWIN32_SUBDIRS:\n\
+    \            dest_path = pathlib.PurePath(src_path.parent.name) / dest_path\n\
+    \            dest_name = str(dest_path)\n\n        processed_binaries.append((dest_name,\
+    \ src_name, typecode))\n\n    return processed_binaries\n\n\ndef postprocess_binaries_toc_pywin32_anaconda(binaries):\n\
+    \    \"\"\"\n    Process the given `binaries` TOC list to apply work around for\
+    \ Anaconda `pywin32` package, fixing the location\n    of collected `pywintypes3X.dll`\
+    \ and `pythoncom3X.dll`.\n    \"\"\"\n    # The Anaconda-provided `pywin32` package\
+    \ installs three copies of `pywintypes3X.dll` and `pythoncom3X.dll`,\n    # located\
+    \ in the following directories (relative to the environment):\n    # - Library/bin\n\
+    \    # - Lib/site-packages/pywin32_system32\n    # - Lib/site-packages/win32\n\
+    \    #\n    # This turns our dependency scanner and directory layout preservation\
+    \ mechanism into a lottery based on what\n    # `pywin32` modules are imported\
+    \ and in what order. To keep things simple, we deal with this insanity by\n  \
+    \  # post-processing the `binaries` list, modifying the destination of offending\
+    \ copies, and let the final TOC\n    # list normalization deal with potential\
+    \ duplicates.\n    DLL_CANDIDATES = {\n        f\"pywintypes{sys.version_info[0]}{sys.version_info[1]}.dll\"\
+    ,\n        f\"pythoncom{sys.version_info[0]}{sys.version_info[1]}.dll\",\n   \
+    \ }\n\n    DUPLICATE_DIRS = {\n        pathlib.PurePath('.'),\n        pathlib.PurePath('win32'),\n\
+    \    }\n\n    processed_binaries = []\n    for dest_name, src_name, typecode in\
+    \ binaries:\n        # Check if we need to divert - based on the destination base\
+    \ name and destination parent directory.\n        dest_path = pathlib.PurePath(dest_name)\n\
+    \        if dest_path.name.lower() in DLL_CANDIDATES and dest_path.parent in DUPLICATE_DIRS:\n\
+    \            dest_path = pathlib.PurePath(\"pywin32_system32\") / dest_path.name\n\
+    \            dest_name = str(dest_path)\n\n        processed_binaries.append((dest_name,\
+    \ src_name, typecode))\n\n    return processed_binaries\n\n\ndef create_base_library_zip(filename,\
+    \ modules_toc, code_cache=None):\n    \"\"\"\n    Create a zip archive with python\
+    \ modules that are needed during python interpreter initialization.\n    \"\"\"\
+    \n    with zipfile.ZipFile(filename, 'w') as zf:\n        for name, src_path,\
+    \ typecode in modules_toc:\n            # Obtain code object from cache, or compile\
+    \ it.\n            code = None if code_cache is None else code_cache.get(name,\
+    \ None)\n            if code is None:\n                optim_level = {'PYMODULE':\
+    \ 0, 'PYMODULE-1': 1, 'PYMODULE-2': 2}[typecode]\n                code = get_code_object(name,\
+    \ src_path, optimize=optim_level)\n            # Determine destination name\n\
+    \            dest_name = name.replace('.', os.sep)\n            # Special case:\
+    \ packages have an implied `__init__` filename that needs to be added.\n     \
+    \       basename, ext = os.path.splitext(os.path.basename(src_path))\n       \
+    \     if basename == '__init__':\n                dest_name += os.sep + '__init__'\n\
+    \            dest_name += '.pyc'  # Always .pyc, regardless of optimization level.\n\
+    \            # Write the .pyc module\n            with io.BytesIO() as fc:\n \
+    \               fc.write(compat.BYTECODE_MAGIC)\n                fc.write(struct.pack('<I',\
+    \ 0b01))  # PEP-552: hash-based pyc, check_source=False\n                fc.write(b'\\\
+    00' * 8)  # Match behavior of `building.utils.compile_pymodule`\n            \
+    \    code = strip_paths_in_code(code)  # Strip paths\n                marshal.dump(code,\
+    \ fc)\n                # Use a ZipInfo to set timestamp for deterministic build.\n\
+    \                info = zipfile.ZipInfo(dest_name)\n                zf.writestr(info,\
+    \ fc.getvalue())\n\nOutput the complete test file, code only, no explanations.\n\
+    ### Time\nCurrent time: 2025-03-15 16:26:46\n"
+  role: user
