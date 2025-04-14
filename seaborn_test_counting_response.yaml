@@ -1,0 +1,24 @@
+response: "```python\nimport numpy as np\nimport pandas as pd\nimport pytest\nfrom\
+  \ seaborn._core.groupby import GroupBy\nfrom seaborn._core.scales import Continuous,\
+  \ Nominal\nfrom seaborn._stats.counting import Count, Hist\n\n\ndef test_count_basic(dataframe):\n\
+  \n    stat = Count()\n    groupby = GroupBy([\"a\"])\n\n    out = stat(dataframe,\
+  \ groupby, \"y\", {})\n    expected = pd.DataFrame({\n        \"x\": [.5, 1.5, 2.5],\n\
+  \        \"y\": [2, 2, 2],\n        \"a\": [\"a\", \"b\", \"c\"],\n    })\n\n  \
+  \  assert out.equals(expected)\n\n\ndef test_count_dropna(dataframe):\n\n    stat\
+  \ = Count()\n    groupby = GroupBy([\"a\"])\n\n    dataframe.loc[5, \"x\"] = np.nan\n\
+  \n    out = stat(dataframe, groupby, \"y\", {})\n    expected = pd.DataFrame({\n\
+  \        \"x\": [.5, 1.5, 2.5],\n        \"y\": [2, 2, 1],\n        \"a\": [\"a\"\
+  , \"b\", \"c\"],\n    })\n\n    assert out.equals(expected)\n\n\n@pytest.mark.parametrize(\"\
+  orient\", [\"x\", \"y\"])\ndef test_hist_basic(dataframe, orient):\n\n    stat =\
+  \ Hist()\n    groupby = GroupBy([\"b\"])\n\n    out = stat(dataframe, groupby, orient,\
+  \ {\"x\": Continuous()})\n    expected = pd.DataFrame({\n        orient: [0, 1,\
+  \ 2, 0, 1, 2],\n        \"count\": [1, 0, 1, 1, 0, 1],\n        \"space\": [1, 1,\
+  \ 1, 1, 1, 1],\n        {\"x\": \"y\", \"y\": \"x\"}[orient]: [1, 0, 1, 1, 0, 1],\n\
+  \        \"b\": [\"m\", \"m\", \"m\", \"n\", \"n\", \"n\"],\n    })\n\n    assert\
+  \ out.equals(expected)\n\n\ndef test_hist_categorical(dataframe):\n\n    stat =\
+  \ Hist(bins=[0, 1, 2])\n    groupby = GroupBy([\"a\"])\n\n    out = stat(dataframe,\
+  \ groupby, \"x\", {\"x\": Nominal()})\n    expected = pd.DataFrame({\n        \"\
+  x\": [.5, 1.5, .5, 1.5, .5, 1.5],\n        \"count\": [1, 1, 1, 1, 1, 1],\n    \
+  \    \"space\": [1, 1, 1, 1, 1, 1],\n        \"y\": [1, 1, 1, 1, 1, 1],\n      \
+  \  \"a\": [\"a\", \"a\", \"b\", \"b\", \"c\", \"c\"],\n    })\n\n    assert out.equals(expected)\n\
+  \n```"

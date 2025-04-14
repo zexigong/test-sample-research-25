@@ -1,0 +1,118 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: hug\nTest File Path: hug\\test_middleware\\\
+    test_middleware.py\nProject Programming Language: python\nTesting Framework: pytest\n\
+    ### Source File Content\n### Source File Content:\n\"\"\"hug/middleware.py\n\n\
+    A collection of useful middlewares to automate common hug functionality\n\nPermission\
+    \ is hereby granted, free of charge, to any person obtaining a copy of this software\
+    \ and associated\ndocumentation files (the \"Software\"), to deal in the Software\
+    \ without restriction, including without limitation\nthe rights to use, copy,\
+    \ modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,\
+    \ and\nto permit persons to whom the Software is furnished to do so, subject to\
+    \ the following conditions:\n\nThe above copyright notice and this permission\
+    \ notice shall be included in all copies or\nsubstantial portions of the Software.\n\
+    \nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\
+    \ IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES OF MERCHANTABILITY, FITNESS\
+    \ FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL\nTHE AUTHORS\
+    \ OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER\
+    \ IN AN ACTION OF\nCONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION\
+    \ WITH THE SOFTWARE OR THE USE OR\nOTHER DEALINGS IN THE SOFTWARE.\n\n\"\"\"\n\
+    from __future__ import absolute_import\n\nimport logging\nimport re\nimport uuid\n\
+    from datetime import datetime\n\n\nclass SessionMiddleware(object):\n    \"\"\"\
+    Simple session middleware.\n\n    Injects a session dictionary into the context\
+    \ of a request, sets a session cookie,\n    and stores/restores data via a coupled\
+    \ store object.\n\n    A session store object must implement the following methods:\n\
+    \    * get(session_id) - return session data\n    * exists(session_id) - return\
+    \ boolean if session ID exists or not\n    * set(session_id, session_data) - save\
+    \ session data for given session ID\n\n    The name of the context key can be\
+    \ set via the 'context_name' argument.\n    The cookie arguments are the same\
+    \ as for falcons set_cookie() function, just prefixed with 'cookie_'.\n    \"\"\
+    \"\n\n    __slots__ = (\n        \"store\",\n        \"context_name\",\n     \
+    \   \"cookie_name\",\n        \"cookie_expires\",\n        \"cookie_max_age\"\
+    ,\n        \"cookie_domain\",\n        \"cookie_path\",\n        \"cookie_secure\"\
+    ,\n        \"cookie_http_only\",\n    )\n\n    def __init__(\n        self,\n\
+    \        store,\n        context_name=\"session\",\n        cookie_name=\"sid\"\
+    ,\n        cookie_expires=None,\n        cookie_max_age=None,\n        cookie_domain=None,\n\
+    \        cookie_path=None,\n        cookie_secure=True,\n        cookie_http_only=True,\n\
+    \    ):\n        self.store = store\n        self.context_name = context_name\n\
+    \        self.cookie_name = cookie_name\n        self.cookie_expires = cookie_expires\n\
+    \        self.cookie_max_age = cookie_max_age\n        self.cookie_domain = cookie_domain\n\
+    \        self.cookie_path = cookie_path\n        self.cookie_secure = cookie_secure\n\
+    \        self.cookie_http_only = cookie_http_only\n\n    def generate_sid(self):\n\
+    \        \"\"\"Generate a UUID4 string.\"\"\"\n        return str(uuid.uuid4())\n\
+    \n    def process_request(self, request, response):\n        \"\"\"Get session\
+    \ ID from cookie, load corresponding session data from coupled store and inject\
+    \ session data into\n            the request context.\n        \"\"\"\n      \
+    \  sid = request.cookies.get(self.cookie_name, None)\n        data = {}\n    \
+    \    if sid is not None:\n            if self.store.exists(sid):\n           \
+    \     data = self.store.get(sid)\n        request.context.update({self.context_name:\
+    \ data})\n\n    def process_response(self, request, response, resource, req_succeeded):\n\
+    \        \"\"\"Save request context in coupled store object. Set cookie containing\
+    \ a session ID.\"\"\"\n        sid = request.cookies.get(self.cookie_name, None)\n\
+    \        if sid is None or not self.store.exists(sid):\n            sid = self.generate_sid()\n\
+    \n        self.store.set(sid, request.context.get(self.context_name, {}))\n  \
+    \      response.set_cookie(\n            self.cookie_name,\n            sid,\n\
+    \            expires=self.cookie_expires,\n            max_age=self.cookie_max_age,\n\
+    \            domain=self.cookie_domain,\n            path=self.cookie_path,\n\
+    \            secure=self.cookie_secure,\n            http_only=self.cookie_http_only,\n\
+    \        )\n\n\nclass LogMiddleware(object):\n    \"\"\"A middleware that logs\
+    \ all incoming requests and outgoing responses that make their way through the\
+    \ API\"\"\"\n\n    __slots__ = (\"logger\",)\n\n    def __init__(self, logger=None):\n\
+    \        self.logger = logger if logger is not None else logging.getLogger(\"\
+    hug\")\n\n    def _generate_combined_log(self, request, response):\n        \"\
+    \"\"Given a request/response pair, generate a logging format similar to the NGINX\
+    \ combined style.\"\"\"\n        current_time = datetime.utcnow()\n        data_len\
+    \ = \"-\" if response.data is None else len(response.data)\n        return \"\
+    {0} - - [{1}] {2} {3} {4} {5} {6}\".format(\n            request.remote_addr,\n\
+    \            current_time,\n            request.method,\n            request.relative_uri,\n\
+    \            response.status,\n            data_len,\n            request.user_agent,\n\
+    \        )\n\n    def process_request(self, request, response):\n        \"\"\"\
+    Logs the basic endpoint requested\"\"\"\n        self.logger.info(\n         \
+    \   \"Requested: {0} {1} {2}\".format(\n                request.method, request.relative_uri,\
+    \ request.content_type\n            )\n        )\n\n    def process_response(self,\
+    \ request, response, resource, req_succeeded):\n        \"\"\"Logs the basic data\
+    \ returned by the API\"\"\"\n        self.logger.info(self._generate_combined_log(request,\
+    \ response))\n\n\nclass CORSMiddleware(object):\n    \"\"\"A middleware for allowing\
+    \ cross-origin request sharing (CORS)\n\n    Adds appropriate Access-Control-*\
+    \ headers to the HTTP responses returned from the hug API,\n    especially for\
+    \ HTTP OPTIONS responses used in CORS preflighting.\n    \"\"\"\n\n    __slots__\
+    \ = (\"api\", \"allow_origins\", \"allow_credentials\", \"max_age\")\n\n    def\
+    \ __init__(\n        self, api, allow_origins: list = None, allow_credentials:\
+    \ bool = True, max_age: int = None\n    ):\n        if allow_origins is None:\n\
+    \            allow_origins = [\"*\"]\n        self.api = api\n        self.allow_origins\
+    \ = allow_origins\n        self.allow_credentials = allow_credentials\n      \
+    \  self.max_age = max_age\n\n    def match_route(self, reqpath):\n        \"\"\
+    \"Match a request with parameter to it's corresponding route\"\"\"\n        route_dicts\
+    \ = [routes for _, routes in self.api.http.routes.items()][0]\n        routes\
+    \ = [route for route, _ in route_dicts.items()]\n        if reqpath not in routes:\n\
+    \            for route in routes:  # replace params in route with regex\n    \
+    \            reqpath = re.sub(r\"^(/v\\d*/?)\", \"/\", reqpath)\n            \
+    \    base_url = getattr(self.api.http, \"base_url\", \"\")\n                reqpath\
+    \ = reqpath.replace(base_url, \"\", 1) if base_url else reqpath\n            \
+    \    if re.match(re.sub(r\"/{[^{}]+}\", \".+\", route) + \"$\", reqpath, re.DOTALL):\n\
+    \                    return route\n\n        return reqpath\n\n    def process_response(self,\
+    \ request, response, resource, req_succeeded):\n        \"\"\"Add CORS headers\
+    \ to the response\"\"\"\n        response.set_header(\"Access-Control-Allow-Credentials\"\
+    , str(self.allow_credentials).lower())\n\n        origin = request.get_header(\"\
+    ORIGIN\")\n        if origin and (origin in self.allow_origins) or (\"*\" in self.allow_origins):\n\
+    \            response.set_header(\"Access-Control-Allow-Origin\", origin)\n\n\
+    \        if request.method == \"OPTIONS\":  # check if we are handling a preflight\
+    \ request\n            allowed_methods = set(\n                method\n      \
+    \          for _, routes in self.api.http.routes.items()\n                for\
+    \ method, _ in routes[self.match_route(request.path)].items()\n            )\n\
+    \            allowed_methods.add(\"OPTIONS\")\n\n            # return allowed\
+    \ methods\n            response.set_header(\"Access-Control-Allow-Methods\", \"\
+    , \".join(allowed_methods))\n            response.set_header(\"Allow\", \", \"\
+    .join(allowed_methods))\n\n            # get all requested headers and echo them\
+    \ back\n            requested_headers = request.get_header(\"Access-Control-Request-Headers\"\
+    )\n            response.set_header(\"Access-Control-Allow-Headers\", requested_headers\
+    \ or \"\")\n\n            # return valid caching time\n            if self.max_age:\n\
+    \                response.set_header(\"Access-Control-Max-Age\", self.max_age)\n\
+    \n### Source File Dependency Files Content\n### Dependency File: empty.txt\n\n\
+    Output the complete test file, code only, no explanations.\n```python\n<complete\
+    \ test code>\n```\n### Time\nCurrent time: 2025-04-11 18:57:19\n"
+  role: user

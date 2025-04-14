@@ -1,0 +1,85 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: hug\nTest File Path: hug\\test_authentication\\\
+    test_authentication.py\nProject Programming Language: python\nTesting Framework:\
+    \ pytest\n### Source File Content\n### Source File Content:\n\"\"\"hug/authentication.py\n\
+    \nProvides the basic built-in authentication helper functions\n\nCopyright (C)\
+    \ 2016  Timothy Edmund Crosley\n\nPermission is hereby granted, free of charge,\
+    \ to any person obtaining a copy of this software and associated\ndocumentation\
+    \ files (the \"Software\"), to deal in the Software without restriction, including\
+    \ without limitation\nthe rights to use, copy, modify, merge, publish, distribute,\
+    \ sublicense, and/or sell copies of the Software, and\nto permit persons to whom\
+    \ the Software is furnished to do so, subject to the following conditions:\n\n\
+    The above copyright notice and this permission notice shall be included in all\
+    \ copies or\nsubstantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED\
+    \ \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT\
+    \ LIMITED\nTO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE\
+    \ AND NONINFRINGEMENT. IN NO EVENT SHALL\nTHE AUTHORS OR COPYRIGHT HOLDERS BE\
+    \ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF\n\
+    CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE\
+    \ OR THE USE OR\nOTHER DEALINGS IN THE SOFTWARE.\n\n\"\"\"\nfrom __future__ import\
+    \ absolute_import\n\nimport base64\nimport binascii\n\nfrom falcon import HTTPUnauthorized\n\
+    \n\ndef authenticator(function, challenges=()):\n    \"\"\"Wraps authentication\
+    \ logic, verify_user through to the authentication function.\n\n    The verify_user\
+    \ function passed in should accept an API key and return a user object to\n  \
+    \  store in the request context if authentication succeeded.\n    \"\"\"\n   \
+    \ challenges = challenges or ('{} realm=\"simple\"'.format(function.__name__),)\n\
+    \n    def wrapper(verify_user):\n        def authenticate(request, response, **kwargs):\n\
+    \            result = function(request, response, verify_user, **kwargs)\n\n \
+    \           def authenticator_name():\n                try:\n                \
+    \    return function.__doc__.splitlines()[0]\n                except AttributeError:\n\
+    \                    return function.__name__\n\n            if result is None:\n\
+    \                raise HTTPUnauthorized(\n                    \"Authentication\
+    \ Required\",\n                    \"Please provide valid {0} credentials\".format(authenticator_name()),\n\
+    \                    challenges=challenges,\n                )\n\n           \
+    \ if result is False:\n                raise HTTPUnauthorized(\n             \
+    \       \"Invalid Authentication\",\n                    \"Provided {0} credentials\
+    \ were invalid\".format(authenticator_name()),\n                    challenges=challenges,\n\
+    \                )\n\n            request.context[\"user\"] = result\n       \
+    \     return True\n\n        authenticate.__doc__ = function.__doc__\n       \
+    \ return authenticate\n\n    return wrapper\n\n\n@authenticator\ndef basic(request,\
+    \ response, verify_user, realm=\"simple\", context=None, **kwargs):\n    \"\"\"\
+    Basic HTTP Authentication\"\"\"\n    http_auth = request.auth\n    response.set_header(\"\
+    WWW-Authenticate\", \"Basic\")\n    if http_auth is None:\n        return\n\n\
+    \    if isinstance(http_auth, bytes):\n        http_auth = http_auth.decode(\"\
+    utf8\")\n    try:\n        auth_type, user_and_key = http_auth.split(\" \", 1)\n\
+    \    except ValueError:\n        raise HTTPUnauthorized(\n            \"Authentication\
+    \ Error\",\n            \"Authentication header is improperly formed\",\n    \
+    \        challenges=('Basic realm=\"{}\"'.format(realm),),\n        )\n\n    if\
+    \ auth_type.lower() == \"basic\":\n        try:\n            user_id, key = (\n\
+    \                base64.decodebytes(bytes(user_and_key.strip(), \"utf8\")).decode(\"\
+    utf8\").split(\":\", 1)\n            )\n            try:\n                user\
+    \ = verify_user(user_id, key)\n            except TypeError:\n               \
+    \ user = verify_user(user_id, key, context)\n            if user:\n          \
+    \      response.set_header(\"WWW-Authenticate\", \"\")\n                return\
+    \ user\n        except (binascii.Error, ValueError):\n            raise HTTPUnauthorized(\n\
+    \                \"Authentication Error\",\n                \"Unable to determine\
+    \ user and password with provided encoding\",\n                challenges=('Basic\
+    \ realm=\"{}\"'.format(realm),),\n            )\n    return False\n\n\n@authenticator\n\
+    def api_key(request, response, verify_user, context=None, **kwargs):\n    \"\"\
+    \"API Key Header Authentication\n\n    The verify_user function passed in to ths\
+    \ authenticator shall receive an\n    API key as input, and return a user object\
+    \ to store in the request context\n    if the request was successful.\n    \"\"\
+    \"\n    api_key = request.get_header(\"X-Api-Key\")\n\n    if api_key:\n     \
+    \   try:\n            user = verify_user(api_key)\n        except TypeError:\n\
+    \            user = verify_user(api_key, context)\n        if user:\n        \
+    \    return user\n        else:\n            return False\n    else:\n       \
+    \ return None\n\n\n@authenticator\ndef token(request, response, verify_user, context=None,\
+    \ **kwargs):\n    \"\"\"Token verification\n\n    Checks for the Authorization\
+    \ header and verifies using the verify_user function\n    \"\"\"\n    token =\
+    \ request.get_header(\"Authorization\")\n    if token:\n        try:\n       \
+    \     verified_token = verify_user(token)\n        except TypeError:\n       \
+    \     verified_token = verify_user(token, context)\n        if verified_token:\n\
+    \            return verified_token\n        else:\n            return False\n\
+    \    return None\n\n\ndef verify(user, password):\n    \"\"\"Returns a simple\
+    \ verification callback that simply verifies that the users and password match\
+    \ that provided\"\"\"\n\n    def verify_user(user_name, user_password):\n    \
+    \    if user_name == user and user_password == password:\n            return user_name\n\
+    \        return False\n\n    return verify_user\n\n### Source File Dependency\
+    \ Files Content\n### Dependency File: empty.txt\n\nOutput the complete test file,\
+    \ code only, no explanations.\n### Time\nCurrent time: 2025-04-11 18:55:03\n"
+  role: user

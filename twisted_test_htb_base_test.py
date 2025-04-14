@@ -1,92 +1,137 @@
-import pytest
-from twisted.test_htb.test_htb import Bucket, HierarchicalBucketFilter, FilterByHost, FilterByServer, ShapedConsumer, ShapedTransport, ShapedProtocolFactory
+# -*- test-case-name: twisted.test.test_htb -*-
+# Copyright (c) Twisted Matrix Laboratories.
+# See LICENSE for details.
+
+from twisted.trial import unittest
+from twisted.test.test_htb import (
+    Bucket,
+    HierarchicalBucketFilter,
+    FilterByHost,
+    FilterByServer,
+    ShapedConsumer,
+    ShapedTransport,
+    ShapedProtocolFactory,
+)
 from twisted.protocols import pcp
+from zope.interface import implementer
+from twisted.internet import interfaces
+from time import time
 
-class MockTransport:
-    def getPeer(self):
-        return ('mockpeer', 12345)
 
-    def getHost(self):
-        return ('mockhost', 80)
+class BucketTests(unittest.TestCase):
+    def setUp(self):
+        self.bucket = Bucket()
 
-@pytest.fixture
-def bucket():
-    return Bucket()
+    def test_initialization(self):
+        self.assertEqual(self.bucket.content, 0)
+        self.assertIsNone(self.bucket.parentBucket)
+        self.assertGreater(self.bucket.lastDrip, 0)
 
-@pytest.fixture
-def parent_bucket():
-    return Bucket()
+    def test_add_without_limit(self):
+        self.bucket.maxburst = None
+        added_tokens = self.bucket.add(100)
+        self.assertEqual(added_tokens, 100)
+        self.assertEqual(self.bucket.content, 100)
 
-@pytest.fixture
-def hierarchical_bucket_filter():
-    return HierarchicalBucketFilter()
+    def test_add_with_limit(self):
+        self.bucket.maxburst = 50
+        added_tokens = self.bucket.add(100)
+        self.assertEqual(added_tokens, 50)
+        self.assertEqual(self.bucket.content, 50)
 
-@pytest.fixture
-def filter_by_host():
-    return FilterByHost()
+    def test_drip_no_rate(self):
+        self.bucket.rate = None
+        self.bucket.add(100)
+        self.bucket.drip()
+        self.assertEqual(self.bucket.content, 0)
 
-@pytest.fixture
-def filter_by_server():
-    return FilterByServer()
+    def test_drip_with_rate(self):
+        self.bucket.rate = 10
+        self.bucket.add(100)
+        self.bucket.lastDrip -= 10  # Simulate 10 seconds passed
+        self.bucket.drip()
+        self.assertEqual(self.bucket.content, 0)  # Dripped completely
 
-@pytest.fixture
-def shaped_consumer():
-    consumer = pcp.BasicProducerConsumerProxy(None)
-    bucket = Bucket()
-    return ShapedConsumer(consumer, bucket)
 
-@pytest.fixture
-def shaped_transport():
-    consumer = pcp.BasicProducerConsumerProxy(MockTransport())
-    bucket = Bucket()
-    return ShapedTransport(consumer, bucket)
+class HierarchicalBucketFilterTests(unittest.TestCase):
+    def setUp(self):
+        self.filter = HierarchicalBucketFilter()
 
-def test_bucket_add(bucket):
-    bucket.maxburst = 10
-    added_tokens = bucket.add(5)
-    assert added_tokens == 5
-    assert bucket.content == 5
+    def test_get_bucket_for(self):
+        bucket = self.filter.getBucketFor()
+        self.assertIsInstance(bucket, Bucket)
 
-def test_bucket_add_with_parent(bucket, parent_bucket):
-    parent_bucket.maxburst = 10
-    bucket.parentBucket = parent_bucket
-    added_tokens = bucket.add(5)
-    assert added_tokens == 5
-    assert bucket.content == 5
-    assert parent_bucket.content == 5
+    def test_sweep(self):
+        bucket = self.filter.getBucketFor()
+        bucket.add(10)
+        self.filter.sweep()
+        self.assertIn(self.filter.getBucketKey(), self.filter.buckets)
 
-def test_bucket_drip(bucket):
-    bucket.rate = 1
-    bucket.add(5)
-    bucket.drip()
-    assert bucket.content < 5
+        bucket.content = 0
+        self.filter.sweep()
+        self.assertNotIn(self.filter.getBucketKey(), self.filter.buckets)
 
-def test_hierarchical_bucket_filter_get_bucket_for(hierarchical_bucket_filter):
-    transport = MockTransport()
-    bucket = hierarchical_bucket_filter.getBucketFor(transport)
-    assert isinstance(bucket, Bucket)
 
-def test_filter_by_host_get_bucket_key(filter_by_host):
-    transport = MockTransport()
-    key = filter_by_host.getBucketKey(transport)
-    assert key == 12345
+class FilterByHostTests(unittest.TestCase):
+    def setUp(self):
+        self.filter = FilterByHost()
 
-def test_filter_by_server_get_bucket_key(filter_by_server):
-    transport = MockTransport()
-    key = filter_by_server.getBucketKey(transport)
-    assert key == 80
+    def test_get_bucket_key(self):
+        transport = unittest.mock.Mock()
+        transport.getPeer.return_value = ("127.0.0.1", 8080)
+        key = self.filter.getBucketKey(transport)
+        self.assertEqual(key, 8080)
 
-def test_shaped_consumer_write(shaped_consumer):
-    shaped_consumer.write(b"data")
-    assert shaped_consumer._buffer == []
 
-def test_shaped_transport_getattr(shaped_transport):
-    peer = shaped_transport.getPeer()
-    assert peer == ('mockpeer', 12345)
+class FilterByServerTests(unittest.TestCase):
+    def setUp(self):
+        self.filter = FilterByServer()
 
-def test_shaped_protocol_factory():
-    proto_class = lambda: pcp.BasicProducerConsumerProxy(None)
-    bucket_filter = HierarchicalBucketFilter()
-    factory = ShapedProtocolFactory(proto_class, bucket_filter)
-    proto = factory()
-    assert callable(proto.makeConnection)
+    def test_get_bucket_key(self):
+        transport = unittest.mock.Mock()
+        transport.getHost.return_value = ("127.0.0.1", 8080, "service")
+        key = self.filter.getBucketKey(transport)
+        self.assertEqual(key, "service")
+
+
+class ShapedConsumerTests(unittest.TestCase):
+    def setUp(self):
+        self.consumer = unittest.mock.Mock()
+        self.bucket = Bucket()
+        self.sc = ShapedConsumer(self.consumer, self.bucket)
+
+    def test_write_some_data(self):
+        self.bucket.maxburst = None
+        self.sc._writeSomeData(b"data")
+        self.consumer.write.assert_called_once_with(b"data")
+
+    def test_stop_producing(self):
+        self.sc.stopProducing()
+        self.consumer.stopProducing.assert_called_once()
+        self.assertEqual(self.bucket._refcount, 0)
+
+
+class ShapedTransportTests(unittest.TestCase):
+    def setUp(self):
+        self.transport = unittest.mock.Mock(spec=interfaces.ITransport)
+        self.bucket = Bucket()
+        self.st = ShapedTransport(self.transport, self.bucket)
+
+    def test_getattr(self):
+        self.transport.getPeer.return_value = "peer"
+        self.assertEqual(self.st.getPeer(), "peer")
+
+
+class ShapedProtocolFactoryTests(unittest.TestCase):
+    def setUp(self):
+        self.protocol = unittest.mock.Mock(spec=interfaces.IProtocol)
+        self.bucketFilter = HierarchicalBucketFilter()
+        self.factory = ShapedProtocolFactory(self.protocol, self.bucketFilter)
+
+    def test_make_connection(self):
+        proto_instance = self.factory()
+        transport = unittest.mock.Mock()
+        proto_instance.makeConnection(transport)
+        self.assertIsInstance(
+            proto_instance.makeConnection.__self__, ShapedTransport
+        )

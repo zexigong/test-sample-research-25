@@ -1,0 +1,724 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: pyod\nTest File Path: pyod\\test_devnet\\\
+    test_devnet.py\nProject Programming Language: python\nTesting Framework: pytest\n\
+    ### Source File Content\n### Source File Content:\n# -*- coding: utf-8 -*-\n\n\
+    \"\"\"Deep anomaly detection with deviation networks\nPart of the codes are adapted\
+    \ from\nhttps://github.com/GuansongPang/deviation-network\n\"\"\"\n# Author: Sihan\
+    \ Chen <schen976@usc.edu>\n# License: BSD 2 clause\n\n\n# Import necessary libraries\n\
+    import numpy as np\nimport torch\nimport torch.nn as nn\nimport torch.optim as\
+    \ optim\nfrom sklearn.utils import check_array\nfrom torch.utils.data import Dataset,\
+    \ DataLoader\n\nfrom .base import BaseDetector\nfrom ..utils.torch_utility import\
+    \ TorchDataset\n\nMAX_INT = np.iinfo(np.int32).max\ndata_format = 0\n\n# Set random\
+    \ seed for reproducibility\nnp.random.seed(42)\ntorch.manual_seed(42)\n\n\n# Define\
+    \ the network architectures\nclass DevNetD(nn.Module):\n    def __init__(self,\
+    \ input_shape):\n        super(DevNetD, self).__init__()\n        self.fc1 = nn.Linear(input_shape,\
+    \ 1000)\n        self.fc2 = nn.Linear(1000, 250)\n        self.fc3 = nn.Linear(250,\
+    \ 20)\n        self.score = nn.Linear(20, 1)\n\n    def forward(self, x):\n  \
+    \      x = torch.relu(self.fc1(x))\n        x = torch.relu(self.fc2(x))\n    \
+    \    x = torch.relu(self.fc3(x))\n        x = self.score(x)\n        return x\n\
+    \n\nclass DevNetS(nn.Module):\n    def __init__(self, input_shape):\n        super(DevNetS,\
+    \ self).__init__()\n        self.fc1 = nn.Linear(input_shape, 1000)\n        self.score\
+    \ = nn.Linear(1000, 1)\n\n    def forward(self, x):\n        x = torch.relu(self.fc1(x))\n\
+    \        x = self.score(x)\n        return x\n\n\nclass DevNetLinear(nn.Module):\n\
+    \    def __init__(self, input_shape):\n        super(DevNetLinear, self).__init__()\n\
+    \        self.score = nn.Linear(input_shape, 1)\n\n    def forward(self, x):\n\
+    \        x = self.score(x)\n        return x\n\n\ndef deviation_loss(y_true, y_pred):\n\
+    \    '''\n    Z-score-based deviation loss translated to PyTorch.\n    '''\n \
+    \   confidence_margin = 5.0\n    # size=5000 is the setting of l in algorithm\
+    \ 1 in the paper\n    ref = torch.randn(5000, device=y_pred.device,\n        \
+    \              dtype=torch.float32)  # Generate normal distributed ref values\n\
+    \    dev = (y_pred - ref.mean()) / ref.std()\n    inlier_loss = torch.abs(dev)\n\
+    \    outlier_loss = torch.abs(torch.clamp(confidence_margin - dev, min=0))\n\n\
+    \    # Compute the mean of the weighted sum of inlier and outlier losses\n   \
+    \ return torch.mean((1 - y_true) * inlier_loss + y_true * outlier_loss)\n\n\n\
+    # Define the training and testing process\ndef train_and_test(model, train_loader,\
+    \ test_loader, epochs, device):\n    criterion = nn.MSELoss()\n    optimizer =\
+    \ optim.Adam(model.parameters(), lr=0.001)\n    model.train()\n\n    for epoch\
+    \ in range(epochs):\n        for inputs, labels in train_loader:\n           \
+    \ inputs, labels = inputs.to(device), labels.to(device)\n            optimizer.zero_grad()\n\
+    \            outputs = model(inputs)\n            loss = criterion(outputs, labels)\n\
+    \            loss.backward()\n            optimizer.step()\n\n    model.eval()\n\
+    \    with torch.no_grad():\n        total_loss = 0\n        for inputs, labels\
+    \ in test_loader:\n            inputs, labels = inputs.to(device), labels.to(device)\n\
+    \            outputs = model(inputs)\n            total_loss += criterion(outputs,\
+    \ labels).item()\n        print('Test Loss:', total_loss / len(test_loader))\n\
+    \n\n# Main function to run the model\ndef deviation_network(input_shape, network_depth):\n\
+    \    '''\n    Construct the deviation network-based detection model in PyTorch\
+    \ style\n    '''\n    # Select the model based on the network depth\n    if network_depth\
+    \ == 4:\n        model = DevNetD(input_shape)\n    elif network_depth == 2:\n\
+    \        model = DevNetS(input_shape)\n    elif network_depth == 1:\n        model\
+    \ = DevNetLinear(input_shape)\n    else:\n        raise ValueError(\n        \
+    \    \"The network depth is not set properly\")  # Use exception instead of sys.exit\n\
+    \n    # Initialize the optimizer\n    optimizer = optim.RMSprop(model.parameters(),\
+    \ lr=0.001,\n                              weight_decay=1e-6)  # Set clipnorm\
+    \ equivalent in PyTorch\n    return model, optimizer\n\n\nclass SupDataset(Dataset):\n\
+    \    def __init__(self, x, outlier_indices, inlier_indices, rng):\n        self.x\
+    \ = x\n        self.outlier_indices = outlier_indices\n        self.inlier_indices\
+    \ = inlier_indices\n        self.rng = np.random.RandomState(\n            42)\
+    \  # Ensure rng is seeded outside or fixed\n\n    def __len__(self):\n       \
+    \ return len(self.outlier_indices) + len(\n            self.inlier_indices)  #\
+    \ or any other appropriate length\n\n    def __getitem__(self, idx):\n       \
+    \ if idx < len(self.inlier_indices):\n            # Assuming inliers are processed\
+    \ first\n            label = 0  # Assuming inlier label\n            index = self.inlier_indices[idx]\n\
+    \        else:\n            # Processing outliers\n            label = 1  # Assuming\
+    \ outlier label\n            index = self.outlier_indices[idx - len(self.inlier_indices)]\n\
+    \n        return self.x[index], label\n\n\ndef input_batch_generation_sup_sparse(x_train,\
+    \ outlier_indices, inlier_indices,\n                                      batch_size,\
+    \ rng):\n    '''\n    Batch generation for samples, alternating between positive\
+    \ and negative.\n    Adjusted for use with PyTorch, handling data in tensors.\n\
+    \    '''\n    training_data = []\n    training_labels = []\n    n_inliers = len(inlier_indices)\n\
+    \    n_outliers = len(outlier_indices)\n\n    for i in range(batch_size):\n  \
+    \      if i % 2 == 0:\n            sid = rng.choice(n_inliers, 1)\n          \
+    \  training_data.append(x_train[inlier_indices[sid.item()]])\n            training_labels.append(0)\n\
+    \        else:\n            sid = rng.choice(n_outliers, 1)\n            training_data.append(x_train[outlier_indices[sid.item()]])\n\
+    \            training_labels.append(1)\n\n    # Convert lists to tensors\n   \
+    \ training_data = torch.stack(training_data)\n    training_labels = torch.tensor(training_labels,\
+    \ dtype=torch.long)\n\n    return training_data, training_labels\n\n\ndef load_model_weight_predict(model,\
+    \ x_test):\n    # Ensure x_test is a PyTorch tensor and also ensure it's on the\
+    \ same device as the model\n    x_test = torch.tensor(x_test, dtype=torch.float32)\n\
+    \n    # Assuming data_format variable should be defined somewhere in the context\
+    \ or as a parameter\n    data_format = 0  # Assuming it's set correctly according\
+    \ to your use-case\n\n    if data_format == 0:\n        scores = model(x_test)\n\
+    \    else:\n        data_size = x_test.shape[0]\n        scores = torch.zeros([data_size,\
+    \ ])\n        batch_size = 512\n        for i in range(0, data_size, batch_size):\n\
+    \            end = min(i + batch_size, data_size)\n            subset = x_test[i:end]\n\
+    \            scores[i:end] = model(subset)\n\n    # Make sure the output is flattened\
+    \ before returning\n    scores = scores.flatten()  # Flatten the tensor to ensure\
+    \ it's one-dimensional\n\n    return scores.detach().cpu().numpy()  # Convert\
+    \ to numpy array if needed\n\n\nclass DevNet(BaseDetector):\n    def __init__(self,\n\
+    \                 network_depth=2,\n                 batch_size=512,\n       \
+    \          epochs=50,\n                 nb_batch=20,\n                 known_outliers=30,\n\
+    \                 cont_rate=0.02,\n                 data_format=0,  # Assuming\
+    \ '0' for CSV\n                 random_seed=42,\n                 device=None,\n\
+    \                 contamination=0.1):\n        super(DevNet, self).__init__(contamination=contamination)\n\
+    \        self._classes = 2\n        self.network_depth = network_depth\n     \
+    \   self.batch_size = batch_size\n        self.epochs = epochs\n        self.nb_batch\
+    \ = nb_batch\n        self.known_outliers = known_outliers\n        self.cont_rate\
+    \ = cont_rate\n        self.data_format = data_format\n        self.random_seed\
+    \ = random_seed\n        self.device = device\n        if self.device is None:\n\
+    \            self.device = torch.device(\n                \"cuda:0\" if torch.cuda.is_available()\
+    \ else \"cpu\")\n\n    def fit(self, X, y):\n        outlier_indices = np.where(y\
+    \ == 1)[0]\n        inlier_indices = np.where(y == 0)[0]\n        n_outliers =\
+    \ len(outlier_indices)\n        print(\"Original training size: %d, No. outliers:\
+    \ %d\" % (\n            X.shape[0], n_outliers))\n        n_noise = len(np.where(y\
+    \ == 0)[0]) * self.contamination / (\n                1. - self.contamination)\n\
+    \        n_noise = int(n_noise)\n        outlier_indices = np.where(y == 1)[0]\n\
+    \        inlier_indices = np.where(y == 0)[0]\n        print(y.shape[0], outlier_indices.shape[0],\
+    \ inlier_indices.shape[0],\n              n_noise)\n        # Data manipulation\
+    \ part can be adjusted as needed.\n        self.model, optimizer = deviation_network(X.shape[1],\n\
+    \                                                  self.network_depth)\n     \
+    \   rng = np.random.RandomState(42)\n        train_dataset = SupDataset(X, outlier_indices,\
+    \ inlier_indices, rng)\n        train_loader = DataLoader(train_dataset, batch_size=self.batch_size,\n\
+    \                                  shuffle=True)\n\n        def train_model(model,\
+    \ data_loader, epochs):\n            model.train()\n            for epoch in range(epochs):\n\
+    \                for data, labels in data_loader:\n                    data, labels\
+    \ = data.to(torch.float32), labels.to(\n                        torch.float32)\
+    \  # Ensure data types\n                    optimizer.zero_grad()\n          \
+    \          outputs = model(data)\n                    loss = deviation_loss(outputs,\
+    \ labels)\n                    loss.backward()\n                    optimizer.step()\n\
+    \                print(f'Epoch {epoch + 1}, Loss: {loss.item()}')\n\n        #\
+    \ Training the model\n        train_model(self.model, train_loader, epochs=self.epochs)\n\
+    \        self.decision_scores_ = self.decision_function(X)\n        self._process_decision_scores()\n\
+    \        return self\n\n    def decision_function(self, X):\n        X = check_array(X)\n\
+    \n        dataset = TorchDataset(X=X, return_idx=True)\n\n        dataloader =\
+    \ torch.utils.data.DataLoader(dataset,\n                                     \
+    \            batch_size=self.batch_size,\n                                   \
+    \              shuffle=False)\n        # enable the evaluation mode\n        self.model.eval()\n\
+    \n        # construct the vector for holding the reconstruction error\n      \
+    \  outlier_scores = np.zeros([X.shape[0], ])\n        with torch.no_grad():\n\
+    \            for data, data_idx in dataloader:\n                data_cuda = data.to(self.device).float()\n\
+    \                # this is the outlier score\n                outlier_scores[data_idx]\
+    \ = load_model_weight_predict(\n                    self.model, data)\n      \
+    \  return outlier_scores\n\n    def fit_predict_score(self, X, y, scoring='roc_auc_score'):\n\
+    \        \"\"\"\n        Fit the detector with labels, predict on samples, and\
+    \ evaluate the model by predefined metrics.\n\n        Parameters\n        ----------\n\
+    \        X : numpy array of shape (n_samples, n_features)\n            The input\
+    \ samples.\n        y : numpy array of shape (n_samples,)\n            The labels\
+    \ or target values corresponding to X.\n        scoring : str, optional (default='roc_auc_score')\n\
+    \            Evaluation metric:\n            - 'roc_auc_score': ROC score\n  \
+    \          - 'prc_n_score': Precision @ rank n score\n\n        Returns\n    \
+    \    -------\n        score : float\n        \"\"\"\n\n        # Fit the model\
+    \ with both X and y\n        self.fit(X, y)\n\n        # Prediction and scoring\n\
+    \        if scoring == 'roc_auc_score':\n            from sklearn.metrics import\
+    \ roc_auc_score\n            score = roc_auc_score(y, self.decision_scores_)\n\
+    \        elif scoring == 'prc_n_score':\n            from sklearn.metrics import\
+    \ precision_recall_curve\n            precision, _, _ = precision_recall_curve(y,\
+    \ self.decision_scores_)\n            score = precision[\n                1] \
+    \ # Assuming this is how you'd compute Precision @ rank n\n        else:\n   \
+    \         raise NotImplementedError('PyOD built-in scoring only supports '\n \
+    \                                     'ROC and Precision @ rank n')\n\n      \
+    \  print(\"{metric}: {score}\".format(metric=scoring, score=score))\n\n      \
+    \  return score\n\n### Source File Dependency Files Content\n### Dependency File:\
+    \ base.py\n# -*- coding: utf-8 -*-\n\"\"\"Base class for all outlier detector\
+    \ models\n\"\"\"\n# Author: Yue Zhao <yzhao062@gmail.com>\n# License: BSD 2 clause\n\
+    \n\nimport abc\nimport warnings\nfrom collections import defaultdict\nfrom inspect\
+    \ import signature\n\nimport numpy as np\nfrom numpy import percentile\nfrom scipy.special\
+    \ import erf\nfrom scipy.stats import binom\nfrom sklearn.metrics import roc_auc_score\n\
+    from sklearn.preprocessing import MinMaxScaler\nfrom sklearn.utils import deprecated\n\
+    from sklearn.utils.multiclass import check_classification_targets\nfrom sklearn.utils.validation\
+    \ import check_is_fitted\nfrom scipy.optimize import root_scalar\n\nfrom .sklearn_base\
+    \ import _pprint\nfrom ..utils.utility import precision_n_scores\n\n\nclass BaseDetector(metaclass=abc.ABCMeta):\n\
+    \    \"\"\"Abstract class for all outlier detection algorithms.\n\n\n    Parameters\n\
+    \    ----------\n    contamination : float in (0., 0.5), optional (default=0.1)\n\
+    \        The amount of contamination of the data set,\n        i.e. the proportion\
+    \ of outliers in the data set. Used when fitting to\n        define the threshold\
+    \ on the decision function.\n\n    Attributes\n    ----------\n    decision_scores_\
+    \ : numpy array of shape (n_samples,)\n        The outlier scores of the training\
+    \ data.\n        The higher, the more abnormal. Outliers tend to have higher\n\
+    \        scores. This value is available once the detector is fitted.\n\n    threshold_\
+    \ : float\n        The threshold is based on ``contamination``. It is the\n  \
+    \      ``n_samples * contamination`` most abnormal samples in\n        ``decision_scores_``.\
+    \ The threshold is calculated for generating\n        binary outlier labels.\n\
+    \n    labels_ : int, either 0 or 1\n        The binary labels of the training\
+    \ data. 0 stands for inliers\n        and 1 for outliers/anomalies. It is generated\
+    \ by applying\n        ``threshold_`` on ``decision_scores_``.\n    \"\"\"\n\n\
+    \    @abc.abstractmethod\n    def __init__(self, contamination=0.1):\n\n     \
+    \   if (isinstance(contamination, (float, int))):\n\n            if not (0. <\
+    \ contamination <= 0.5):\n                raise ValueError(\"contamination must\
+    \ be in (0, 0.5], \"\n                                 \"got: %f\" % contamination)\n\
+    \n        # allow arbitrary input such as PyThreshld object\n        self.contamination\
+    \ = contamination\n\n    # noinspection PyIncorrectDocstring\n    @abc.abstractmethod\n\
+    \    def fit(self, X, y=None):\n        \"\"\"Fit detector. y is ignored in unsupervised\
+    \ methods.\n\n        Parameters\n        ----------\n        X : numpy array\
+    \ of shape (n_samples, n_features)\n            The input samples.\n\n       \
+    \ y : Ignored\n            Not used, present for API consistency by convention.\n\
+    \n        Returns\n        -------\n        self : object\n            Fitted\
+    \ estimator.\n        \"\"\"\n        pass\n\n    @abc.abstractmethod\n    def\
+    \ decision_function(self, X):\n        \"\"\"Predict raw anomaly scores of X using\
+    \ the fitted detector.\n\n        The anomaly score of an input sample is computed\
+    \ based on the fitted\n        detector. For consistency, outliers are assigned\
+    \ with\n        higher anomaly scores.\n\n        Parameters\n        ----------\n\
+    \        X : numpy array of shape (n_samples, n_features)\n            The input\
+    \ samples. Sparse matrices are accepted only\n            if they are supported\
+    \ by the base estimator.\n\n        Returns\n        -------\n        anomaly_scores\
+    \ : numpy array of shape (n_samples,)\n            The anomaly score of the input\
+    \ samples.\n        \"\"\"\n        pass\n\n    @deprecated()\n    def fit_predict(self,\
+    \ X, y=None):\n        \"\"\"Fit detector first and then predict whether a particular\
+    \ sample\n        is an outlier or not. y is ignored in unsupervised models.\n\
+    \n        Parameters\n        ----------\n        X : numpy array of shape (n_samples,\
+    \ n_features)\n            The input samples.\n\n        y : Ignored\n       \
+    \     Not used, present for API consistency by convention.\n\n        Returns\n\
+    \        -------\n        outlier_labels : numpy array of shape (n_samples,)\n\
+    \            For each observation, tells whether\n            it should be considered\
+    \ as an outlier according to the\n            fitted model. 0 stands for inliers\
+    \ and 1 for outliers.\n\n        .. deprecated:: 0.6.9\n          `fit_predict`\
+    \ will be removed in pyod 0.8.0.; it will be\n          replaced by calling `fit`\
+    \ function first and then accessing\n          `labels_` attribute for consistency.\n\
+    \        \"\"\"\n\n        self.fit(X, y)\n        return self.labels_\n\n   \
+    \ def predict(self, X, return_confidence=False):\n        \"\"\"Predict if a particular\
+    \ sample is an outlier or not.\n\n        Parameters\n        ----------\n   \
+    \     X : numpy array of shape (n_samples, n_features)\n            The input\
+    \ samples.\n\n        return_confidence : boolean, optional(default=False)\n \
+    \           If True, also return the confidence of prediction.\n\n        Returns\n\
+    \        -------\n        outlier_labels : numpy array of shape (n_samples,)\n\
+    \            For each observation, tells whether\n            it should be considered\
+    \ as an outlier according to the\n            fitted model. 0 stands for inliers\
+    \ and 1 for outliers.\n        confidence : numpy array of shape (n_samples,).\n\
+    \            Only if return_confidence is set to True.\n        \"\"\"\n\n   \
+    \     check_is_fitted(self, ['decision_scores_', 'threshold_', 'labels_'])\n \
+    \       pred_score = self.decision_function(X)\n\n        if isinstance(self.contamination,\
+    \ (float, int)):\n            prediction = (pred_score > self.threshold_).astype('int').ravel()\n\
+    \n        # if this is a PyThresh object\n        else:\n            prediction\
+    \ = self.contamination.eval(pred_score)\n\n        if return_confidence:\n   \
+    \         confidence = self.predict_confidence(X)\n            return prediction,\
+    \ confidence\n\n        return prediction\n\n    def predict_proba(self, X, method='linear',\
+    \ return_confidence=False):\n        \"\"\"Predict the probability of a sample\
+    \ being outlier. Two approaches\n        are possible:\n\n        1. simply use\
+    \ Min-max conversion to linearly transform the outlier\n           scores into\
+    \ the range of [0,1]. The model must be\n           fitted first.\n        2.\
+    \ use unifying scores, see :cite:`kriegel2011interpreting`.\n\n        Parameters\n\
+    \        ----------\n        X : numpy array of shape (n_samples, n_features)\n\
+    \            The input samples.\n\n        method : str, optional (default='linear')\n\
+    \            probability conversion method. It must be one of\n            'linear'\
+    \ or 'unify'.\n\n        return_confidence : boolean, optional(default=False)\n\
+    \            If True, also return the confidence of prediction.\n\n\n        Returns\n\
+    \        -------\n        outlier_probability : numpy array of shape (n_samples,\
+    \ n_classes)\n            For each observation, tells whether or not\n       \
+    \     it should be considered as an outlier according to the\n            fitted\
+    \ model. Return the outlier probability, ranging\n            in [0,1]. Note it\
+    \ depends on the number of classes, which is by\n            default 2 classes\
+    \ ([proba of normal, proba of outliers]).\n        \"\"\"\n\n        check_is_fitted(self,\
+    \ ['decision_scores_', 'threshold_', 'labels_'])\n        train_scores = self.decision_scores_\n\
+    \n        test_scores = self.decision_function(X)\n\n        probs = np.zeros([X.shape[0],\
+    \ int(self._classes)])\n        if method == 'linear':\n            scaler = MinMaxScaler().fit(train_scores.reshape(-1,\
+    \ 1))\n            probs[:, 1] = scaler.transform(\n                test_scores.reshape(-1,\
+    \ 1)).ravel().clip(0, 1)\n            probs[:, 0] = 1 - probs[:, 1]\n\n      \
+    \      if return_confidence:\n                confidence = self.predict_confidence(X)\n\
+    \                return probs, confidence\n\n            return probs\n\n    \
+    \    elif method == 'unify':\n            # turn output into probability\n   \
+    \         pre_erf_score = (test_scores - self._mu) / (\n                    self._sigma\
+    \ * np.sqrt(2))\n            erf_score = erf(pre_erf_score)\n            probs[:,\
+    \ 1] = erf_score.clip(0, 1).ravel()\n            probs[:, 0] = 1 - probs[:, 1]\n\
+    \n            if return_confidence:\n                confidence = self.predict_confidence(X)\n\
+    \                return probs, confidence\n\n            return probs\n      \
+    \  else:\n            raise ValueError(method,\n                             'is\
+    \ not a valid probability conversion method')\n\n    def predict_confidence(self,\
+    \ X):\n        \"\"\"Predict the model's confidence in making the same prediction\n\
+    \        under slightly different training sets.\n        See :cite:`perini2020quantifying`.\n\
+    \n        Parameters\n        -------\n        X : numpy array of shape (n_samples,\
+    \ n_features)\n            The input samples.\n\n        Returns\n        -------\n\
+    \        confidence : numpy array of shape (n_samples,)\n            For each\
+    \ observation, tells how consistently the model would\n            make the same\
+    \ prediction if the training set was perturbed.\n            Return a probability,\
+    \ ranging in [0,1].\n\n        \"\"\"\n\n        check_is_fitted(self, ['decision_scores_',\
+    \ 'threshold_', 'labels_'])\n\n        n = len(self.decision_scores_)\n\n    \
+    \    # todo: this has an optimization opportunity since the scores may\n     \
+    \   # already be available\n        test_scores = self.decision_function(X)\n\n\
+    \        count_instances = np.vectorize(\n            lambda x: np.count_nonzero(self.decision_scores_\
+    \ <= x))\n        n_instances = count_instances(test_scores)\n\n        # Derive\
+    \ the outlier probability using Bayesian approach\n        posterior_prob = np.vectorize(lambda\
+    \ x: (1 + x) / (2 + n))(n_instances)\n\n        if not isinstance(self.contamination,\
+    \ (float, int)):\n            contam = np.sum(self.labels_) / n\n        # if\
+    \ this is a PyThresh object\n        else:\n            contam = self.contamination\n\
+    \n        # Transform the outlier probability into a confidence value\n      \
+    \  confidence = np.vectorize(\n            lambda p: 1 - binom.cdf(n - int(n *\
+    \ contam), n, p))(\n            posterior_prob)\n\n        if isinstance(self.contamination,\
+    \ (float, int)):\n            prediction = (test_scores > self.threshold_).astype('int').ravel()\n\
+    \        # if this is a PyThresh object\n        else:\n            prediction\
+    \ = self.contamination.eval(test_scores)\n        np.place(confidence, prediction\
+    \ == 0, 1 - confidence[prediction == 0])\n\n        return confidence\n\n    def\
+    \ predict_with_rejection(self, X, T=32, return_stats=False,\n                \
+    \               delta=0.1, c_fp=1, c_fn=1, c_r=-1):\n        \"\"\"Predict if\
+    \ a particular sample is an outlier or not, \n           allowing the detector\
+    \ to reject (i.e., output = -2) \n           low confidence predictions.\n\n \
+    \       Parameters\n        ----------\n        X : numpy array of shape (n_samples,\
+    \ n_features)\n            The input samples.\n\n        T : int, optional(default=32)\n\
+    \            It allows to set the rejection threshold to 1-2exp(-T).\n       \
+    \     The higher the value of T, the more rejections are made.\n            \n\
+    \        return_stats: bool, optional (default = False)\n                    \
+    \  If true, it returns also three additional float values:\n                 \
+    \     the estimated rejection rate, the upper bound rejection\n              \
+    \        rate, and the upper bound of the cost.\n                       \n   \
+    \     delta: float, optional (default = 0.1)\n               The upper bound rejection\
+    \ rate holds with probability 1-delta.\n                       \n        c_fp,\
+    \ c_fn, c_r: floats (positive), optional (default = [1,1, contamination])\n  \
+    \                       costs for false positive predictions (c_fp), false negative\n\
+    \                         predictions (c_fn) and rejections (c_r).\n         \
+    \       \n        Returns\n        -------\n        outlier_labels : numpy array\
+    \ of shape (n_samples,)\n                         For each observation, it tells\
+    \ whether it should be\n                         considered as an outlier according\
+    \ to the fitted\n                         model. 0 stands for inliers, 1 for outliers\
+    \ and\n                         -2 for rejection.\n                          \
+    \         \n        expected_rejection_rate:   float, if return_stats is True;\n\
+    \        upperbound_rejection_rate: float, if return_stats is True;\n        upperbound_cost:\
+    \           float, if return_stats is True;\n\n        \"\"\"\n        check_is_fitted(self,\
+    \ ['decision_scores_', 'threshold_', 'labels_'])\n        if c_r < 0:\n      \
+    \      warnings.warn(\n                \"The cost of rejection must be positive.\
+    \ \"\n                \"It has been set to the contamination rate.\")\n      \
+    \      c_r = self.contamination\n\n        if delta <= 0 or delta >= 1:\n    \
+    \        warnings.warn(\n                \"delta must belong to (0,1). It's value\
+    \ has been set to 0.1\")\n            delta = 0.1\n\n        self.rejection_threshold_\
+    \ = 1 - 2 * np.exp(-T)\n        prediction = self.predict(X)\n        confidence\
+    \ = self.predict_confidence(X)\n        np.place(confidence, prediction == 0,\
+    \ 1 - confidence[prediction == 0])\n        confidence = 2 * abs(confidence -\
+    \ .5)\n        prediction[np.where(confidence <= self.rejection_threshold_)[0]]\
+    \ = -2\n\n        if return_stats:\n            expected_rejrate, ub_rejrate,\
+    \ ub_cost = self.compute_rejection_stats(\n                T=T, delta=delta,\n\
+    \                c_fp=c_fp, c_fn=c_fn, c_r=c_r)\n            return prediction,\
+    \ [expected_rejrate, ub_rejrate, ub_cost]\n\n        return prediction\n\n   \
+    \ def compute_rejection_stats(self, T=32, delta=0.1, c_fp=1, c_fn=1, c_r=-1,\n\
+    \                                verbose=False):\n        \"\"\"Add reject option\
+    \ into the unsupervised detector. \n           This comes with guarantees: an\
+    \ estimate of the expected\n           rejection rate (return_rejectrate=True),\
+    \ an upper\n           bound of the rejection rate (return_ub_rejectrate= True),\n\
+    \           and an upper bound on the cost (return_ub_cost=True).\n          \
+    \ \n        Parameters\n        ----------\n        T: int, optional(default=32)\n\
+    \           It allows to set the rejection threshold to 1-2exp(-T).\n        \
+    \   The higher the value of T, the more rejections are made.\n            \n \
+    \       delta: float, optional (default = 0.1)\n               The upper bound\
+    \ rejection rate holds with probability 1-delta.\n                       \n  \
+    \      c_fp, c_fn, c_r: floats (positive),\n                         optional\
+    \ (default = [1,1, contamination])\n                         costs for false positive\
+    \ predictions (c_fp),\n                         false negative predictions (c_fn)\
+    \ and rejections (c_r).\n                         \n        verbose: bool, optional\
+    \ (default = False)\n                 If true, it prints the expected rejection\
+    \ rate, the upper\n                 bound rejection rate, and the upper bound\
+    \ of the cost.\n\n        Returns\n        -------\n        expected_rejection_rate:\
+    \   float, the expected rejection rate;\n        upperbound_rejection_rate: float,\
+    \ the upper bound for the rejection rate\n                                   satisfied\
+    \ with probability 1-delta;\n        upperbound_cost:           float, the upper\
+    \ bound for the cost;\n        \"\"\"\n\n        check_is_fitted(self, ['decision_scores_',\
+    \ 'threshold_', 'labels_'])\n\n        if c_r < 0:\n            c_r = self.contamination\n\
+    \n        if delta <= 0 or delta >= 1:\n            delta = 0.1\n\n        # Computing\
+    \ the expected rejection rate\n        n = len(self.decision_scores_)\n      \
+    \  n_gamma_minus1 = int(n * self.contamination) - 1\n        argsmin = (n_gamma_minus1,\
+    \ n, 1 - np.exp(-T))\n        argsmax = (n_gamma_minus1, n, np.exp(-T))\n    \
+    \    q1 = root_scalar(lambda p, k, n, C: binom.cdf(k, n, p) - C,\n           \
+    \              bracket=[0, 1], method='brentq', args=argsmin).root\n        q2\
+    \ = root_scalar(lambda p, k, n, C: binom.cdf(k, n, p) - C,\n                 \
+    \        bracket=[0, 1], method='brentq', args=argsmax).root\n        expected_reject_rate\
+    \ = q2 - q1\n\n        # Computing the upper bound for the rejection rate\n  \
+    \      right_mar = (-self.contamination * (n + 2) + n + 1) / n + (\n         \
+    \           T * (n + 2)) / (np.sqrt(2 * n ** 3 * T))\n        right_mar = min(1,\
+    \ right_mar)\n        left_mar = (\n                (2 + n * (1 - self.contamination)\
+    \ * (n + 1)) / n ** 2\n                - np.sqrt(\n            0.5 * n ** 5 *\
+    \ (\n                    2 * n * (\n                    -3 * self.contamination\
+    \ ** 2\n                    - 2 * n * (1 - self.contamination) ** 2\n        \
+    \            + 4 * self.contamination - 3\n            )\n                   \
+    \ + T * (n + 2) ** 2 - 8\n            )\n        ) / n ** 4\n        )\n     \
+    \   left_mar = max(0, left_mar)\n        add_term = 2 * np.sqrt(np.log(2 / delta)\
+    \ / (2 * n))\n        upperbound_rejectrate = right_mar - left_mar + add_term\n\
+    \n        # Computing the upper bound for the cost function\n        n_gamma_minus1\
+    \ = int(n * self.contamination) - 1\n        argsmin = (n_gamma_minus1, n, 1 -\
+    \ np.exp(-T))\n        argsmax = (n_gamma_minus1, n, np.exp(-T))\n        q1 =\
+    \ root_scalar(lambda p, k, n, C: binom.cdf(k, n, p) - C,\n                   \
+    \      bracket=[0, 1], method='brentq', args=argsmin).root\n        q2 = root_scalar(lambda\
+    \ p, k, n, C: binom.cdf(k, n, p) - C,\n                         bracket=[0, 1],\
+    \ method='brentq', args=argsmax).root\n        upperbound_cost = np.min([self.contamination,\
+    \ q1]) * c_fp + np.min(\n            [1 - q2, self.contamination]) * c_fn + (q2\
+    \ - q1) * c_r\n\n        if verbose:\n            print(\"Expected rejection rate:\
+    \ \",\n                  np.round(expected_reject_rate, 4), '%')\n           \
+    \ print(\"Upper bound rejection rate: \",\n                  np.round(upperbound_rejectrate,\
+    \ 4), '%')\n            print(\"Upper bound cost: \", np.round(upperbound_cost,\
+    \ 4))\n\n        return expected_reject_rate, upperbound_rejectrate, upperbound_cost\n\
+    \n    def _predict_rank(self, X, normalized=False):\n        \"\"\"Predict the\
+    \ outlyingness rank of a sample by a fitted model. The\n        method is for\
+    \ outlier detector score combination.\n\n        Parameters\n        ----------\n\
+    \        X : numpy array of shape (n_samples, n_features)\n            The input\
+    \ samples.\n\n        normalized : bool, optional (default=False)\n          \
+    \  If set to True, all ranks are normalized to [0,1].\n\n        Returns\n   \
+    \     -------\n        ranks : array, shape (n_samples,)\n            Outlying\
+    \ rank of a sample according to the training data.\n\n        \"\"\"\n\n     \
+    \   check_is_fitted(self, ['decision_scores_'])\n\n        test_scores = self.decision_function(X)\n\
+    \        train_scores = self.decision_scores_\n\n        sorted_train_scores =\
+    \ np.sort(train_scores)\n        ranks = np.searchsorted(sorted_train_scores,\
+    \ test_scores)\n\n        if normalized:\n            # return normalized ranks\n\
+    \            ranks = ranks / ranks.max()\n        return ranks\n\n    @deprecated()\n\
+    \    def fit_predict_score(self, X, y, scoring='roc_auc_score'):\n        \"\"\
+    \"Fit the detector, predict on samples, and evaluate the model by\n        predefined\
+    \ metrics, e.g., ROC.\n\n        Parameters\n        ----------\n        X : numpy\
+    \ array of shape (n_samples, n_features)\n            The input samples.\n\n \
+    \       y : Ignored\n            Not used, present for API consistency by convention.\n\
+    \n        scoring : str, optional (default='roc_auc_score')\n            Evaluation\
+    \ metric:\n\n            - 'roc_auc_score': ROC score\n            - 'prc_n_score':\
+    \ Precision @ rank n score\n\n        Returns\n        -------\n        score\
+    \ : float\n\n        .. deprecated:: 0.6.9\n          `fit_predict_score` will\
+    \ be removed in pyod 0.8.0.; it will be\n          replaced by calling `fit` function\
+    \ first and then accessing\n          `labels_` attribute for consistency. Scoring\
+    \ could be done by\n          calling an evaluation method, e.g., AUC ROC.\n \
+    \       \"\"\"\n\n        self.fit(X)\n\n        if scoring == 'roc_auc_score':\n\
+    \            score = roc_auc_score(y, self.decision_scores_)\n        elif scoring\
+    \ == 'prc_n_score':\n            score = precision_n_scores(y, self.decision_scores_)\n\
+    \        else:\n            raise NotImplementedError('PyOD built-in scoring only\
+    \ supports '\n                                      'ROC and Precision @ rank\
+    \ n')\n\n        print(\"{metric}: {score}\".format(metric=scoring, score=score))\n\
+    \n        return score\n\n\n    def _set_n_classes(self, y):\n        \"\"\"Set\
+    \ the number of classes if `y` is presented, which is not\n        expected. It\
+    \ could be useful for multi-class outlier detection.\n\n        Parameters\n \
+    \       ----------\n        y : numpy array of shape (n_samples,)\n          \
+    \  Ground truth.\n\n        Returns\n        -------\n        self\n        \"\
+    \"\"\n\n        self._classes = 2  # default as binary classification\n      \
+    \  if y is not None:\n            check_classification_targets(y)\n          \
+    \  self._classes = len(np.unique(y))\n            warnings.warn(\n           \
+    \     \"y should not be presented in unsupervised learning.\")\n        return\
+    \ self\n\n    def _process_decision_scores(self):\n        \"\"\"Internal function\
+    \ to calculate key attributes:\n\n        - threshold_: used to decide the binary\
+    \ label\n        - labels_: binary labels of training data\n\n        Returns\n\
+    \        -------\n        self\n        \"\"\"\n\n        if isinstance(self.contamination,\
+    \ (float, int)):\n            self.threshold_ = percentile(self.decision_scores_,\n\
+    \                                         100 * (1 - self.contamination))\n  \
+    \          self.labels_ = (self.decision_scores_ > self.threshold_).astype(\n\
+    \                'int').ravel()\n\n        # if this is a PyThresh object\n  \
+    \      else:\n            self.labels_ = self.contamination.eval(self.decision_scores_)\n\
+    \            self.threshold_ = self.contamination.thresh_\n            if not\
+    \ self.threshold_:\n                self.threshold_ = np.sum(self.labels_) / len(self.labels_)\n\
+    \n        # calculate for predict_proba()\n\n        self._mu = np.mean(self.decision_scores_)\n\
+    \        self._sigma = np.std(self.decision_scores_)\n\n        return self\n\n\
+    \    # noinspection PyMethodParameters\n    def _get_param_names(cls):\n     \
+    \   # noinspection PyPep8\n        \"\"\"Get parameter names for the estimator\n\
+    \n        See http://scikit-learn.org/stable/modules/generated/sklearn.base.BaseEstimator.html\n\
+    \        and sklearn/base.py for more information.\n        \"\"\"\n\n       \
+    \ # fetch the constructor or the original constructor before\n        # deprecation\
+    \ wrapping if any\n        init = getattr(cls.__init__, 'deprecated_original',\
+    \ cls.__init__)\n        if init is object.__init__:\n            # No explicit\
+    \ constructor to introspect\n            return []\n\n        # introspect the\
+    \ constructor arguments to find the model parameters\n        # to represent\n\
+    \        init_signature = signature(init)\n        # Consider the constructor\
+    \ parameters excluding 'self'\n        parameters = [p for p in init_signature.parameters.values()\n\
+    \                      if p.name != 'self' and p.kind != p.VAR_KEYWORD]\n    \
+    \    for p in parameters:\n            if p.kind == p.VAR_POSITIONAL:\n      \
+    \          raise RuntimeError(\"scikit-learn estimators should always \"\n   \
+    \                                \"specify their parameters in the signature\"\
+    \n                                   \" of their __init__ (no varargs).\"\n  \
+    \                                 \" %s with constructor %s doesn't \"\n     \
+    \                              \" follow this convention.\"\n                \
+    \                   % (cls, init_signature))\n        # Extract and sort argument\
+    \ names excluding 'self'\n        return sorted([p.name for p in parameters])\n\
+    \n    # noinspection PyPep8\n    def get_params(self, deep=True):\n        \"\"\
+    \"Get parameters for this estimator.\n\n        See http://scikit-learn.org/stable/modules/generated/sklearn.base.BaseEstimator.html\n\
+    \        and sklearn/base.py for more information.\n\n        Parameters\n   \
+    \     ----------\n        deep : bool, optional (default=True)\n            If\
+    \ True, will return the parameters for this estimator and\n            contained\
+    \ subobjects that are estimators.\n\n        Returns\n        -------\n      \
+    \  params : mapping of string to any\n            Parameter names mapped to their\
+    \ values.\n        \"\"\"\n\n        out = dict()\n        for key in self._get_param_names():\n\
+    \            # We need deprecation warnings to always be on in order to\n    \
+    \        # catch deprecated param values.\n            # This is set in utils/__init__.py\
+    \ but it gets overwritten\n            # when running under python3 somehow.\n\
+    \            warnings.simplefilter(\"always\", DeprecationWarning)\n         \
+    \   try:\n                with warnings.catch_warnings(record=True) as w:\n  \
+    \                  value = getattr(self, key, None)\n                if len(w)\
+    \ and w[0].category == DeprecationWarning:\n                    # if the parameter\
+    \ is deprecated, don't show it\n                    continue\n            finally:\n\
+    \                warnings.filters.pop(0)\n\n            # XXX: should we rather\
+    \ test if instance of estimator?\n            if deep and hasattr(value, 'get_params'):\n\
+    \                deep_items = value.get_params().items()\n                out.update((key\
+    \ + '__' + k, val) for k, val in deep_items)\n            out[key] = value\n \
+    \       return out\n\n    def set_params(self, **params):\n        # noinspection\
+    \ PyPep8\n        \"\"\"Set the parameters of this estimator.\n        The method\
+    \ works on simple estimators as well as on nested objects\n        (such as pipelines).\
+    \ The latter have parameters of the form\n        ``<component>__<parameter>``\
+    \ so that it's possible to update each\n        component of a nested object.\n\
+    \n        See http://scikit-learn.org/stable/modules/generated/sklearn.base.BaseEstimator.html\n\
+    \        and sklearn/base.py for more information.\n\n        Returns\n      \
+    \  -------\n        self : object\n        \"\"\"\n\n        if not params:\n\
+    \            # Simple optimization to gain speed (inspect is slow)\n         \
+    \   return self\n        valid_params = self.get_params(deep=True)\n\n       \
+    \ nested_params = defaultdict(dict)  # grouped by prefix\n        for key, value\
+    \ in params.items():\n            key, delim, sub_key = key.partition('__')\n\
+    \            if key not in valid_params:\n                raise ValueError('Invalid\
+    \ parameter %s for estimator %s. '\n                                 'Check the\
+    \ list of available parameters '\n                                 'with `estimator.get_params().keys()`.'\
+    \ %\n                                 (key, self))\n\n            if delim:\n\
+    \                nested_params[key][sub_key] = value\n            else:\n    \
+    \            setattr(self, key, value)\n\n        for key, sub_params in nested_params.items():\n\
+    \            valid_params[key].set_params(**sub_params)\n\n        return self\n\
+    \n    def __repr__(self):\n        # noinspection PyPep8\n        \"\"\"\n   \
+    \     See http://scikit-learn.org/stable/modules/generated/sklearn.base.BaseEstimator.html\n\
+    \        and sklearn/base.py for more information.\n        \"\"\"\n\n       \
+    \ class_name = self.__class__.__name__\n        return '%s(%s)' % (class_name,\
+    \ _pprint(self.get_params(deep=False),\n                                     \
+    \          offset=len(class_name), ),)\n\n\n### Dependency File: torch_utility.py\n\
+    # -*- coding: utf-8 -*-\n\"\"\"Utility functions for PyTorch models\n\"\"\"\n\
+    # Author: Tiankai Yang <tiankaiy@usc.edu>\n# License: BSD 2 clause\n\nimport torch\n\
+    import torch.nn as nn\n\n\nclass TorchDataset(torch.utils.data.Dataset):\n   \
+    \ def __init__(self, X, y=None, mean=None, std=None, eps=1e-8,\n             \
+    \    X_dtype=torch.float32, y_dtype=torch.float32,\n                 return_idx=False):\n\
+    \        self.X = X\n        self.y = y\n        self.mean = mean\n        self.std\
+    \ = std\n        self.eps = eps\n        self.X_dtype = X_dtype\n        self.y_dtype\
+    \ = y_dtype\n        self.return_idx = return_idx\n\n    def __len__(self):\n\
+    \        return len(self.X)\n\n    def __getitem__(self, idx):\n        if torch.is_tensor(idx):\n\
+    \            idx = idx.tolist()\n        sample = self.X[idx, :]\n\n        if\
+    \ self.mean is not None and self.std is not None:\n            sample = (sample\
+    \ - self.mean) / (self.std + self.eps)\n\n        if self.y is not None:\n   \
+    \         if self.return_idx:\n                return torch.as_tensor(sample,\
+    \ dtype=self.X_dtype), \\\n                    torch.as_tensor(self.y[idx], dtype=self.y_dtype),\
+    \ idx\n            else:\n                return torch.as_tensor(sample, dtype=self.X_dtype),\
+    \ \\\n                    torch.as_tensor(self.y[idx], dtype=self.y_dtype)\n \
+    \       else:\n            if self.return_idx:\n                return torch.as_tensor(sample,\
+    \ dtype=self.X_dtype), idx\n            else:\n                return torch.as_tensor(sample,\
+    \ dtype=self.X_dtype)\n\n\nclass LinearBlock(nn.Module):\n    \"\"\"\n    Linear\
+    \ block with activation and batch normalization\n\n    Parameters\n    ----------\n\
+    \    in_features : int\n        Number of input features\n        \n    out_features\
+    \ : int\n        Number of output features.\n\n    has_act : bool, optional (default=True)\n\
+    \        If True, apply activation function after linear layer.\n\n    activation_name\
+    \ : str, optional (default='relu')\n        Activation function name. Available\
+    \ functions: \n        'elu', 'leaky_relu', 'relu', 'sigmoid',\n        'softmax',\
+    \ 'softplus', 'tanh'.\n\n    batch_norm : bool, optional (default=True)\n    \
+    \    If True, apply batch normalization after activation function if `has_act`\
+    \ is True,\n        or after linear layer if `has_act` is False.\n        The\
+    \ following four parameters are used only if `batch_norm` is True.\n        See\
+    \ https://pytorch.org/docs/stable/generated/torch.nn.BatchNorm1d.html#batchnorm1d\
+    \ for details.\n\n    bn_eps : float, optional (default=1e-5)\n        A value\
+    \ added to the denominator for numerical stability\n\n    bn_momentum : float,\
+    \ optional (default=0.1)\n        The value used for the running_mean and running_var\
+    \ computation. \n        Can be set to None for cumulative moving average (i.e.\
+    \ simple average)\n\n    bn_affine : bool, optional (default=True)\n        A\
+    \ boolean value that when set to 'True', this module has learnable affine parameters.\n\
+    \n    bn_track_running_stats : bool, optional (default=True)\n        Batch normalization\
+    \ track_running_stats.\n\n    dropout_rate : float, optional (default=0)\n   \
+    \     The probability of an element to be zeroed.\n        See https://pytorch.org/docs/stable/generated/torch.nn.Dropout.html#dropout\
+    \ for details.\n\n    init_type : str, optional (default='kaiming_uniform')\n\
+    \        Initialization type.\n        Available types: 'uniform', 'normal', 'constant',\
+    \ 'ones', 'zeros', 'eye', 'dirac',\n        'xavier_uniform', 'xavier_normal',\
+    \ 'kaiming_uniform', 'kaiming_normal', 'trunc_normal',\n        'orthogonal',\
+    \ 'sparse'.\n        See https://pytorch.org/docs/stable/nn.init.html for details.\n\
+    \n    inplace : bool, optional (default=False)\n        If set to True, activation\
+    \ function and dropout are applied in-place.\n\n    activation_params : dict,\
+    \ optional (default=None)\n        Additional parameters for activation function.\n\
+    \        For example, `activation_params={\n            'elu_alpha': 1.0, \n \
+    \           'leaky_relu_negative_slope': 0.01}`.\n\n    init_params : dict, optional\
+    \ (default=None)\n        Additional parameters for initialization function.\n\
+    \        For example, `init_params={\n            'uniform_a': 0.0, \n       \
+    \     'uniform_b': 1.0}`.\n    \"\"\"\n\n    def __init__(self, in_features, out_features,\n\
+    \                 has_act=True, activation_name='relu',\n                 batch_norm=False,\
+    \ bn_eps=1e-5, bn_momentum=0.1,\n                 bn_affine=True, bn_track_running_stats=True,\n\
+    \                 dropout_rate=0,\n                 init_type='kaiming_uniform',\n\
+    \                 inplace=False,\n                 activation_params: dict = {},\n\
+    \                 init_params: dict = {}):\n        super(LinearBlock, self).__init__()\n\
+    \        self.linear = nn.Linear(in_features, out_features)\n        self.has_act\
+    \ = has_act\n        if has_act:\n            # only use the variable about activation\
+    \ function in **kwargs\n            self.activation = get_activation_by_name(activation_name,\n\
+    \                                                     inplace=inplace,\n     \
+    \                                                **activation_params)\n      \
+    \  self.batch_norm = batch_norm\n        if batch_norm:\n            self.bn =\
+    \ nn.BatchNorm1d(out_features, eps=bn_eps,\n                                 \
+    \    momentum=bn_momentum, affine=bn_affine,\n                               \
+    \      track_running_stats=bn_track_running_stats)\n        self.dropout_rate\
+    \ = dropout_rate\n        if dropout_rate > 0:\n            self.dropout = nn.Dropout(p=dropout_rate,\
+    \ inplace=inplace)\n        init_weights(layer=self.linear, name=init_type, **init_params)\n\
+    \n    def forward(self, x):\n        x = self.linear(x)\n        if self.batch_norm:\n\
+    \            x = self.bn(x)\n        if self.has_act:\n            x = self.activation(x)\n\
+    \        if self.dropout_rate > 0:\n            x = self.dropout(x)\n        return\
+    \ x\n\n\ndef get_activation_by_name(name, inplace=False,\n                   \
+    \        elu_alpha=1.0,\n                           leaky_relu_negative_slope=0.01,\n\
+    \                           softmax_dim=None,\n                           softplus_beta=1.0,\
+    \ softplus_threshold=20.0):\n    \"\"\"\n    Get activation function by name\n\
+    \n    Parameters\n    ----------\n    name : str\n        Activation function\
+    \ name. Available functions: \n        'elu', 'leaky_relu', 'relu', 'sigmoid',\n\
+    \        'softmax', 'softplus', 'tanh'.\n\n    inplace : bool, optional (default=False)\n\
+    \        If set to True, do the operation in-place.\n\n    elu_alpha : float,\
+    \ optional (default=1.0)\n        The alpha value for the ELU formulation.\n \
+    \       See https://pytorch.org/docs/stable/generated/torch.nn.ELU.html#elu for\
+    \ details.\n\n    leaky_relu_negative_slope : float, optional (default=0.01)\n\
+    \        Controls the angle of the negative slope (which is used for negative\
+    \ inputs values).\n        See https://pytorch.org/docs/stable/generated/torch.nn.LeakyReLU.html#leakyrelu\
+    \ for details.\n\n    softmax_dim : int, optional (default=None)\n        A dimension\
+    \ along which Softmax will be computed (so every slice along dim will sum to 1).\n\
+    \        See https://pytorch.org/docs/stable/generated/torch.nn.Softmax.html#softmax\
+    \ for details.\n\n    softplus_beta : float, optional (default=1.0)\n        The\
+    \ beta value for the Softplus formulation.\n        See https://pytorch.org/docs/stable/generated/torch.nn.Softplus.html#softplus\
+    \ for details.\n\n    softplus_threshold : float, optional (default=20.0)\n  \
+    \      Values above this revert to a linear function\n        See https://pytorch.org/docs/stable/generated/torch.nn.Softplus.html#softplus\
+    \ for details.\n\n    Returns\n    -------\n    activation : torch.nn.Module\n\
+    \        Activation function module\n    \"\"\"\n    activation_dict = {\n   \
+    \     'elu': nn.ELU(alpha=elu_alpha, inplace=inplace),\n        'leaky_relu':\
+    \ nn.LeakyReLU(negative_slope=leaky_relu_negative_slope,\n                   \
+    \                inplace=inplace),\n        'relu': nn.ReLU(inplace=inplace),\n\
+    \        'sigmoid': nn.Sigmoid(),\n        'softmax': nn.Softmax(dim=softmax_dim),\n\
+    \        'softplus': nn.Softplus(beta=softplus_beta,\n                       \
+    \         threshold=softplus_threshold),\n        'tanh': nn.Tanh()\n    }\n\n\
+    \    if name in activation_dict.keys():\n        return activation_dict[name]\n\
+    \n    else:\n        raise ValueError(f\"{name} is not a valid activation.\")\n\
+    \n\ndef get_optimizer_by_name(model, name, lr=1e-3, weight_decay=0,\n        \
+    \                  adam_eps=1e-8,\n                          sgd_momentum=0, sgd_nesterov=False):\n\
+    \    \"\"\"\n    Get optimizer by name\n\n    Parameters\n    ----------\n   \
+    \ model : torch.nn.Module\n        Model to be optimized.\n\n    name : str\n\
+    \        Optimizer name. Available optimizers: 'adam', 'sgd'.\n        See https://pytorch.org/docs/stable/optim.html\
+    \ for details.\n\n    lr : float, optional (default=1e-3)\n        Learning rate.\n\
+    \n    weight_decay : float, optional (default=0)\n        Weight decay (L2 penalty).\n\
+    \n    adam_eps : float, optional (default=1e-8)\n        Term added to the denominator\
+    \ to improve numerical stability.\n        See https://pytorch.org/docs/stable/generated/torch.optim.Adam.html#torch.optim.Adam\
+    \ for details.\n\n    sgd_momentum : float, optional (default=0)\n        Momentum\
+    \ factor in SGD.\n        See https://pytorch.org/docs/stable/generated/torch.optim.SGD.html#torch.optim.SGD\
+    \ for details.\n\n    sgd_nesterov : bool, optional (default=False)\n        Enables\
+    \ Nesterov momentum.\n        See https://pytorch.org/docs/stable/generated/torch.optim.SGD.html#torch.optim.SGD\
+    \ for details.\n\n    Returns\n    -------\n    optimizer : torch.optim.Optimizer\n\
+    \        Optimizer\n    \"\"\"\n    optimizer_dict = {\n        'adam': torch.optim.Adam(model.parameters(),\
+    \ lr=lr,\n                                 weight_decay=weight_decay, eps=adam_eps),\n\
+    \        'sgd': torch.optim.SGD(model.parameters(), lr=lr,\n                 \
+    \              momentum=sgd_momentum,\n                               weight_decay=weight_decay,\n\
+    \                               nesterov=sgd_nesterov)\n    }\n\n    if name in\
+    \ optimizer_dict.keys():\n        return optimizer_dict[name]\n\n    else:\n \
+    \       raise ValueError(f\"{name} is not a valid optimizer.\")\n\n\ndef get_criterion_by_name(name,\
+    \ reduction='mean',\n                          bce_weight=None):\n    \"\"\"\n\
+    \    Get criterion by name\n\n    Parameters\n    ----------\n    name : str\n\
+    \        Loss function name. Available functions: 'mse', 'mae', 'bce'.\n     \
+    \   See https://pytorch.org/docs/stable/nn.html#loss-functions for details.\n\n\
+    \    reduction : str, optional (default='mean')\n        Specifies the reduction\
+    \ to apply to the output: 'none' | 'mean' | 'sum'.\n        'none': no reduction\
+    \ will be applied, \n        'mean': the sum of the output will be divided by\
+    \ the number of elements in the output, \n        'sum': the output will be summed.\
+    \ Note: size_average and reduce are in the process of being deprecated, \n   \
+    \         and in the meantime, specifying either of those two args will override\
+    \ reduction. Default: 'mean'\n        See https://pytorch.org/docs/stable/nn.html#loss-functions\
+    \ for details.\n\n    bce_weight : torch.Tensor, optional (default=None)\n   \
+    \     A manual rescaling weight given to the loss of each batch element.\n   \
+    \     See https://pytorch.org/docs/stable/generated/torch.nn.BCELoss.html#torch.nn.BCELoss\
+    \ for details.\n\n    Returns\n    -------\n    criterion : torch.nn.Module\n\
+    \        Criterion module.\n    \"\"\"\n    criterion_dict = {\n        'mse':\
+    \ nn.MSELoss(reduction=reduction),\n        'mae': nn.L1Loss(reduction=reduction),\n\
+    \        'bce': nn.BCELoss(reduction=reduction, weight=bce_weight)\n    }\n\n\
+    \    if name in criterion_dict.keys():\n        return criterion_dict[name]\n\n\
+    \    else:\n        raise ValueError(f\"{name} is not a valid criterion.\")\n\n\
+    \ndef init_weights(layer, name='kaiming_uniform',\n                 uniform_a=0.0,\
+    \ uniform_b=1.0,\n                 normal_mean=0.0, normal_std=1.0,\n        \
+    \         constant_val=0.0,\n                 xavier_gain=1.0,\n             \
+    \    kaiming_a=0, kaiming_mode='fan_in',\n                 kaiming_nonlinearity='leaky_relu',\n\
+    \                 trunc_mean=0.0, trunc_std=1.0, trunc_a=-2, trunc_b=2,\n    \
+    \             orthogonal_gain=1.0,\n                 sparse_sparsity=None, sparse_std=0.01,\
+    \ sparse_generator=None):\n    \"\"\"\n    Initialize weights for a layer\n\n\
+    \    Parameters\n    ----------\n    layer : torch.nn.Module\n        Layer to\
+    \ be initialized.\n\n    name : str, optional (default='kaiming_uniform')\n  \
+    \      Initialization type.\n        Available types: 'uniform', 'normal', 'constant',\
+    \ 'ones', 'zeros', 'eye', 'dirac',\n        'xavier_uniform', 'xavier_normal',\
+    \ 'kaiming_uniform', 'kaiming_normal', 'trunc_normal',\n        'orthogonal',\
+    \ 'sparse'.\n        See https://pytorch.org/docs/stable/nn.init.html for details.\n\
+    \n    uniform_a : float, optional (default=0.0)\n        The lower bound for the\
+    \ uniform distribution.\n        See https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.uniform_\
+    \ for details.\n\n    uniform_b : float, optional (default=1.0)\n        The upper\
+    \ bound for the uniform distribution.\n        See https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.uniform_\
+    \ for details.\n\n    normal_mean : float, optional (default=0.0)\n        The\
+    \ mean of the normal distribution.\n        See https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.normal_\
+    \ for details.\n\n    normal_std : float, optional (default=1.0)\n        The\
+    \ standard deviation of the normal distribution.\n        See https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.normal_\
+    \ for details.\n\n    constant_val : float, optional (default=0.0)\n        The\
+    \ value to fill the tensor with.\n        See https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.constant_\
+    \ for details.\n\n    xavier_gain : float, optional (default=1.0)\n        An\
+    \ optional scaling factor.\n        See https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.xavier_uniform_\
+    \ \n        and https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.xavier_normal_\
+    \ for details.\n\n    kaiming_a : float, optional (default=0)\n        The negative\
+    \ slope of the rectifier used after this layer (only used with 'leaky_relu')\n\
+    \        See https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.kaiming_uniform_\
+    \ \n        and https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.kaiming_normal_\
+    \ for details.\n\n    kaiming_mode : str, optional (default='fan_in')\n      \
+    \  The mode for kaiming initialization. Available modes: 'fan_in', 'fan_out'.\n\
+    \        See https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.kaiming_uniform_\
+    \ \n        and https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.kaiming_normal_\
+    \ for details.\n\n    kaiming_nonlinearity : str, optional (default='leaky_relu')\n\
+    \        The non-linear function (nn.functional name), recommended to use only\
+    \ with 'relu' or 'leaky_relu'.\n        See https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.kaiming_uniform_\
+    \ \n        and https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.kaiming_normal_\
+    \ for details.\n\n    trunc_mean : float, optional (default=0.0)\n        The\
+    \ mean value of the truncated normal distribution.\n        See https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.trunc_normal_\
+    \ for details.\n\n    trunc_std : float, optional (default=1.0)\n        The standard\
+    \ deviation of the truncated normal distribution.\n        See https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.trunc_normal_\
+    \ for details.\n\n    trunc_a : float, optional (default=-2)\n        The minimum\
+    \ cutoff value.\n        See https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.trunc_normal_\
+    \ for details.\n\n    trunc_b : float, optional (default=2)\n        The maximum\
+    \ cutoff value.\n        See https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.trunc_normal_\
+    \ for details.\n\n    orthogonal_gain : float, optional (default=1.0)\n      \
+    \  The optional scaling factor\n        See https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.orthogonal_\
+    \ for details.\n\n    sparse_sparsity : float, optional (default=None)\n     \
+    \   This parameter must be provided if used!\n        The fraction of elements\
+    \ in each column to be set to zero.\n        See https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.sparse_\
+    \ for details.\n\n    sparse_std : float, optional (default=0.01)\n        The\
+    \ standard deviation of the normal distribution used to generate the non-zero\
+    \ values\n        See https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.sparse_\
+    \ for details.\n\n    sparse_generator : Optional[Generator] (default=None)\n\
+    \        The torch Generator to sample from.\n        See https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.sparse_\
+    \ for details.\n    \"\"\"\n    init_name_dict = {\n        'uniform': nn.init.uniform_,\n\
+    \        'normal': nn.init.normal_,\n        'constant': nn.init.constant_,\n\
+    \        'ones': nn.init.ones_,\n        'zeros': nn.init.zeros_,\n        'eye':\
+    \ nn.init.eye_,\n        'xavier_uniform': nn.init.xavier_uniform_,\n        'xavier_normal':\
+    \ nn.init.xavier_normal_,\n        'kaiming_uniform': nn.init.kaiming_uniform_,\n\
+    \        'kaiming_normal': nn.init.kaiming_normal_,\n        'trunc_normal': nn.init.trunc_normal_,\n\
+    \        'orthogonal': nn.init.orthogonal_,\n        'sparse': nn.init.sparse_\n\
+    \    }\n\n    if name in init_name_dict.keys():\n        if name == 'uniform':\n\
+    \            init_name_dict[name](layer.weight, a=uniform_a, b=uniform_b)\n  \
+    \      elif name == 'normal':\n            init_name_dict[name](layer.weight,\
+    \ mean=normal_mean,\n                                 std=normal_std)\n      \
+    \  elif name == 'constant':\n            init_name_dict[name](layer.weight, val=constant_val)\n\
+    \        elif name == 'ones':\n            init_name_dict[name](layer.weight)\n\
+    \        elif name == 'zeros':\n            init_name_dict[name](layer.weight)\n\
+    \        elif name == 'eye':\n            init_name_dict[name](layer.weight)\n\
+    \        elif name == 'xavier_uniform':\n            init_name_dict[name](layer.weight,\
+    \ gain=xavier_gain)\n        elif name == 'xavier_normal':\n            init_name_dict[name](layer.weight,\
+    \ gain=xavier_gain)\n        elif name == 'kaiming_uniform':\n            init_name_dict[name](layer.weight,\
+    \ a=kaiming_a, mode=kaiming_mode,\n                                 nonlinearity=kaiming_nonlinearity)\n\
+    \        elif name == 'kaiming_normal':\n            init_name_dict[name](layer.weight,\
+    \ a=kaiming_a, mode=kaiming_mode,\n                                 nonlinearity=kaiming_nonlinearity)\n\
+    \        elif name == 'trunc_normal':\n            init_name_dict[name](layer.weight,\
+    \ mean=trunc_mean, std=trunc_std,\n                                 a=trunc_a,\
+    \ b=trunc_b)\n        elif name == 'orthogonal':\n            init_name_dict[name](layer.weight,\
+    \ gain=orthogonal_gain)\n        elif name == 'sparse':\n            init_name_dict[name](layer.weight,\
+    \ sparsity=sparse_sparsity,\n                                 std=sparse_std)\n\
+    \    else:\n        raise ValueError(f\"{name} is not a valid initialization type.\"\
+    )\n\nOutput the complete test file, code only, no explanations.\n```python\n<complete\
+    \ test code>\n```\n### Time\nCurrent time: 2025-04-11 20:00:14\n"
+  role: user

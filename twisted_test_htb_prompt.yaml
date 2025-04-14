@@ -5,12 +5,13 @@ messages:
   role: system
 - content: "### Task Information\nBased on the source code, write/rewrite tests to\
     \ cover the source code.\nRepository: twisted\nTest File Path: twisted\\test_htb\\\
-    test_htb.py\nProject Programming Language: Python\nTesting Framework: pytest\n\
-    ### Source File Content\n### Source File Content:\n# -*- test-case-name: twisted.test.test_htb\
-    \ -*-\n# Copyright (c) Twisted Matrix Laboratories.\n# See LICENSE for details.\n\
-    \n\n\"\"\"\nHierarchical Token Bucket traffic shaping.\n\nPatterned after U{Martin\
-    \ Devera's Hierarchical Token Bucket traffic\nshaper for the Linux kernel<http://luxik.cdi.cz/~devik/qos/htb/>}.\n\
-    \n@seealso: U{HTB Linux queuing discipline manual - user guide\n  <http://luxik.cdi.cz/~devik/qos/htb/manual/userg.htm>}\n\
+    test_htb.py\nProject Programming Language: Python\nTesting Framework: Twisted\
+    \ Trial\n### Source File Content\n### Source File Content:\n# -*- test-case-name:\
+    \ twisted.test.test_htb -*-\n# Copyright (c) Twisted Matrix Laboratories.\n# See\
+    \ LICENSE for details.\n\n\n\"\"\"\nHierarchical Token Bucket traffic shaping.\n\
+    \nPatterned after U{Martin Devera's Hierarchical Token Bucket traffic\nshaper\
+    \ for the Linux kernel<http://luxik.cdi.cz/~devik/qos/htb/>}.\n\n@seealso: U{HTB\
+    \ Linux queuing discipline manual - user guide\n  <http://luxik.cdi.cz/~devik/qos/htb/manual/userg.htm>}\n\
     @seealso: U{Token Bucket Filter in Linux Advanced Routing & Traffic Control\n\
     \    HOWTO<http://lartc.org/howto/lartc.qdisc.classless.html#AEN682>}\n\"\"\"\n\
     \n\n# TODO: Investigate whether we should be using os.times()[-1] instead of\n\
@@ -220,5 +221,5 @@ messages:
     \ The number of bytes written.\n        \"\"\"\n        if self.consumer is None:\n\
     \            return 0\n        self.consumer.write(data)\n        return len(data)\n\
     \nOutput the complete test file, code only, no explanations.\n### Time\nCurrent\
-    \ time: 2025-03-17 01:42:53\n"
+    \ time: 2025-03-18 00:52:51\n"
   role: user

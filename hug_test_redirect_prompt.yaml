@@ -1,0 +1,40 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: hug\nTest File Path: hug\\test_redirect\\\
+    test_redirect.py\nProject Programming Language: python\nTesting Framework: pytest\n\
+    ### Source File Content\n### Source File Content:\n\"\"\"hug/redirect.py\n\nImplements\
+    \ convenience redirect methods that raise a redirection exception when called\n\
+    \nCopyright (C) 2016  Timothy Edmund Crosley\n\nPermission is hereby granted,\
+    \ free of charge, to any person obtaining a copy of this software and associated\n\
+    documentation files (the \"Software\"), to deal in the Software without restriction,\
+    \ including without limitation\nthe rights to use, copy, modify, merge, publish,\
+    \ distribute, sublicense, and/or sell copies of the Software, and\nto permit persons\
+    \ to whom the Software is furnished to do so, subject to the following conditions:\n\
+    \nThe above copyright notice and this permission notice shall be included in all\
+    \ copies or\nsubstantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED\
+    \ \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT\
+    \ LIMITED\nTO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE\
+    \ AND NONINFRINGEMENT. IN NO EVENT SHALL\nTHE AUTHORS OR COPYRIGHT HOLDERS BE\
+    \ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF\n\
+    CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE\
+    \ OR THE USE OR\nOTHER DEALINGS IN THE SOFTWARE.\n\n\"\"\"\nfrom __future__ import\
+    \ absolute_import\n\nimport falcon\n\n\ndef to(location, code=falcon.HTTP_302):\n\
+    \    \"\"\"Redirects to the specified location using the provided http_code (defaults\
+    \ to HTTP_302 FOUND)\"\"\"\n    raise falcon.http_status.HTTPStatus(code, {\"\
+    location\": location})\n\n\ndef permanent(location):\n    \"\"\"Redirects to the\
+    \ specified location using HTTP 301 status code\"\"\"\n    to(location, falcon.HTTP_301)\n\
+    \n\ndef found(location):\n    \"\"\"Redirects to the specified location using\
+    \ HTTP 302 status code\"\"\"\n    to(location, falcon.HTTP_302)\n\n\ndef see_other(location):\n\
+    \    \"\"\"Redirects to the specified location using HTTP 303 status code\"\"\"\
+    \n    to(location, falcon.HTTP_303)\n\n\ndef temporary(location):\n    \"\"\"\
+    Redirects to the specified location using HTTP 307 status code\"\"\"\n    to(location,\
+    \ falcon.HTTP_307)\n\n\ndef not_found(*args, **kwargs):\n    \"\"\"Redirects request\
+    \ handling to the not found render\"\"\"\n    raise falcon.HTTPNotFound()\n\n\
+    ### Source File Dependency Files Content\n### Dependency File: empty.txt\n\nOutput\
+    \ the complete test file, code only, no explanations.\n```python\n<complete test\
+    \ code>\n```\n### Time\nCurrent time: 2025-04-11 19:02:19\n"
+  role: user

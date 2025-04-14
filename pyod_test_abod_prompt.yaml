@@ -1,0 +1,701 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: pyod\nTest File Path: pyod\\test_abod\\\
+    test_abod.py\nProject Programming Language: python\nTesting Framework: pytest\n\
+    ### Source File Content\n### Source File Content:\n# -*- coding: utf-8 -*-\n\"\
+    \"\"Angle-based Outlier Detector (ABOD)\n\"\"\"\n# Author: Yue Zhao <yzhao062@gmail.com>\n\
+    # License: BSD 2 clause\n\n\nimport warnings\nfrom itertools import combinations\n\
+    \nimport numpy as np\nfrom numba import njit\nfrom sklearn.neighbors import KDTree\n\
+    from sklearn.neighbors import NearestNeighbors\nfrom sklearn.utils import check_array\n\
+    from sklearn.utils.validation import check_is_fitted\n\nfrom .base import BaseDetector\n\
+    from ..utils.utility import check_parameter\n\n\n@njit\ndef _wcos(curr_pt, a,\
+    \ b):  # pragma: no cover\n    \"\"\"Internal function to calculate weighted cosine\
+    \ using optimized\n    numba code.\n\n    Parameters\n    ----------\n    curr_pt\
+    \ : numpy array of shape (n_samples, n_features)\n        Current sample to be\
+    \ calculated.\n\n    a : numpy array of shape (n_samples, n_features)\n      \
+    \  Training sample a.\n\n    b : numpy array of shape (n_samples, n_features)\n\
+    \        Training sample b.\n\n    Returns\n    -------\n    wcos : float in range\
+    \ [-1, 1]\n        Cosine similarity between a-curr_pt and b-curr_pt.\n\n    \"\
+    \"\"\n\n    a_curr = a - curr_pt\n    b_curr = b - curr_pt\n\n    # wcos = (<a_curr,\
+    \ b_curr>/((|a_curr|*|b_curr|)^2)\n    wcos = np.dot(a_curr, b_curr) / (\n   \
+    \         np.linalg.norm(a_curr, 2) ** 2) / (\n                   np.linalg.norm(b_curr,\
+    \ 2) ** 2)\n    return wcos\n\n\ndef _calculate_wocs(curr_pt, X, X_ind):\n   \
+    \ \"\"\"Calculated the variance of weighted cosine of a point.\n    wcos = (<a_curr,\
+    \ b_curr>/((|a_curr|*|b_curr|)^2)\n\n    Parameters\n    ----------\n    curr_pt\
+    \ : numpy array, shape (1, n_features)\n        The sample to be calculated.\n\
+    \n    X : numpy array of shape (n_samples, n_features)\n        The training dataset.\n\
+    \n    X_ind : list\n        The valid index of the training data.\n\n    Returns\n\
+    \    -------\n    cos_angle_var : float\n        The variance of cosine angle\n\
+    \n    \"\"\"\n    wcos_list = []\n    curr_pair_inds = list(combinations(X_ind,\
+    \ 2))\n    for j, (a_ind, b_ind) in enumerate(curr_pair_inds):\n        a = X[a_ind,\
+    \ :]\n        b = X[b_ind, :]\n\n        # skip if no angle can be formed\n  \
+    \      if np.array_equal(a, curr_pt) or np.array_equal(b, curr_pt):\n        \
+    \    continue\n        # add the weighted cosine to the list\n        wcos_list.append(_wcos(curr_pt,\
+    \ a, b))\n    return np.var(wcos_list)\n\n\n# noinspection PyPep8Naming\nclass\
+    \ ABOD(BaseDetector):\n    \"\"\"ABOD class for Angle-base Outlier Detection.\n\
+    \    For an observation, the variance of its weighted cosine scores to all\n \
+    \   neighbors could be viewed as the outlying score.\n    See :cite:`kriegel2008angle`\
+    \ for details.\n\n    Two version of ABOD are supported:\n\n    - Fast ABOD: use\
+    \ k nearest neighbors to approximate.\n    - Original ABOD: consider all training\
+    \ points with high time complexity at\n      O(n^3).\n\n    Parameters\n    ----------\n\
+    \    contamination : float in (0., 0.5), optional (default=0.1)\n        The amount\
+    \ of contamination of the data set, i.e.\n        the proportion of outliers in\
+    \ the data set. Used when fitting to\n        define the threshold on the decision\
+    \ function.\n\n    n_neighbors : int, optional (default=10)\n        Number of\
+    \ neighbors to use by default for k neighbors queries.\n\n    method: str, optional\
+    \ (default='fast')\n        Valid values for metric are:\n\n        - 'fast':\
+    \ fast ABOD. Only consider n_neighbors of training points\n        - 'default':\
+    \ original ABOD with all training points, which could be\n          slow\n\n \
+    \   Attributes\n    ----------\n    decision_scores_ : numpy array of shape (n_samples,)\n\
+    \        The outlier scores of the training data.\n        The higher, the more\
+    \ abnormal. Outliers tend to have higher\n        scores. This value is available\
+    \ once the detector is\n        fitted.\n\n    threshold_ : float\n        The\
+    \ threshold is based on ``contamination``. It is the\n        ``n_samples * contamination``\
+    \ most abnormal samples in\n        ``decision_scores_``. The threshold is calculated\
+    \ for generating\n        binary outlier labels.\n\n    labels_ : int, either\
+    \ 0 or 1\n        The binary labels of the training data. 0 stands for inliers\n\
+    \        and 1 for outliers/anomalies. It is generated by applying\n        ``threshold_``\
+    \ on ``decision_scores_``.\n    \"\"\"\n\n    def __init__(self, contamination=0.1,\
+    \ n_neighbors=5, method='fast'):\n        super(ABOD, self).__init__(contamination=contamination)\n\
+    \        self.method = method\n        self.n_neighbors = n_neighbors\n\n    def\
+    \ fit(self, X, y=None):\n        \"\"\"Fit detector. y is ignored in unsupervised\
+    \ methods.\n\n        Parameters\n        ----------\n        X : numpy array\
+    \ of shape (n_samples, n_features)\n            The input samples.\n\n       \
+    \ y : Ignored\n            Not used, present for API consistency by convention.\n\
+    \n        Returns\n        -------\n        self : object\n            Fitted\
+    \ estimator.\n        \"\"\"\n        # validate inputs X and y (optional)\n \
+    \       X = check_array(X)\n        self._set_n_classes(y)\n\n        self.X_train_\
+    \ = X\n        self.n_train_ = X.shape[0]\n        self.decision_scores_ = np.zeros([self.n_train_,\
+    \ 1])\n\n        if self.method == 'fast':\n            self._fit_fast()\n   \
+    \     elif self.method == 'default':\n            self._fit_default()\n      \
+    \  else:\n            raise ValueError(self.method, \"is not a valid method\"\
+    )\n\n        # flip the scores\n        self.decision_scores_ = self.decision_scores_.ravel()\
+    \ * -1\n        self._process_decision_scores()\n        return self\n\n    def\
+    \ _fit_default(self):\n        \"\"\"Default ABOD method. Use all training points\
+    \ with high complexity\n        O(n^3). For internal use only.\n        \"\"\"\
+    \n        for i in range(self.n_train_):\n            curr_pt = self.X_train_[i,\
+    \ :]\n\n            # get the index pairs of the neighbors, remove itself from\
+    \ index\n            X_ind = list(range(0, self.n_train_))\n            X_ind.remove(i)\n\
+    \n            self.decision_scores_[i, 0] = _calculate_wocs(curr_pt,\n       \
+    \                                                   self.X_train_,\n         \
+    \                                                 X_ind)\n        return self\n\
+    \n    def _fit_fast(self):\n        \"\"\"Fast ABOD method. Only use n_neighbors\
+    \ for angle calculation.\n        Internal use only\n        \"\"\"\n\n      \
+    \  # make sure the n_neighbors is in the range\n        if self.n_neighbors >=\
+    \ self.n_train_:\n            self.n_neighbors = self.n_train_ - 1\n         \
+    \   warnings.warn(\"n_neighbors is set to the number of \"\n                 \
+    \         \"training points minus 1: {0}\".format(self.n_train_))\n\n        \
+    \    check_parameter(self.n_neighbors, 1, self.n_train_,\n                   \
+    \         include_left=True, include_right=True)\n\n        self.tree_ = KDTree(self.X_train_)\n\
+    \n        neigh = NearestNeighbors(n_neighbors=self.n_neighbors)\n        neigh.fit(self.X_train_)\n\
+    \        ind_arr = neigh.kneighbors(n_neighbors=self.n_neighbors,\n          \
+    \                         return_distance=False)\n\n        for i in range(self.n_train_):\n\
+    \            curr_pt = self.X_train_[i, :]\n            X_ind = ind_arr[i, :]\n\
+    \            self.decision_scores_[i, 0] = _calculate_wocs(curr_pt,\n        \
+    \                                                  self.X_train_,\n          \
+    \                                                X_ind)\n        return self\n\
+    \n    # noinspection PyPep8Naming\n    def decision_function(self, X):\n     \
+    \   \"\"\"Predict raw anomaly score of X using the fitted detector.\n\n      \
+    \  The anomaly score of an input sample is computed based on different\n     \
+    \   detector algorithms. For consistency, outliers are assigned with\n       \
+    \ larger anomaly scores.\n\n        Parameters\n        ----------\n        X\
+    \ : numpy array of shape (n_samples, n_features)\n            The training input\
+    \ samples. Sparse matrices are accepted only\n            if they are supported\
+    \ by the base estimator.\n\n        Returns\n        -------\n        anomaly_scores\
+    \ : numpy array of shape (n_samples,)\n            The anomaly score of the input\
+    \ samples.\n        \"\"\"\n\n        check_is_fitted(self, ['X_train_', 'n_train_',\
+    \ 'decision_scores_',\n                               'threshold_', 'labels_'])\n\
+    \        X = check_array(X)\n\n        if self.method == 'fast':  # fast ABOD\n\
+    \            # outliers have higher outlier scores\n            return self._decision_function_fast(X)\
+    \ * -1\n        else:  # default ABOD\n            return self._decision_function_default(X)\
+    \ * -1\n\n    def _decision_function_default(self, X):\n        \"\"\"Internal\
+    \ method for predicting outlier scores using default ABOD.\n\n        Parameters\n\
+    \        ----------\n        X : numpy array of shape (n_samples, n_features)\n\
+    \            The training input samples.\n\n        Returns\n        -------\n\
+    \        pred_score : array, shape (n_samples,)\n            The anomaly score\
+    \ of the input samples.\n\n        \"\"\"\n        # initialize the output score\n\
+    \        pred_score = np.zeros([X.shape[0], 1])\n\n        for i in range(X.shape[0]):\n\
+    \            curr_pt = X[i, :]\n            # get the index pairs of the neighbors\n\
+    \            X_ind = list(range(0, self.n_train_))\n            pred_score[i,\
+    \ :] = _calculate_wocs(curr_pt, self.X_train_, X_ind)\n\n        return pred_score.ravel()\n\
+    \n    def _decision_function_fast(self, X):\n        \"\"\"Internal method for\
+    \ predicting outlier scores using Fast ABOD.\n\n        Parameters\n        ----------\n\
+    \        X : numpy array of shape (n_samples, n_features)\n            The training\
+    \ input samples.\n\n        Returns\n        -------\n        pred_score : array,\
+    \ shape (n_samples,)\n            The anomaly score of the input samples.\n\n\
+    \        \"\"\"\n\n        check_is_fitted(self, ['tree_'])\n        # initialize\
+    \ the output score\n        pred_score = np.zeros([X.shape[0], 1])\n\n       \
+    \ # get the indexes of the X's k nearest training points\n        _, ind_arr =\
+    \ self.tree_.query(X, k=self.n_neighbors)\n\n        for i in range(X.shape[0]):\n\
+    \            curr_pt = X[i, :]\n            X_ind = ind_arr[i, :]\n          \
+    \  pred_score[i, :] = _calculate_wocs(curr_pt, self.X_train_, X_ind)\n\n     \
+    \   return pred_score.ravel()\n\n### Source File Dependency Files Content\n###\
+    \ Dependency File: base.py\n# -*- coding: utf-8 -*-\n\"\"\"Base class for all\
+    \ outlier detector models\n\"\"\"\n# Author: Yue Zhao <yzhao062@gmail.com>\n#\
+    \ License: BSD 2 clause\n\n\nimport abc\nimport warnings\nfrom collections import\
+    \ defaultdict\nfrom inspect import signature\n\nimport numpy as np\nfrom numpy\
+    \ import percentile\nfrom scipy.special import erf\nfrom scipy.stats import binom\n\
+    from sklearn.metrics import roc_auc_score\nfrom sklearn.preprocessing import MinMaxScaler\n\
+    from sklearn.utils import deprecated\nfrom sklearn.utils.multiclass import check_classification_targets\n\
+    from sklearn.utils.validation import check_is_fitted\nfrom scipy.optimize import\
+    \ root_scalar\n\nfrom .sklearn_base import _pprint\nfrom ..utils.utility import\
+    \ precision_n_scores\n\n\nclass BaseDetector(metaclass=abc.ABCMeta):\n    \"\"\
+    \"Abstract class for all outlier detection algorithms.\n\n\n    Parameters\n \
+    \   ----------\n    contamination : float in (0., 0.5), optional (default=0.1)\n\
+    \        The amount of contamination of the data set,\n        i.e. the proportion\
+    \ of outliers in the data set. Used when fitting to\n        define the threshold\
+    \ on the decision function.\n\n    Attributes\n    ----------\n    decision_scores_\
+    \ : numpy array of shape (n_samples,)\n        The outlier scores of the training\
+    \ data.\n        The higher, the more abnormal. Outliers tend to have higher\n\
+    \        scores. This value is available once the detector is fitted.\n\n    threshold_\
+    \ : float\n        The threshold is based on ``contamination``. It is the\n  \
+    \      ``n_samples * contamination`` most abnormal samples in\n        ``decision_scores_``.\
+    \ The threshold is calculated for generating\n        binary outlier labels.\n\
+    \n    labels_ : int, either 0 or 1\n        The binary labels of the training\
+    \ data. 0 stands for inliers\n        and 1 for outliers/anomalies. It is generated\
+    \ by applying\n        ``threshold_`` on ``decision_scores_``.\n    \"\"\"\n\n\
+    \    @abc.abstractmethod\n    def __init__(self, contamination=0.1):\n\n     \
+    \   if (isinstance(contamination, (float, int))):\n\n            if not (0. <\
+    \ contamination <= 0.5):\n                raise ValueError(\"contamination must\
+    \ be in (0, 0.5], \"\n                                 \"got: %f\" % contamination)\n\
+    \n        # allow arbitrary input such as PyThreshld object\n        self.contamination\
+    \ = contamination\n\n    # noinspection PyIncorrectDocstring\n    @abc.abstractmethod\n\
+    \    def fit(self, X, y=None):\n        \"\"\"Fit detector. y is ignored in unsupervised\
+    \ methods.\n\n        Parameters\n        ----------\n        X : numpy array\
+    \ of shape (n_samples, n_features)\n            The input samples.\n\n       \
+    \ y : Ignored\n            Not used, present for API consistency by convention.\n\
+    \n        Returns\n        -------\n        self : object\n            Fitted\
+    \ estimator.\n        \"\"\"\n        pass\n\n    @abc.abstractmethod\n    def\
+    \ decision_function(self, X):\n        \"\"\"Predict raw anomaly scores of X using\
+    \ the fitted detector.\n\n        The anomaly score of an input sample is computed\
+    \ based on the fitted\n        detector. For consistency, outliers are assigned\
+    \ with\n        higher anomaly scores.\n\n        Parameters\n        ----------\n\
+    \        X : numpy array of shape (n_samples, n_features)\n            The input\
+    \ samples. Sparse matrices are accepted only\n            if they are supported\
+    \ by the base estimator.\n\n        Returns\n        -------\n        anomaly_scores\
+    \ : numpy array of shape (n_samples,)\n            The anomaly score of the input\
+    \ samples.\n        \"\"\"\n        pass\n\n    @deprecated()\n    def fit_predict(self,\
+    \ X, y=None):\n        \"\"\"Fit detector first and then predict whether a particular\
+    \ sample\n        is an outlier or not. y is ignored in unsupervised models.\n\
+    \n        Parameters\n        ----------\n        X : numpy array of shape (n_samples,\
+    \ n_features)\n            The input samples.\n\n        y : Ignored\n       \
+    \     Not used, present for API consistency by convention.\n\n        Returns\n\
+    \        -------\n        outlier_labels : numpy array of shape (n_samples,)\n\
+    \            For each observation, tells whether\n            it should be considered\
+    \ as an outlier according to the\n            fitted model. 0 stands for inliers\
+    \ and 1 for outliers.\n\n        .. deprecated:: 0.6.9\n          `fit_predict`\
+    \ will be removed in pyod 0.8.0.; it will be\n          replaced by calling `fit`\
+    \ function first and then accessing\n          `labels_` attribute for consistency.\n\
+    \        \"\"\"\n\n        self.fit(X, y)\n        return self.labels_\n\n   \
+    \ def predict(self, X, return_confidence=False):\n        \"\"\"Predict if a particular\
+    \ sample is an outlier or not.\n\n        Parameters\n        ----------\n   \
+    \     X : numpy array of shape (n_samples, n_features)\n            The input\
+    \ samples.\n\n        return_confidence : boolean, optional(default=False)\n \
+    \           If True, also return the confidence of prediction.\n\n        Returns\n\
+    \        -------\n        outlier_labels : numpy array of shape (n_samples,)\n\
+    \            For each observation, tells whether\n            it should be considered\
+    \ as an outlier according to the\n            fitted model. 0 stands for inliers\
+    \ and 1 for outliers.\n        confidence : numpy array of shape (n_samples,).\n\
+    \            Only if return_confidence is set to True.\n        \"\"\"\n\n   \
+    \     check_is_fitted(self, ['decision_scores_', 'threshold_', 'labels_'])\n \
+    \       pred_score = self.decision_function(X)\n\n        if isinstance(self.contamination,\
+    \ (float, int)):\n            prediction = (pred_score > self.threshold_).astype('int').ravel()\n\
+    \n        # if this is a PyThresh object\n        else:\n            prediction\
+    \ = self.contamination.eval(pred_score)\n\n        if return_confidence:\n   \
+    \         confidence = self.predict_confidence(X)\n            return prediction,\
+    \ confidence\n\n        return prediction\n\n    def predict_proba(self, X, method='linear',\
+    \ return_confidence=False):\n        \"\"\"Predict the probability of a sample\
+    \ being outlier. Two approaches\n        are possible:\n\n        1. simply use\
+    \ Min-max conversion to linearly transform the outlier\n           scores into\
+    \ the range of [0,1]. The model must be\n           fitted first.\n        2.\
+    \ use unifying scores, see :cite:`kriegel2011interpreting`.\n\n        Parameters\n\
+    \        ----------\n        X : numpy array of shape (n_samples, n_features)\n\
+    \            The input samples.\n\n        method : str, optional (default='linear')\n\
+    \            probability conversion method. It must be one of\n            'linear'\
+    \ or 'unify'.\n\n        return_confidence : boolean, optional(default=False)\n\
+    \            If True, also return the confidence of prediction.\n\n\n        Returns\n\
+    \        -------\n        outlier_probability : numpy array of shape (n_samples,\
+    \ n_classes)\n            For each observation, tells whether or not\n       \
+    \     it should be considered as an outlier according to the\n            fitted\
+    \ model. Return the outlier probability, ranging\n            in [0,1]. Note it\
+    \ depends on the number of classes, which is by\n            default 2 classes\
+    \ ([proba of normal, proba of outliers]).\n        \"\"\"\n\n        check_is_fitted(self,\
+    \ ['decision_scores_', 'threshold_', 'labels_'])\n        train_scores = self.decision_scores_\n\
+    \n        test_scores = self.decision_function(X)\n\n        probs = np.zeros([X.shape[0],\
+    \ int(self._classes)])\n        if method == 'linear':\n            scaler = MinMaxScaler().fit(train_scores.reshape(-1,\
+    \ 1))\n            probs[:, 1] = scaler.transform(\n                test_scores.reshape(-1,\
+    \ 1)).ravel().clip(0, 1)\n            probs[:, 0] = 1 - probs[:, 1]\n\n      \
+    \      if return_confidence:\n                confidence = self.predict_confidence(X)\n\
+    \                return probs, confidence\n\n            return probs\n\n    \
+    \    elif method == 'unify':\n            # turn output into probability\n   \
+    \         pre_erf_score = (test_scores - self._mu) / (\n                    self._sigma\
+    \ * np.sqrt(2))\n            erf_score = erf(pre_erf_score)\n            probs[:,\
+    \ 1] = erf_score.clip(0, 1).ravel()\n            probs[:, 0] = 1 - probs[:, 1]\n\
+    \n            if return_confidence:\n                confidence = self.predict_confidence(X)\n\
+    \                return probs, confidence\n\n            return probs\n      \
+    \  else:\n            raise ValueError(method,\n                             'is\
+    \ not a valid probability conversion method')\n\n    def predict_confidence(self,\
+    \ X):\n        \"\"\"Predict the model's confidence in making the same prediction\n\
+    \        under slightly different training sets.\n        See :cite:`perini2020quantifying`.\n\
+    \n        Parameters\n        -------\n        X : numpy array of shape (n_samples,\
+    \ n_features)\n            The input samples.\n\n        Returns\n        -------\n\
+    \        confidence : numpy array of shape (n_samples,)\n            For each\
+    \ observation, tells how consistently the model would\n            make the same\
+    \ prediction if the training set was perturbed.\n            Return a probability,\
+    \ ranging in [0,1].\n\n        \"\"\"\n\n        check_is_fitted(self, ['decision_scores_',\
+    \ 'threshold_', 'labels_'])\n\n        n = len(self.decision_scores_)\n\n    \
+    \    # todo: this has an optimization opportunity since the scores may\n     \
+    \   # already be available\n        test_scores = self.decision_function(X)\n\n\
+    \        count_instances = np.vectorize(\n            lambda x: np.count_nonzero(self.decision_scores_\
+    \ <= x))\n        n_instances = count_instances(test_scores)\n\n        # Derive\
+    \ the outlier probability using Bayesian approach\n        posterior_prob = np.vectorize(lambda\
+    \ x: (1 + x) / (2 + n))(n_instances)\n\n        if not isinstance(self.contamination,\
+    \ (float, int)):\n            contam = np.sum(self.labels_) / n\n        # if\
+    \ this is a PyThresh object\n        else:\n            contam = self.contamination\n\
+    \n        # Transform the outlier probability into a confidence value\n      \
+    \  confidence = np.vectorize(\n            lambda p: 1 - binom.cdf(n - int(n *\
+    \ contam), n, p))(\n            posterior_prob)\n\n        if isinstance(self.contamination,\
+    \ (float, int)):\n            prediction = (test_scores > self.threshold_).astype('int').ravel()\n\
+    \        # if this is a PyThresh object\n        else:\n            prediction\
+    \ = self.contamination.eval(test_scores)\n        np.place(confidence, prediction\
+    \ == 0, 1 - confidence[prediction == 0])\n\n        return confidence\n\n    def\
+    \ predict_with_rejection(self, X, T=32, return_stats=False,\n                \
+    \               delta=0.1, c_fp=1, c_fn=1, c_r=-1):\n        \"\"\"Predict if\
+    \ a particular sample is an outlier or not, \n           allowing the detector\
+    \ to reject (i.e., output = -2) \n           low confidence predictions.\n\n \
+    \       Parameters\n        ----------\n        X : numpy array of shape (n_samples,\
+    \ n_features)\n            The input samples.\n\n        T : int, optional(default=32)\n\
+    \            It allows to set the rejection threshold to 1-2exp(-T).\n       \
+    \     The higher the value of T, the more rejections are made.\n            \n\
+    \        return_stats: bool, optional (default = False)\n                    \
+    \  If true, it returns also three additional float values:\n                 \
+    \     the estimated rejection rate, the upper bound rejection\n              \
+    \        rate, and the upper bound of the cost.\n                       \n   \
+    \     delta: float, optional (default = 0.1)\n               The upper bound rejection\
+    \ rate holds with probability 1-delta.\n                       \n        c_fp,\
+    \ c_fn, c_r: floats (positive), optional (default = [1,1, contamination])\n  \
+    \                       costs for false positive predictions (c_fp), false negative\n\
+    \                         predictions (c_fn) and rejections (c_r).\n         \
+    \       \n        Returns\n        -------\n        outlier_labels : numpy array\
+    \ of shape (n_samples,)\n                         For each observation, it tells\
+    \ whether it should be\n                         considered as an outlier according\
+    \ to the fitted\n                         model. 0 stands for inliers, 1 for outliers\
+    \ and\n                         -2 for rejection.\n                          \
+    \         \n        expected_rejection_rate:   float, if return_stats is True;\n\
+    \        upperbound_rejection_rate: float, if return_stats is True;\n        upperbound_cost:\
+    \           float, if return_stats is True;\n\n        \"\"\"\n        check_is_fitted(self,\
+    \ ['decision_scores_', 'threshold_', 'labels_'])\n        if c_r < 0:\n      \
+    \      warnings.warn(\n                \"The cost of rejection must be positive.\
+    \ \"\n                \"It has been set to the contamination rate.\")\n      \
+    \      c_r = self.contamination\n\n        if delta <= 0 or delta >= 1:\n    \
+    \        warnings.warn(\n                \"delta must belong to (0,1). It's value\
+    \ has been set to 0.1\")\n            delta = 0.1\n\n        self.rejection_threshold_\
+    \ = 1 - 2 * np.exp(-T)\n        prediction = self.predict(X)\n        confidence\
+    \ = self.predict_confidence(X)\n        np.place(confidence, prediction == 0,\
+    \ 1 - confidence[prediction == 0])\n        confidence = 2 * abs(confidence -\
+    \ .5)\n        prediction[np.where(confidence <= self.rejection_threshold_)[0]]\
+    \ = -2\n\n        if return_stats:\n            expected_rejrate, ub_rejrate,\
+    \ ub_cost = self.compute_rejection_stats(\n                T=T, delta=delta,\n\
+    \                c_fp=c_fp, c_fn=c_fn, c_r=c_r)\n            return prediction,\
+    \ [expected_rejrate, ub_rejrate, ub_cost]\n\n        return prediction\n\n   \
+    \ def compute_rejection_stats(self, T=32, delta=0.1, c_fp=1, c_fn=1, c_r=-1,\n\
+    \                                verbose=False):\n        \"\"\"Add reject option\
+    \ into the unsupervised detector. \n           This comes with guarantees: an\
+    \ estimate of the expected\n           rejection rate (return_rejectrate=True),\
+    \ an upper\n           bound of the rejection rate (return_ub_rejectrate= True),\n\
+    \           and an upper bound on the cost (return_ub_cost=True).\n          \
+    \ \n        Parameters\n        ----------\n        T: int, optional(default=32)\n\
+    \           It allows to set the rejection threshold to 1-2exp(-T).\n        \
+    \   The higher the value of T, the more rejections are made.\n            \n \
+    \       delta: float, optional (default = 0.1)\n               The upper bound\
+    \ rejection rate holds with probability 1-delta.\n                       \n  \
+    \      c_fp, c_fn, c_r: floats (positive),\n                         optional\
+    \ (default = [1,1, contamination])\n                         costs for false positive\
+    \ predictions (c_fp),\n                         false negative predictions (c_fn)\
+    \ and rejections (c_r).\n                         \n        verbose: bool, optional\
+    \ (default = False)\n                 If true, it prints the expected rejection\
+    \ rate, the upper\n                 bound rejection rate, and the upper bound\
+    \ of the cost.\n\n        Returns\n        -------\n        expected_rejection_rate:\
+    \   float, the expected rejection rate;\n        upperbound_rejection_rate: float,\
+    \ the upper bound for the rejection rate\n                                   satisfied\
+    \ with probability 1-delta;\n        upperbound_cost:           float, the upper\
+    \ bound for the cost;\n        \"\"\"\n\n        check_is_fitted(self, ['decision_scores_',\
+    \ 'threshold_', 'labels_'])\n\n        if c_r < 0:\n            c_r = self.contamination\n\
+    \n        if delta <= 0 or delta >= 1:\n            delta = 0.1\n\n        # Computing\
+    \ the expected rejection rate\n        n = len(self.decision_scores_)\n      \
+    \  n_gamma_minus1 = int(n * self.contamination) - 1\n        argsmin = (n_gamma_minus1,\
+    \ n, 1 - np.exp(-T))\n        argsmax = (n_gamma_minus1, n, np.exp(-T))\n    \
+    \    q1 = root_scalar(lambda p, k, n, C: binom.cdf(k, n, p) - C,\n           \
+    \              bracket=[0, 1], method='brentq', args=argsmin).root\n        q2\
+    \ = root_scalar(lambda p, k, n, C: binom.cdf(k, n, p) - C,\n                 \
+    \        bracket=[0, 1], method='brentq', args=argsmax).root\n        expected_reject_rate\
+    \ = q2 - q1\n\n        # Computing the upper bound for the rejection rate\n  \
+    \      right_mar = (-self.contamination * (n + 2) + n + 1) / n + (\n         \
+    \           T * (n + 2)) / (np.sqrt(2 * n ** 3 * T))\n        right_mar = min(1,\
+    \ right_mar)\n        left_mar = (\n                (2 + n * (1 - self.contamination)\
+    \ * (n + 1)) / n ** 2\n                - np.sqrt(\n            0.5 * n ** 5 *\
+    \ (\n                    2 * n * (\n                    -3 * self.contamination\
+    \ ** 2\n                    - 2 * n * (1 - self.contamination) ** 2\n        \
+    \            + 4 * self.contamination - 3\n            )\n                   \
+    \ + T * (n + 2) ** 2 - 8\n            )\n        ) / n ** 4\n        )\n     \
+    \   left_mar = max(0, left_mar)\n        add_term = 2 * np.sqrt(np.log(2 / delta)\
+    \ / (2 * n))\n        upperbound_rejectrate = right_mar - left_mar + add_term\n\
+    \n        # Computing the upper bound for the cost function\n        n_gamma_minus1\
+    \ = int(n * self.contamination) - 1\n        argsmin = (n_gamma_minus1, n, 1 -\
+    \ np.exp(-T))\n        argsmax = (n_gamma_minus1, n, np.exp(-T))\n        q1 =\
+    \ root_scalar(lambda p, k, n, C: binom.cdf(k, n, p) - C,\n                   \
+    \      bracket=[0, 1], method='brentq', args=argsmin).root\n        q2 = root_scalar(lambda\
+    \ p, k, n, C: binom.cdf(k, n, p) - C,\n                         bracket=[0, 1],\
+    \ method='brentq', args=argsmax).root\n        upperbound_cost = np.min([self.contamination,\
+    \ q1]) * c_fp + np.min(\n            [1 - q2, self.contamination]) * c_fn + (q2\
+    \ - q1) * c_r\n\n        if verbose:\n            print(\"Expected rejection rate:\
+    \ \",\n                  np.round(expected_reject_rate, 4), '%')\n           \
+    \ print(\"Upper bound rejection rate: \",\n                  np.round(upperbound_rejectrate,\
+    \ 4), '%')\n            print(\"Upper bound cost: \", np.round(upperbound_cost,\
+    \ 4))\n\n        return expected_reject_rate, upperbound_rejectrate, upperbound_cost\n\
+    \n    def _predict_rank(self, X, normalized=False):\n        \"\"\"Predict the\
+    \ outlyingness rank of a sample by a fitted model. The\n        method is for\
+    \ outlier detector score combination.\n\n        Parameters\n        ----------\n\
+    \        X : numpy array of shape (n_samples, n_features)\n            The input\
+    \ samples.\n\n        normalized : bool, optional (default=False)\n          \
+    \  If set to True, all ranks are normalized to [0,1].\n\n        Returns\n   \
+    \     -------\n        ranks : array, shape (n_samples,)\n            Outlying\
+    \ rank of a sample according to the training data.\n\n        \"\"\"\n\n     \
+    \   check_is_fitted(self, ['decision_scores_'])\n\n        test_scores = self.decision_function(X)\n\
+    \        train_scores = self.decision_scores_\n\n        sorted_train_scores =\
+    \ np.sort(train_scores)\n        ranks = np.searchsorted(sorted_train_scores,\
+    \ test_scores)\n\n        if normalized:\n            # return normalized ranks\n\
+    \            ranks = ranks / ranks.max()\n        return ranks\n\n    @deprecated()\n\
+    \    def fit_predict_score(self, X, y, scoring='roc_auc_score'):\n        \"\"\
+    \"Fit the detector, predict on samples, and evaluate the model by\n        predefined\
+    \ metrics, e.g., ROC.\n\n        Parameters\n        ----------\n        X : numpy\
+    \ array of shape (n_samples, n_features)\n            The input samples.\n\n \
+    \       y : Ignored\n            Not used, present for API consistency by convention.\n\
+    \n        scoring : str, optional (default='roc_auc_score')\n            Evaluation\
+    \ metric:\n\n            - 'roc_auc_score': ROC score\n            - 'prc_n_score':\
+    \ Precision @ rank n score\n\n        Returns\n        -------\n        score\
+    \ : float\n\n        .. deprecated:: 0.6.9\n          `fit_predict_score` will\
+    \ be removed in pyod 0.8.0.; it will be\n          replaced by calling `fit` function\
+    \ first and then accessing\n          `labels_` attribute for consistency. Scoring\
+    \ could be done by\n          calling an evaluation method, e.g., AUC ROC.\n \
+    \       \"\"\"\n\n        self.fit(X)\n\n        if scoring == 'roc_auc_score':\n\
+    \            score = roc_auc_score(y, self.decision_scores_)\n        elif scoring\
+    \ == 'prc_n_score':\n            score = precision_n_scores(y, self.decision_scores_)\n\
+    \        else:\n            raise NotImplementedError('PyOD built-in scoring only\
+    \ supports '\n                                      'ROC and Precision @ rank\
+    \ n')\n\n        print(\"{metric}: {score}\".format(metric=scoring, score=score))\n\
+    \n        return score\n\n\n    def _set_n_classes(self, y):\n        \"\"\"Set\
+    \ the number of classes if `y` is presented, which is not\n        expected. It\
+    \ could be useful for multi-class outlier detection.\n\n        Parameters\n \
+    \       ----------\n        y : numpy array of shape (n_samples,)\n          \
+    \  Ground truth.\n\n        Returns\n        -------\n        self\n        \"\
+    \"\"\n\n        self._classes = 2  # default as binary classification\n      \
+    \  if y is not None:\n            check_classification_targets(y)\n          \
+    \  self._classes = len(np.unique(y))\n            warnings.warn(\n           \
+    \     \"y should not be presented in unsupervised learning.\")\n        return\
+    \ self\n\n    def _process_decision_scores(self):\n        \"\"\"Internal function\
+    \ to calculate key attributes:\n\n        - threshold_: used to decide the binary\
+    \ label\n        - labels_: binary labels of training data\n\n        Returns\n\
+    \        -------\n        self\n        \"\"\"\n\n        if isinstance(self.contamination,\
+    \ (float, int)):\n            self.threshold_ = percentile(self.decision_scores_,\n\
+    \                                         100 * (1 - self.contamination))\n  \
+    \          self.labels_ = (self.decision_scores_ > self.threshold_).astype(\n\
+    \                'int').ravel()\n\n        # if this is a PyThresh object\n  \
+    \      else:\n            self.labels_ = self.contamination.eval(self.decision_scores_)\n\
+    \            self.threshold_ = self.contamination.thresh_\n            if not\
+    \ self.threshold_:\n                self.threshold_ = np.sum(self.labels_) / len(self.labels_)\n\
+    \n        # calculate for predict_proba()\n\n        self._mu = np.mean(self.decision_scores_)\n\
+    \        self._sigma = np.std(self.decision_scores_)\n\n        return self\n\n\
+    \    # noinspection PyMethodParameters\n    def _get_param_names(cls):\n     \
+    \   # noinspection PyPep8\n        \"\"\"Get parameter names for the estimator\n\
+    \n        See http://scikit-learn.org/stable/modules/generated/sklearn.base.BaseEstimator.html\n\
+    \        and sklearn/base.py for more information.\n        \"\"\"\n\n       \
+    \ # fetch the constructor or the original constructor before\n        # deprecation\
+    \ wrapping if any\n        init = getattr(cls.__init__, 'deprecated_original',\
+    \ cls.__init__)\n        if init is object.__init__:\n            # No explicit\
+    \ constructor to introspect\n            return []\n\n        # introspect the\
+    \ constructor arguments to find the model parameters\n        # to represent\n\
+    \        init_signature = signature(init)\n        # Consider the constructor\
+    \ parameters excluding 'self'\n        parameters = [p for p in init_signature.parameters.values()\n\
+    \                      if p.name != 'self' and p.kind != p.VAR_KEYWORD]\n    \
+    \    for p in parameters:\n            if p.kind == p.VAR_POSITIONAL:\n      \
+    \          raise RuntimeError(\"scikit-learn estimators should always \"\n   \
+    \                                \"specify their parameters in the signature\"\
+    \n                                   \" of their __init__ (no varargs).\"\n  \
+    \                                 \" %s with constructor %s doesn't \"\n     \
+    \                              \" follow this convention.\"\n                \
+    \                   % (cls, init_signature))\n        # Extract and sort argument\
+    \ names excluding 'self'\n        return sorted([p.name for p in parameters])\n\
+    \n    # noinspection PyPep8\n    def get_params(self, deep=True):\n        \"\"\
+    \"Get parameters for this estimator.\n\n        See http://scikit-learn.org/stable/modules/generated/sklearn.base.BaseEstimator.html\n\
+    \        and sklearn/base.py for more information.\n\n        Parameters\n   \
+    \     ----------\n        deep : bool, optional (default=True)\n            If\
+    \ True, will return the parameters for this estimator and\n            contained\
+    \ subobjects that are estimators.\n\n        Returns\n        -------\n      \
+    \  params : mapping of string to any\n            Parameter names mapped to their\
+    \ values.\n        \"\"\"\n\n        out = dict()\n        for key in self._get_param_names():\n\
+    \            # We need deprecation warnings to always be on in order to\n    \
+    \        # catch deprecated param values.\n            # This is set in utils/__init__.py\
+    \ but it gets overwritten\n            # when running under python3 somehow.\n\
+    \            warnings.simplefilter(\"always\", DeprecationWarning)\n         \
+    \   try:\n                with warnings.catch_warnings(record=True) as w:\n  \
+    \                  value = getattr(self, key, None)\n                if len(w)\
+    \ and w[0].category == DeprecationWarning:\n                    # if the parameter\
+    \ is deprecated, don't show it\n                    continue\n            finally:\n\
+    \                warnings.filters.pop(0)\n\n            # XXX: should we rather\
+    \ test if instance of estimator?\n            if deep and hasattr(value, 'get_params'):\n\
+    \                deep_items = value.get_params().items()\n                out.update((key\
+    \ + '__' + k, val) for k, val in deep_items)\n            out[key] = value\n \
+    \       return out\n\n    def set_params(self, **params):\n        # noinspection\
+    \ PyPep8\n        \"\"\"Set the parameters of this estimator.\n        The method\
+    \ works on simple estimators as well as on nested objects\n        (such as pipelines).\
+    \ The latter have parameters of the form\n        ``<component>__<parameter>``\
+    \ so that it's possible to update each\n        component of a nested object.\n\
+    \n        See http://scikit-learn.org/stable/modules/generated/sklearn.base.BaseEstimator.html\n\
+    \        and sklearn/base.py for more information.\n\n        Returns\n      \
+    \  -------\n        self : object\n        \"\"\"\n\n        if not params:\n\
+    \            # Simple optimization to gain speed (inspect is slow)\n         \
+    \   return self\n        valid_params = self.get_params(deep=True)\n\n       \
+    \ nested_params = defaultdict(dict)  # grouped by prefix\n        for key, value\
+    \ in params.items():\n            key, delim, sub_key = key.partition('__')\n\
+    \            if key not in valid_params:\n                raise ValueError('Invalid\
+    \ parameter %s for estimator %s. '\n                                 'Check the\
+    \ list of available parameters '\n                                 'with `estimator.get_params().keys()`.'\
+    \ %\n                                 (key, self))\n\n            if delim:\n\
+    \                nested_params[key][sub_key] = value\n            else:\n    \
+    \            setattr(self, key, value)\n\n        for key, sub_params in nested_params.items():\n\
+    \            valid_params[key].set_params(**sub_params)\n\n        return self\n\
+    \n    def __repr__(self):\n        # noinspection PyPep8\n        \"\"\"\n   \
+    \     See http://scikit-learn.org/stable/modules/generated/sklearn.base.BaseEstimator.html\n\
+    \        and sklearn/base.py for more information.\n        \"\"\"\n\n       \
+    \ class_name = self.__class__.__name__\n        return '%s(%s)' % (class_name,\
+    \ _pprint(self.get_params(deep=False),\n                                     \
+    \          offset=len(class_name), ),)\n\n\n### Dependency File: utility.py\n\
+    # -*- coding: utf-8 -*-\n\"\"\"A set of utility functions to support outlier detection.\n\
+    \"\"\"\n# Author: Yue Zhao <zhaoy@cmu.edu>\n# License: BSD 2 clause\n\nfrom __future__\
+    \ import division\nfrom __future__ import print_function\n\nimport numbers\n\n\
+    import numpy as np\nimport sklearn\nfrom numpy import percentile\nfrom sklearn.metrics\
+    \ import precision_score\nfrom sklearn.preprocessing import StandardScaler\nfrom\
+    \ sklearn.utils import check_array\nfrom sklearn.utils import check_consistent_length\n\
+    from sklearn.utils import check_random_state\nfrom sklearn.utils import column_or_1d\n\
+    from sklearn.utils.random import sample_without_replacement\n\nMAX_INT = np.iinfo(np.int32).max\n\
+    MIN_INT = -1 * MAX_INT\n\n\ndef check_parameter(param, low=MIN_INT, high=MAX_INT,\
+    \ param_name='',\n                    include_left=False, include_right=False):\n\
+    \    \"\"\"Check if an input is within the defined range.\n\n    Parameters\n\
+    \    ----------\n    param : int, float\n        The input parameter to check.\n\
+    \n    low : int, float\n        The lower bound of the range.\n\n    high : int,\
+    \ float\n        The higher bound of the range.\n\n    param_name : str, optional\
+    \ (default='')\n        The name of the parameter.\n\n    include_left : bool,\
+    \ optional (default=False)\n        Whether includes the lower bound (lower bound\
+    \ <=).\n\n    include_right : bool, optional (default=False)\n        Whether\
+    \ includes the higher bound (<= higher bound).\n\n    Returns\n    -------\n \
+    \   within_range : bool or raise errors\n        Whether the parameter is within\
+    \ the range of (low, high)\n\n    \"\"\"\n\n    # param, low and high should all\
+    \ be numerical\n    if not isinstance(param, (numbers.Integral, np.integer, float)):\n\
+    \        raise TypeError('{param_name} is set to {param} Not numerical'.format(\n\
+    \            param=param, param_name=param_name))\n\n    if not isinstance(low,\
+    \ (numbers.Integral, np.integer, float)):\n        raise TypeError('low is set\
+    \ to {low}. Not numerical'.format(low=low))\n\n    if not isinstance(high, (numbers.Integral,\
+    \ np.integer, float)):\n        raise TypeError('high is set to {high}. Not numerical'.format(\n\
+    \            high=high))\n\n    # at least one of the bounds should be specified\n\
+    \    if low is MIN_INT and high is MAX_INT:\n        raise ValueError('Neither\
+    \ low nor high bounds is undefined')\n\n    # if wrong bound values are used\n\
+    \    if low > high:\n        raise ValueError(\n            'Lower bound > Higher\
+    \ bound')\n\n    # value check under different bound conditions\n    if (include_left\
+    \ and include_right) and (param < low or param > high):\n        raise ValueError(\n\
+    \            '{param_name} is set to {param}. '\n            'Not in the range\
+    \ of [{low}, {high}].'.format(\n                param=param, low=low, high=high,\
+    \ param_name=param_name))\n\n    elif (include_left and not include_right) and\
+    \ (\n            param < low or param >= high):\n        raise ValueError(\n \
+    \           '{param_name} is set to {param}. '\n            'Not in the range\
+    \ of [{low}, {high}).'.format(\n                param=param, low=low, high=high,\
+    \ param_name=param_name))\n\n    elif (not include_left and include_right) and\
+    \ (\n            param <= low or param > high):\n        raise ValueError(\n \
+    \           '{param_name} is set to {param}. '\n            'Not in the range\
+    \ of ({low}, {high}].'.format(\n                param=param, low=low, high=high,\
+    \ param_name=param_name))\n\n    elif (not include_left and not include_right)\
+    \ and (\n            param <= low or param >= high):\n        raise ValueError(\n\
+    \            '{param_name} is set to {param}. '\n            'Not in the range\
+    \ of ({low}, {high}).'.format(\n                param=param, low=low, high=high,\
+    \ param_name=param_name))\n    else:\n        return True\n\n\ndef check_detector(detector):\n\
+    \    \"\"\"Checks if fit and decision_function methods exist for given detector\n\
+    \n    Parameters\n    ----------\n    detector : pyod.models\n        Detector\
+    \ instance for which the check is performed.\n\n    \"\"\"\n\n    if not hasattr(detector,\
+    \ 'fit') or not hasattr(detector,\n                                          \
+    \         'decision_function'):\n        raise AttributeError(\"%s is not a detector\
+    \ instance.\" % (detector))\n\n\ndef standardizer(X, X_t=None, keep_scalar=False):\n\
+    \    \"\"\"Conduct Z-normalization on data to turn input samples become zero-mean\n\
+    \    and unit variance.\n\n    Parameters\n    ----------\n    X : numpy array\
+    \ of shape (n_samples, n_features)\n        The training samples\n\n    X_t :\
+    \ numpy array of shape (n_samples_new, n_features), optional (default=None)\n\
+    \        The data to be converted\n\n    keep_scalar : bool, optional (default=False)\n\
+    \        The flag to indicate whether to return the scalar\n\n    Returns\n  \
+    \  -------\n    X_norm : numpy array of shape (n_samples, n_features)\n      \
+    \  X after the Z-score normalization\n\n    X_t_norm : numpy array of shape (n_samples,\
+    \ n_features)\n        X_t after the Z-score normalization\n\n    scalar : sklearn\
+    \ scalar object\n        The scalar used in conversion\n\n    \"\"\"\n    X =\
+    \ check_array(X)\n    scaler = StandardScaler().fit(X)\n\n    if X_t is None:\n\
+    \        if keep_scalar:\n            return scaler.transform(X), scaler\n   \
+    \     else:\n            return scaler.transform(X)\n    else:\n        X_t =\
+    \ check_array(X_t)\n        if X.shape[1] != X_t.shape[1]:\n            raise\
+    \ ValueError(\n                \"The number of input data feature should be consistent\"\
+    \n                \"X has {0} features and X_t has {1} features.\".format(\n \
+    \                   X.shape[1], X_t.shape[1]))\n        if keep_scalar:\n    \
+    \        return scaler.transform(X), scaler.transform(X_t), scaler\n        else:\n\
+    \            return scaler.transform(X), scaler.transform(X_t)\n\n\ndef score_to_label(pred_scores,\
+    \ outliers_fraction=0.1):\n    \"\"\"Turn raw outlier outlier scores to binary\
+    \ labels (0 or 1).\n\n    Parameters\n    ----------\n    pred_scores : list or\
+    \ numpy array of shape (n_samples,)\n        Raw outlier scores. Outliers are\
+    \ assumed have larger values.\n\n    outliers_fraction : float in (0,1)\n    \
+    \    Percentage of outliers.\n\n    Returns\n    -------\n    outlier_labels :\
+    \ numpy array of shape (n_samples,)\n        For each observation, tells whether\
+    \ or not\n        it should be considered as an outlier according to the\n   \
+    \     fitted model. Return the outlier probability, ranging\n        in [0,1].\n\
+    \    \"\"\"\n    # check input values\n    pred_scores = column_or_1d(pred_scores)\n\
+    \    check_parameter(outliers_fraction, 0, 1)\n\n    threshold = percentile(pred_scores,\
+    \ 100 * (1 - outliers_fraction))\n    pred_labels = (pred_scores > threshold).astype('int')\n\
+    \    return pred_labels\n\n\ndef precision_n_scores(y, y_pred, n=None):\n    \"\
+    \"\"Utility function to calculate precision @ rank n.\n\n    Parameters\n    ----------\n\
+    \    y : list or numpy array of shape (n_samples,)\n        The ground truth.\
+    \ Binary (0: inliers, 1: outliers).\n\n    y_pred : list or numpy array of shape\
+    \ (n_samples,)\n        The raw outlier scores as returned by a fitted model.\n\
+    \n    n : int, optional (default=None)\n        The number of outliers. if not\
+    \ defined, infer using ground truth.\n\n    Returns\n    -------\n    precision_at_rank_n\
+    \ : float\n        Precision at rank n score.\n\n    \"\"\"\n\n    # turn raw\
+    \ prediction decision scores into binary labels\n    y_pred = get_label_n(y, y_pred,\
+    \ n)\n\n    # enforce formats of y and labels_\n    y = column_or_1d(y)\n    y_pred\
+    \ = column_or_1d(y_pred)\n\n    return precision_score(y, y_pred)\n\n\ndef get_label_n(y,\
+    \ y_pred, n=None):\n    \"\"\"Function to turn raw outlier scores into binary\
+    \ labels by assign 1\n    to top n outlier scores.\n\n    Parameters\n    ----------\n\
+    \    y : list or numpy array of shape (n_samples,)\n        The ground truth.\
+    \ Binary (0: inliers, 1: outliers).\n\n    y_pred : list or numpy array of shape\
+    \ (n_samples,)\n        The raw outlier scores as returned by a fitted model.\n\
+    \n    n : int, optional (default=None)\n        The number of outliers. if not\
+    \ defined, infer using ground truth.\n\n    Returns\n    -------\n    labels :\
+    \ numpy array of shape (n_samples,)\n        binary labels 0: normal points and\
+    \ 1: outliers\n\n    Examples\n    --------\n    >>> from pyod.utils.utility import\
+    \ get_label_n\n    >>> y = [0, 1, 1, 0, 0]\n    >>> y_pred = [0.1, 0.5, 0.3, 0.2,\
+    \ 0.7]\n    >>> get_label_n(y, y_pred)\n    array([0, 1, 0, 0, 1])\n\n    \"\"\
+    \"\n\n    # enforce formats of inputs\n    y = column_or_1d(y)\n    y_pred = column_or_1d(y_pred)\n\
+    \n    check_consistent_length(y, y_pred)\n    y_len = len(y)  # the length of\
+    \ targets\n\n    # calculate the percentage of outliers\n    if n is not None:\n\
+    \        outliers_fraction = n / y_len\n    else:\n        outliers_fraction =\
+    \ np.count_nonzero(y) / y_len\n\n    threshold = percentile(y_pred, 100 * (1 -\
+    \ outliers_fraction))\n    y_pred = (y_pred > threshold).astype('int')\n\n   \
+    \ return y_pred\n\n\ndef get_intersection(lst1, lst2):\n    \"\"\"get the overlapping\
+    \ between two lists\n\n    Parameters\n    ----------\n    li1 : list or numpy\
+    \ array\n        Input list 1.\n\n    li2 : list or numpy array\n        Input\
+    \ list 2.\n\n    Returns\n    -------\n    difference : list\n        The overlapping\
+    \ between li1 and li2.\n    \"\"\"\n    return list(set(lst1) & set(lst2))\n\n\
+    \ndef get_list_diff(li1, li2):\n    \"\"\"get the elements in li1 but not li2.\
+    \ li1-li2\n\n    Parameters\n    ----------\n    li1 : list or numpy array\n \
+    \       Input list 1.\n\n    li2 : list or numpy array\n        Input list 2.\n\
+    \n    Returns\n    -------\n    difference : list\n        The difference between\
+    \ li1 and li2.\n    \"\"\"\n    # if isinstance(li1, (np.ndarray, np.generic)):\n\
+    \    #     li1 = li1.tolist()\n    # if isinstance(li2, (np.ndarray, np.generic)):\n\
+    \    #     li1 = li1.tolist()\n\n    return (list(set(li1) - set(li2)))\n\n\n\
+    def get_diff_elements(li1, li2):\n    \"\"\"get the elements in li1 but not li2,\
+    \ and vice versa\n\n    Parameters\n    ----------\n    li1 : list or numpy array\n\
+    \        Input list 1.\n\n    li2 : list or numpy array\n        Input list 2.\n\
+    \n    Returns\n    -------\n    difference : list\n        The difference between\
+    \ li1 and li2.\n    \"\"\"\n    # if isinstance(li1, (np.ndarray, np.generic)):\n\
+    \    #     li1 = li1.tolist()\n    # if isinstance(li2, (np.ndarray, np.generic)):\n\
+    \    #     li1 = li1.tolist()\n\n    return (list(set(li1) - set(li2)) + list(set(li2)\
+    \ - set(li1)))\n\n\ndef argmaxn(value_list, n, order='desc'):\n    \"\"\"Return\
+    \ the index of top n elements in the list\n    if order is set to 'desc', otherwise\
+    \ return the index of n smallest ones.\n\n    Parameters\n    ----------\n   \
+    \ value_list : list, array, numpy array of shape (n_samples,)\n        A list\
+    \ containing all values.\n\n    n : int\n        The number of elements to select.\n\
+    \n    order : str, optional (default='desc')\n        The order to sort {'desc',\
+    \ 'asc'}:\n\n        - 'desc': descending\n        - 'asc': ascending\n\n    Returns\n\
+    \    -------\n    index_list : numpy array of shape (n,)\n        The index of\
+    \ the top n elements.\n    \"\"\"\n\n    value_list = column_or_1d(value_list)\n\
+    \    length = len(value_list)\n\n    # validate the choice of n\n    check_parameter(n,\
+    \ 1, length, include_left=True, include_right=True,\n                    param_name='n')\n\
+    \n    # for the smallest n, flip the value\n    if order != 'desc':\n        n\
+    \ = length - n\n\n    value_sorted = np.partition(value_list, length - n)\n  \
+    \  threshold = value_sorted[int(length - n)]\n\n    if order == 'desc':\n    \
+    \    return np.where(np.greater_equal(value_list, threshold))[0]\n    else:  #\
+    \ return the index of n smallest elements\n        return np.where(np.less(value_list,\
+    \ threshold))[0]\n\n\ndef invert_order(scores, method='multiplication'):\n   \
+    \ \"\"\" Invert the order of a list of values. The smallest value becomes\n  \
+    \  the largest in the inverted list. This is useful while combining\n    multiple\
+    \ detectors since their score order could be different.\n\n    Parameters\n  \
+    \  ----------\n    scores : list, array or numpy array with shape (n_samples,)\n\
+    \        The list of values to be inverted\n\n    method : str, optional (default='multiplication')\n\
+    \        Methods used for order inversion. Valid methods are:\n\n        - 'multiplication':\
+    \ multiply by -1\n        - 'subtraction': max(scores) - scores\n\n    Returns\n\
+    \    -------\n    inverted_scores : numpy array of shape (n_samples,)\n      \
+    \  The inverted list\n\n    Examples\n    --------\n    >>> scores1 = [0.1, 0.3,\
+    \ 0.5, 0.7, 0.2, 0.1]\n    >>> invert_order(scores1)\n    array([-0.1, -0.3, -0.5,\
+    \ -0.7, -0.2, -0.1])\n    >>> invert_order(scores1, method='subtraction')\n  \
+    \  array([0.6, 0.4, 0.2, 0. , 0.5, 0.6])\n    \"\"\"\n\n    scores = column_or_1d(scores)\n\
+    \n    if method == 'multiplication':\n        return scores.ravel() * -1\n\n \
+    \   if method == 'subtraction':\n        return (scores.max() - scores).ravel()\n\
+    \n\ndef _get_sklearn_version():  # pragma: no cover\n    \"\"\" Utility function\
+    \ to decide the version of sklearn.\n    PyOD will result in different behaviors\
+    \ with different sklearn version\n\n    Returns\n    -------\n    sk_learn version\
+    \ : int\n\n    \"\"\"\n\n    sklearn_version = str(sklearn.__version__)\n    #\
+    \ print(sklearn_version)\n    # if int(sklearn_version.split(\".\")[1]) < 19 or\
+    \ int(\n    #         sklearn_version.split(\".\")[1]) > 24:\n    #     raise\
+    \ ValueError(\"Sklearn version error\")\n    # print(sklearn_version)\n\n    return\
+    \ sklearn_version\n\n    # return int(sklearn_version.split(\".\")[1])\n\n\n#\
+    \ def _sklearn_version_21():  # pragma: no cover\n#     \"\"\" Utility function\
+    \ to decide the version of sklearn\n#     In sklearn 21.0, LOF is changed. Specifically,\
+    \ _decision_function\n#     is replaced by _score_samples\n#\n#     Returns\n\
+    #     -------\n#     sklearn_21_flag : bool\n#         True if sklearn.__version__\
+    \ is newer than 0.21.0\n#\n#     \"\"\"\n#     sklearn_version = str(sklearn.__version__)\n\
+    #     if int(sklearn_version.split(\".\")[1]) > 20:\n#         return True\n#\
+    \     else:\n#         return False\n\n\ndef generate_bagging_indices(random_state,\
+    \ bootstrap_features, n_features,\n                             min_features,\
+    \ max_features):\n    \"\"\" Randomly draw feature indices. Internal use only.\n\
+    \n    Modified from sklearn/ensemble/bagging.py\n\n    Parameters\n    ----------\n\
+    \    random_state : RandomState\n        A random number generator instance to\
+    \ define the state of the random\n        permutations generator.\n\n    bootstrap_features\
+    \ : bool\n        Specifies whether to bootstrap indice generation\n\n    n_features\
+    \ : int\n        Specifies the population size when generating indices\n\n   \
+    \ min_features : int\n        Lower limit for number of features to randomly sample\n\
+    \n    max_features : int\n        Upper limit for number of features to randomly\
+    \ sample\n\n    Returns\n    -------\n    feature_indices : numpy array, shape\
+    \ (n_samples,)\n        Indices for features to bag\n\n    \"\"\"\n\n    # Get\
+    \ valid random state\n    random_state = check_random_state(random_state)\n\n\
+    \    # decide number of features to draw\n    random_n_features = random_state.randint(min_features,\
+    \ max_features)\n\n    # Draw indices\n    feature_indices = generate_indices(random_state,\
+    \ bootstrap_features,\n                                       n_features, random_n_features)\n\
+    \n    return feature_indices\n\n\ndef generate_indices(random_state, bootstrap,\
+    \ n_population, n_samples):\n    \"\"\" Draw randomly sampled indices. Internal\
+    \ use only.\n\n    See sklearn/ensemble/bagging.py\n\n    Parameters\n    ----------\n\
+    \    random_state : RandomState\n        A random number generator instance to\
+    \ define the state of the random\n        permutations generator.\n\n    bootstrap\
+    \ :  bool\n        Specifies whether to bootstrap indice generation\n\n    n_population\
+    \ : int\n        Specifies the population size when generating indices\n\n   \
+    \ n_samples : int\n        Specifies number of samples to draw\n\n    Returns\n\
+    \    -------\n    indices : numpy array, shape (n_samples,)\n        randomly\
+    \ drawn indices\n    \"\"\"\n\n    # Draw sample indices\n    if bootstrap:\n\
+    \        indices = random_state.randint(0, n_population, n_samples)\n    else:\n\
+    \        indices = sample_without_replacement(n_population, n_samples,\n     \
+    \                                        random_state=random_state)\n\n    return\
+    \ indices\n\n\n# todo: add a test for it in test_utility.py\ndef get_optimal_n_bins(X,\
+    \ upper_bound=None, epsilon=1):\n    \"\"\" Determine optimal number of bins for\
+    \ a histogram using the Birge \n    Rozenblac method (see :cite:`birge2006many`\
+    \ for details.)\n     \n    See  https://doi.org/10.1051/ps:2006001 \n     \n\
+    \    Parameters \n    ---------- \n    X : array-like of shape (n_samples, n_features)\
+    \ \n        The samples to determine the optimal number of bins for. \n      \
+    \   \n    upper_bound :  int, default=None \n        The maximum value of n_bins\
+    \ to be considered. \n        If set to None, np.sqrt(X.shape[0]) will be used\
+    \ as upper bound. \n         \n    epsilon : float, default = 1 \n        A stabilizing\
+    \ term added to the logarithm to prevent division by zero. \n         \n    Returns\
+    \ \n    ------- \n    optimal_n_bins : int \n        The optimal value of n_bins\
+    \ according to the Birge Rozenblac method \n    \"\"\"\n    if upper_bound is\
+    \ None:\n        upper_bound = int(np.sqrt(X.shape[0]))\n\n    n = X.shape[0]\n\
+    \    maximum_likelihood = np.zeros((upper_bound - 1, 1))\n\n    for i, b in enumerate(range(1,\
+    \ upper_bound)):\n        histogram, _ = np.histogram(X, bins=b)\n\n        maximum_likelihood[i]\
+    \ = np.sum(\n            histogram * np.log(b * histogram / n + epsilon) - (\n\
+    \                    b - 1 + np.power(np.log(b), 2.5)))\n\n    return np.argmax(maximum_likelihood)\
+    \ + 1\n\nOutput the complete test file, code only, no explanations.\n```python\n\
+    <complete test code>\n```\n### Time\nCurrent time: 2025-04-11 19:55:00\n"
+  role: user

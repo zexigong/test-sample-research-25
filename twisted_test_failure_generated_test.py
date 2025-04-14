@@ -1,3 +1,6 @@
+# -*- test-case-name: twisted.test.test_failure -*-
+# See also test suite twisted.test.test_pbfailure
+
 # Copyright (c) Twisted Matrix Laboratories.
 # See LICENSE for details.
 
@@ -5,2335 +8,1885 @@
 Tests for L{twisted.python.failure}.
 """
 
-import os
 import sys
 import traceback
-import types
-from collections import namedtuple
-from io import StringIO
-from typing import List
-from unittest import TestCase
+from typing import List, Optional, Type
 
-import pytest
-
-from twisted.python.failure import Failure, NoCurrentExceptionError, format_frames
-
-try:
-    import exceptions
-
-    BaseException = exceptions.BaseException
-except ImportError:
-    BaseException = object
+from twisted.python.failure import Failure, DefaultException, NoCurrentExceptionError
+from twisted.trial import unittest
+from twisted.trial.unittest import TestCase
 
 
-def assertSubstring(substring, astring, *args):
+class LeafException(Exception):
     """
-    Fail if the given substring does not exist within the given string.
-    """
-    if substring not in astring:
-        raise AssertionError(
-            f"{substring!r} not in {astring!r} -- {args!r} --"
-        )
-
-
-def assertNotSubstring(substring, astring, *args):
-    """
-    Fail if the given substring exists within the given string.
-    """
-    if substring in astring:
-        raise AssertionError(
-            f"{substring!r} in {astring!r} -- {args!r} --"
-        )
-
-
-class FailureTests(TestCase):
-    """
-    Tests for L{twisted.python.failure.Failure}.
+    A leaf in the exception hierarchy.
     """
 
-    def testConstruction(self):
-        """
-        Test that the constructor captures stack frames.
-        """
-        f = Failure()
-        assert f.frames is not None
-        assert len(f.frames) > 0
 
-    def testFailure(self):
+class BranchException(LeafException):
+    """
+    A branch in the exception hierarchy.
+    """
+
+
+class FailureTestCase(TestCase):
+    def assertStartsWith(self, first: str, second: str) -> None:
         """
-        Test that exceptions are instantiated correctly.
+        Fail if C{first} does not start with C{second}.
+        """
+        if not first.startswith(second):
+            raise self.failureException(f"{first!r} does not start with {second!r}")
+
+    def testDefaultArgs(self) -> None:
+        """
+        If no arguments are passed to L{Failure.__init__}, it will use the
+        information from the current exception.
         """
         try:
-            1 / 0
-        except Exception:
+            1 // 0
+        except:
             f = Failure()
-            assert f.type is ZeroDivisionError
-            assert f.value.__class__ is ZeroDivisionError
+        self.assertEqual(f.type, ZeroDivisionError)
 
-    def testRaise(self):
+    def testNoCurrentException(self) -> None:
         """
-        Test that exceptions are raised correctly.
+        L{Failure.__init__} raises L{NoCurrentExceptionError} if there is no
+        current exception state and no exception instance is passed to it.
+        """
+        self.assertRaises(NoCurrentExceptionError, Failure)
+
+    def testGetTraceback(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string starting with C{"Traceback"}
+        and ending with the error message.
         """
         try:
-            1 / 0
-        except Exception:
+            1 // 0
+        except:
             f = Failure()
-            try:
-                f.raiseException()
-            except Exception as e:
-                assert isinstance(e, ZeroDivisionError)
-            else:
-                assert False, "should have raised"
+        traceback = f.getTraceback()
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("in testGetTraceback\n1 // 0\nZeroDivisionError: division by zero\n"))
 
-    def testRaiseExplicit(self):
+    def testGetTracebackWithFailure(self) -> None:
         """
-        Test that explicitly constructed failures can be raised.
-        """
-        f = Failure(ZeroDivisionError("explicit"))
-        try:
-            f.raiseException()
-        except Exception as e:
-            assert isinstance(e, ZeroDivisionError)
-        else:
-            assert False, "should have raised"
-
-    def testRaiseExplicitInstance(self):
-        """
-        Test that explicitly constructed failures can be raised.
-        """
-        f = Failure(ZeroDivisionError("explicit"))
-        try:
-            f.raiseException()
-        except Exception as e:
-            assert isinstance(e, ZeroDivisionError)
-        else:
-            assert False, "should have raised"
-
-    def testRaiseExplicitInstanceNoTrace(self):
-        """
-        Test that explicitly constructed failures can be raised.
-        """
-        f = Failure(ZeroDivisionError("explicit"))
-        try:
-            f.raiseException()
-        except Exception as e:
-            assert isinstance(e, ZeroDivisionError)
-        else:
-            assert False, "should have raised"
-
-    def testCopy(self):
-        """
-        Test that L{Failure} copies can be raised.
+        L{Failure.getTraceback} returns the string representation of the
+        wrapped L{Failure} if the exception is a L{Failure}.
         """
         try:
-            1 / 0
-        except Exception:
+            1 // 0
+        except:
             f = Failure()
-        g = f.copy()
-        try:
-            g.raiseException()
-        except Exception as e:
-            assert isinstance(e, ZeroDivisionError)
-        else:
-            assert False, "should have raised"
+        g = Failure(f)
+        traceback = g.getTraceback()
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("in testGetTracebackWithFailure\n1 // 0\nZeroDivisionError: division by zero\n"))
 
-    def testGetTraceback(self):
+    def testGetBriefTraceback(self) -> None:
         """
-        Test that tracebacks are formatted correctly.
+        L{Failure.getBriefTraceback} returns a string starting with C{"Traceback"}
+        and ending with the error message.
         """
         try:
-            1 / 0
-        except Exception:
+            1 // 0
+        except:
             f = Failure()
-            assertSubstring(
-                "ZeroDivisionError",
-                f.getTraceback(),
-            )
+        traceback = f.getBriefTraceback()
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("ZeroDivisionError: division by zero\n"))
 
-    def testTracebackNoVars(self):
+    def testGetBriefTracebackWithFailure(self) -> None:
         """
-        Test that tracebacks are formatted correctly.
+        L{Failure.getBriefTraceback} returns the string representation of the
+        wrapped L{Failure} if the exception is a L{Failure}.
         """
         try:
-            1 / 0
-        except Exception:
+            1 // 0
+        except:
             f = Failure()
-            tb = f.getTraceback(detail="verbose")
-            assertSubstring(
-                "ZeroDivisionError",
-                tb,
-            )
-            assertNotSubstring("Locals", tb)
+        g = Failure(f)
+        traceback = g.getBriefTraceback()
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("ZeroDivisionError: division by zero\n"))
 
-    def testDetailedTraceback(self):
+    def testGetTracebackObject(self) -> None:
         """
-        Test that detailed tracebacks are formatted correctly.
+        L{Failure.getTracebackObject} returns a traceback object that can be
+        passed to L{traceback.extract_tb}.
         """
         try:
-            1 / 0
-        except Exception:
-            f = Failure(captureVars=True)
-            tb = f.getTraceback(detail="verbose")
-            assertSubstring(
-                "ZeroDivisionError",
-                tb,
-            )
-            assertSubstring("Locals", tb)
-
-    def testGetBriefTraceback(self):
-        """
-        Test that brief tracebacks are formatted correctly.
-        """
-        try:
-            1 / 0
-        except Exception:
+            1 // 0
+        except:
             f = Failure()
-            assertSubstring("ZeroDivisionError", f.getBriefTraceback())
+        tb = f.getTracebackObject()
+        self.assertEqual(traceback.extract_tb(tb), traceback.extract_tb(sys.exc_info()[2]))
 
-    def testPickle(self):
+    def testGetTracebackObjectWithFailure(self) -> None:
         """
-        Test that L{Failure} can be pickled.
+        L{Failure.getTracebackObject} returns a fake traceback object if the
+        exception is a L{Failure} and no traceback object is present.
         """
-        import pickle
-
         try:
-            1 / 0
-        except Exception:
+            1 // 0
+        except:
             f = Failure()
-        p = pickle.dumps(f)
-        f = pickle.loads(p)
-        assertSubstring(
-            "ZeroDivisionError",
-            f.getBriefTraceback(),
-        )
+        g = Failure(f)
+        tb = g.getTracebackObject()
+        self.assertEqual(traceback.extract_tb(tb), traceback.extract_tb(sys.exc_info()[2]))
 
-    def testPickleWithVars(self):
+    def testNoFrames(self) -> None:
         """
-        Test that L{Failure} can be pickled.
+        L{Failure.frames} is an empty list if no frames are captured.
         """
-        import pickle
-
         try:
-            1 / 0
-        except Exception:
-            f = Failure(captureVars=True)
-        p = pickle.dumps(f)
-        f = pickle.loads(p)
-        assertSubstring(
-            "ZeroDivisionError",
-            f.getBriefTraceback(),
-        )
-
-    def testPickleExplicit(self):
-        """
-        Test that explicitly constructed L{Failure}s can be pickled.
-        """
-        import pickle
-
-        f = Failure(ZeroDivisionError("explicit"))
-        p = pickle.dumps(f)
-        f = pickle.loads(p)
-        assertSubstring(
-            "ZeroDivisionError",
-            f.getBriefTraceback(),
-        )
-        assertSubstring(
-            "explicit",
-            f.getBriefTraceback(),
-        )
-
-    def testPickleExplicitInstance(self):
-        """
-        Test that explicitly constructed L{Failure}s can be pickled.
-        """
-        import pickle
-
-        f = Failure(ZeroDivisionError("explicit"))
-        p = pickle.dumps(f)
-        f = pickle.loads(p)
-        assertSubstring(
-            "ZeroDivisionError",
-            f.getBriefTraceback(),
-        )
-        assertSubstring(
-            "explicit",
-            f.getBriefTraceback(),
-        )
-
-    def testPickleExplicitInstanceNoTrace(self):
-        """
-        Test that explicitly constructed L{Failure}s can be pickled.
-        """
-        import pickle
-
-        f = Failure(ZeroDivisionError("explicit"))
-        p = pickle.dumps(f)
-        f = pickle.loads(p)
-        assertSubstring(
-            "ZeroDivisionError",
-            f.getBriefTraceback(),
-        )
-        assertSubstring(
-            "explicit",
-            f.getBriefTraceback(),
-        )
-
-    def testPickleCopy(self):
-        """
-        Test that L{Failure} copies can be pickled.
-        """
-        import pickle
-
-        try:
-            1 / 0
-        except Exception:
+            1 // 0
+        except:
             f = Failure()
-        g = f.copy()
-        p = pickle.dumps(g)
-        g = pickle.loads(p)
-        assertSubstring(
-            "ZeroDivisionError",
-            g.getBriefTraceback(),
-        )
+        f.frames = []
+        self.assertEqual(f.frames, [])
 
-    def testRaisePickle(self):
+    def testNoFramesWithFailure(self) -> None:
         """
-        Test that L{Failure} copies can be pickled.
+        L{Failure.frames} is an empty list if no frames are captured and the
+        exception is a L{Failure}.
         """
-        import pickle
-
         try:
-            1 / 0
-        except Exception:
+            1 // 0
+        except:
             f = Failure()
-        g = f.copy()
-        g.cleanFailure()
-        p = pickle.dumps(g)
-        g = pickle.loads(p)
+        g = Failure(f)
+        g.frames = []
+        self.assertEqual(g.frames, [])
+
+    def testNoParents(self) -> None:
+        """
+        L{Failure.parents} is an empty list if no frames are captured.
+        """
         try:
-            g.raiseException()
-        except Exception as e:
-            assert isinstance(e, ZeroDivisionError)
-        else:
-            assert False, "should have raised"
-
-    def testRaisePickleExplicit(self):
-        """
-        Test that explicitly constructed L{Failure}s can be pickled.
-        """
-        import pickle
-
-        f = Failure(ZeroDivisionError("explicit"))
-        p = pickle.dumps(f)
-        f = pickle.loads(p)
-        try:
-            f.raiseException()
-        except Exception as e:
-            assert isinstance(e, ZeroDivisionError)
-        else:
-            assert False, "should have raised"
-
-    def testRaisePickleExplicitInstance(self):
-        """
-        Test that explicitly constructed L{Failure}s can be pickled.
-        """
-        import pickle
-
-        f = Failure(ZeroDivisionError("explicit"))
-        p = pickle.dumps(f)
-        f = pickle.loads(p)
-        try:
-            f.raiseException()
-        except Exception as e:
-            assert isinstance(e, ZeroDivisionError)
-        else:
-            assert False, "should have raised"
-
-    def testRaisePickleExplicitInstanceNoTrace(self):
-        """
-        Test that explicitly constructed L{Failure}s can be pickled.
-        """
-        import pickle
-
-        f = Failure(ZeroDivisionError("explicit"))
-        p = pickle.dumps(f)
-        f = pickle.loads(p)
-        try:
-            f.raiseException()
-        except Exception as e:
-            assert isinstance(e, ZeroDivisionError)
-        else:
-            assert False, "should have raised"
-
-    def testRaisePickleCopy(self):
-        """
-        Test that L{Failure} copies can be pickled.
-        """
-        import pickle
-
-        try:
-            1 / 0
-        except Exception:
+            1 // 0
+        except:
             f = Failure()
-        g = f.copy()
-        p = pickle.dumps(g)
-        g = pickle.loads(p)
-        try:
-            g.raiseException()
-        except Exception as e:
-            assert isinstance(e, ZeroDivisionError)
-        else:
-            assert False, "should have raised"
+        f.parents = []
+        self.assertEqual(f.parents, [])
 
-    def testFormatFramesDefault(self):
+    def testNoParentsWithFailure(self) -> None:
         """
-        Test that L{format_frames} defaults to the expected format.
-        """
-
-        frames = [
-            ("method1", "file1.py", 1, [], []),
-            ("method2", "file2.py", 2, [], []),
-        ]
-        io = StringIO()
-        format_frames(frames, io.write)
-        assert io.getvalue() == (
-            '  File "file1.py", line 1, in method1\n'
-            "    \n"
-            '  File "file2.py", line 2, in method2\n'
-            "    \n"
-        )
-
-    def testFormatFramesBrief(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-
-        frames = [
-            ("method1", "file1.py", 1, [], []),
-            ("method2", "file2.py", 2, [], []),
-        ]
-        io = StringIO()
-        format_frames(frames, io.write, detail="brief")
-        assert io.getvalue() == (
-            "file1.py:1:method1\n"
-            "file2.py:2:method2\n"
-        )
-
-    def testFormatFramesVerbose(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-
-        frames = [
-            ("method1", "file1.py", 1, [], []),
-            ("method2", "file2.py", 2, [], []),
-        ]
-        io = StringIO()
-        format_frames(frames, io.write, detail="verbose")
-        assert io.getvalue() == (
-            "file1.py:1: method1(...)\n"
-            " [ Locals ]\n"
-            " ( Globals )\n"
-            "file2.py:2: method2(...)\n"
-            " [ Locals ]\n"
-            " ( Globals )\n"
-        )
-
-    def testFormatFramesVerboseVarsNotCaptured(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-
-        frames = [
-            ("method1", "file1.py", 1, [], []),
-            ("method2", "file2.py", 2, [], []),
-        ]
-        io = StringIO()
-        format_frames(frames, io.write, detail="verbose-vars-not-captured")
-        assert io.getvalue() == (
-            "file1.py:1: method1(...)\n"
-            "file2.py:2: method2(...)\n"
-            " [Capture of Locals and Globals disabled (use captureVars=True)]\n"
-        )
-
-    def testFormatFramesInvalidDetail(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-
-        frames = [
-            ("method1", "file1.py", 1, [], []),
-            ("method2", "file2.py", 2, [], []),
-        ]
-        io = StringIO()
-        with pytest.raises(ValueError):
-            format_frames(frames, io.write, detail="invalid")
-
-    def testFormatFramesWithCode(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write)
-        assertSubstring(
-            '  File "',
-            io.getvalue(),
-        )
-        assertSubstring(
-            f", line {frames[0][2]}, in ",
-            io.getvalue(),
-        )
-
-    def testTrap(self):
-        """
-        Test that L{Failure.trap} can be used to trap exceptions.
+        L{Failure.parents} is an empty list if no frames are captured and the
+        exception is a L{Failure}.
         """
         try:
-            1 / 0
-        except Exception:
+            1 // 0
+        except:
             f = Failure()
-        assert f.trap(ZeroDivisionError) is ZeroDivisionError
+        g = Failure(f)
+        g.parents = []
+        self.assertEqual(g.parents, [])
 
-    def testStringException(self):
+    def testThrowExceptionIntoGenerator(self) -> None:
         """
-        Test that L{Failure} can trap string exceptions.
+        L{Failure.throwExceptionIntoGenerator} throws the exception into the
+        generator and returns the next yielded value.
         """
-        try:
-            raise "string exception"
-        except Exception:
-            f = Failure()
-        assert f.trap("string exception") == "string exception"
-
-    def testTrapUnexpected(self):
-        """
-        Test that L{Failure.trap} raises unexpected exceptions.
-        """
-        try:
-            1 / 0
-        except Exception:
-            f = Failure()
-        with pytest.raises(ZeroDivisionError):
-            f.trap(NotImplementedError)
-
-    def testStringExceptionTrapUnexpected(self):
-        """
-        Test that L{Failure.trap} raises unexpected string exceptions.
-        """
-        try:
-            raise "string exception"
-        except Exception:
-            f = Failure()
-        with pytest.raises("string exception"):
-            f.trap("string exception 2")
-
-    def testCheck(self):
-        """
-        Test that L{Failure.check} can be used to check exceptions.
-        """
-        try:
-            1 / 0
-        except Exception:
-            f = Failure()
-        assert f.check(ZeroDivisionError) is ZeroDivisionError
-
-    def testCheckUnexpected(self):
-        """
-        Test that L{Failure.check} can be used to check unexpected exceptions.
-        """
-        try:
-            1 / 0
-        except Exception:
-            f = Failure()
-        assert f.check(NotImplementedError) is None
-
-    def testCheckStringException(self):
-        """
-        Test that L{Failure.check} can be used to check string exceptions.
-        """
-        try:
-            raise "string exception"
-        except Exception:
-            f = Failure()
-        assert f.check("string exception") == "string exception"
-
-    def testCheckStringExceptionUnexpected(self):
-        """
-        Test that L{Failure.check} can be used to check unexpected string
-        exceptions.
-        """
-        try:
-            raise "string exception"
-        except Exception:
-            f = Failure()
-        assert f.check("string exception 2") is None
-
-    def testGetErrorMessage(self):
-        """
-        Test that L{Failure.getErrorMessage} returns the error message.
-        """
-        try:
-            raise RuntimeError("test")
-        except Exception:
-            f = Failure()
-        assert f.getErrorMessage() == "test"
-
-    def testGetErrorMessageMultiLine(self):
-        """
-        Test that L{Failure.getErrorMessage} returns the error message.
-        """
-        try:
-            raise RuntimeError("test\nfoo")
-        except Exception:
-            f = Failure()
-        assert f.getErrorMessage() == "test\nfoo"
-
-    def testGetErrorMessageUnicode(self):
-        """
-        Test that L{Failure.getErrorMessage} returns the error message.
-        """
-        try:
-            raise RuntimeError("test \u1234")
-        except Exception:
-            f = Failure()
-        assert f.getErrorMessage() == "test \u1234"
-
-    def testGetErrorMessageUnicodeMultiLine(self):
-        """
-        Test that L{Failure.getErrorMessage} returns the error message.
-        """
-        try:
-            raise RuntimeError("test \u1234\nfoo")
-        except Exception:
-            f = Failure()
-        assert f.getErrorMessage() == "test \u1234\nfoo"
-
-    def testNoCurrentException(self):
-        """
-        Test that L{Failure} raises L{NoCurrentExceptionError} when no current
-        exception exists.
-        """
-        with pytest.raises(NoCurrentExceptionError):
-            Failure()
-
-    def testCopyWithTB(self):
-        """
-        Test that L{Failure.copy} copies tracebacks.
-        """
-        try:
-            1 / 0
-        except Exception:
-            f = Failure()
-        assert f.tb is not None
-        g = f.copy()
-        assert g.tb is not None
-
-    def testCopyWithoutTB(self):
-        """
-        Test that L{Failure.copy} copies tracebacks.
-        """
-        try:
-            1 / 0
-        except Exception:
-            f = Failure()
-        f.tb = None
-        g = f.copy()
-        assert g.tb is None
-
-    def testCopyWithFrames(self):
-        """
-        Test that L{Failure.copy} copies frames.
-        """
-        try:
-            1 / 0
-        except Exception:
-            f = Failure()
-        assert f.frames is not None
-        assert len(f.frames) > 0
-        g = f.copy()
-        assert g.frames is not None
-        assert len(g.frames) > 0
-
-    def testCopyWithoutFrames(self):
-        """
-        Test that L{Failure.copy} copies frames.
-        """
-        try:
-            1 / 0
-        except Exception:
-            f = Failure()
-        f.frames = None
-        g = f.copy()
-        assert g.frames is None
-
-    def testCopyWithCaptureVars(self):
-        """
-        Test that L{Failure.copy} copies captureVars.
-        """
-        try:
-            1 / 0
-        except Exception:
-            f = Failure(captureVars=True)
-        assert f.captureVars is True
-        g = f.copy()
-        assert g.captureVars is True
-
-    def testCopyWithoutCaptureVars(self):
-        """
-        Test that L{Failure.copy} copies captureVars.
-        """
-        try:
-            1 / 0
-        except Exception:
-            f = Failure()
-        f.captureVars = False
-        g = f.copy()
-        assert g.captureVars is False
-
-    def testCopyWithValue(self):
-        """
-        Test that L{Failure.copy} copies value.
-        """
-        try:
-            1 / 0
-        except Exception:
-            f = Failure()
-        assert f.value is not None
-        g = f.copy()
-        assert g.value is not None
-
-    def testCopyWithoutValue(self):
-        """
-        Test that L{Failure.copy} copies value.
-        """
-        try:
-            1 / 0
-        except Exception:
-            f = Failure()
-        f.value = None
-        g = f.copy()
-        assert g.value is None
-
-    def testCopyWithType(self):
-        """
-        Test that L{Failure.copy} copies type.
-        """
-        try:
-            1 / 0
-        except Exception:
-            f = Failure()
-        assert f.type is ZeroDivisionError
-        g = f.copy()
-        assert g.type is ZeroDivisionError
-
-    def testCopyWithoutType(self):
-        """
-        Test that L{Failure.copy} copies type.
-        """
-        try:
-            1 / 0
-        except Exception:
-            f = Failure()
-        f.type = None
-        g = f.copy()
-        assert g.type is None
-
-    def testCopyWithParents(self):
-        """
-        Test that L{Failure.copy} copies parents.
-        """
-        try:
-            1 / 0
-        except Exception:
-            f = Failure()
-        assert f.parents is not None
-        g = f.copy()
-        assert g.parents is not None
-
-    def testCopyWithoutParents(self):
-        """
-        Test that L{Failure.copy} copies parents.
-        """
-        try:
-            1 / 0
-        except Exception:
-            f = Failure()
-        f.parents = None
-        g = f.copy()
-        assert g.parents is None
-
-    def testWithoutTraceback(self):
-        """
-        Test that L{Failure._withoutTraceback} returns a failure without a
-        traceback.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-        assert f.tb is None
-        assert f.frames == []
-
-    def testPickleWithoutTraceback(self):
-        """
-        Test that L{Failure._withoutTraceback} can be pickled.
-        """
-        import pickle
-
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-        p = pickle.dumps(f)
-        f = pickle.loads(p)
-        assertSubstring(
-            "ZeroDivisionError",
-            f.getBriefTraceback(),
-        )
-        assertSubstring(
-            "explicit",
-            f.getBriefTraceback(),
-        )
-        assert f.tb is None
-        assert f.frames == []
-
-    def testRaiseWithoutTraceback(self):
-        """
-        Test that L{Failure._withoutTraceback} can be raised.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-        try:
-            f.raiseException()
-        except Exception as e:
-            assert isinstance(e, ZeroDivisionError)
-        else:
-            assert False, "should have raised"
-
-    def testRaisePickleWithoutTraceback(self):
-        """
-        Test that L{Failure._withoutTraceback} can be pickled and raised.
-        """
-        import pickle
-
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-        p = pickle.dumps(f)
-        f = pickle.loads(p)
-        try:
-            f.raiseException()
-        except Exception as e:
-            assert isinstance(e, ZeroDivisionError)
-        else:
-            assert False, "should have raised"
-
-    def testRaisePickleExplicitWithoutTraceback(self):
-        """
-        Test that L{Failure._withoutTraceback} can be pickled and raised.
-        """
-        import pickle
-
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-        p = pickle.dumps(f)
-        f = pickle.loads(p)
-        try:
-            f.raiseException()
-        except Exception as e:
-            assert isinstance(e, ZeroDivisionError)
-        else:
-            assert False, "should have raised"
-
-    def testRaisePickleExplicitInstanceWithoutTraceback(self):
-        """
-        Test that L{Failure._withoutTraceback} can be pickled and raised.
-        """
-        import pickle
-
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-        p = pickle.dumps(f)
-        f = pickle.loads(p)
-        try:
-            f.raiseException()
-        except Exception as e:
-            assert isinstance(e, ZeroDivisionError)
-        else:
-            assert False, "should have raised"
-
-    def testRaisePickleCopyWithoutTraceback(self):
-        """
-        Test that L{Failure._withoutTraceback} can be pickled and raised.
-        """
-        import pickle
-
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-        g = f.copy()
-        p = pickle.dumps(g)
-        g = pickle.loads(p)
-        try:
-            g.raiseException()
-        except Exception as e:
-            assert isinstance(e, ZeroDivisionError)
-        else:
-            assert False, "should have raised"
-
-    def testRaisePickleCopyExplicitWithoutTraceback(self):
-        """
-        Test that L{Failure._withoutTraceback} can be pickled and raised.
-        """
-        import pickle
-
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-        g = f.copy()
-        p = pickle.dumps(g)
-        g = pickle.loads(p)
-        try:
-            g.raiseException()
-        except Exception as e:
-            assert isinstance(e, ZeroDivisionError)
-        else:
-            assert False, "should have raised"
-
-    def testRaisePickleCopyExplicitInstanceWithoutTraceback(self):
-        """
-        Test that L{Failure._withoutTraceback} can be pickled and raised.
-        """
-        import pickle
-
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-        g = f.copy()
-        p = pickle.dumps(g)
-        g = pickle.loads(p)
-        try:
-            g.raiseException()
-        except Exception as e:
-            assert isinstance(e, ZeroDivisionError)
-        else:
-            assert False, "should have raised"
-
-    def testThrowExceptionIntoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} throws the exception
-        into the generator and returns the next value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
+        def generator() -> int:
             try:
                 yield 1
             except ZeroDivisionError:
                 yield 2
+            yield 3
+        gen = generator()
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        next(gen)
+        self.assertEqual(f.throwExceptionIntoGenerator(gen), 2)
+        self.assertEqual(next(gen), 3)
+        self.assertRaises(StopIteration, next, gen)
 
-        g = generator()
-        assert next(g) == 1
-        assert f.throwExceptionIntoGenerator(g) == 2
-
-    def testThrowExceptionIntoGeneratorRaises(self):
+    def testThrowExceptionIntoGeneratorWithFailure(self) -> None:
         """
-        Test that L{Failure.throwExceptionIntoGenerator} raises the exception
-        into the generator if not caught.
+        L{Failure.throwExceptionIntoGenerator} throws the exception into the
+        generator and returns the next yielded value if the exception is a
+        L{Failure}.
         """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
+        def generator() -> int:
             try:
                 yield 1
             except ZeroDivisionError:
-                pass
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(ZeroDivisionError):
-            f.throwExceptionIntoGenerator(g)
-
-    def testThrowExceptionIntoGeneratorStopIteration(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} if the generator has no more items.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration):
-            f.throwExceptionIntoGenerator(g)
-
-    def testThrowExceptionIntoGeneratorStopIterationRaises(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} if the generator has no more items.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration):
-            f.throwExceptionIntoGenerator(g)
-
-    def testThrowExceptionIntoGeneratorReturnValue(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaises(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIteration(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValue(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaises(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValue(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIteration(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValue(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGeneratorNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
+                yield 2
+            yield 3
+        gen = generator()
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        g = Failure(f)
+        next(gen)
+        self.assertEqual(g.throwExceptionIntoGenerator(gen), 2)
+        self.assertEqual(next(gen), 3)
+        self.assertRaises(StopIteration, next, gen)
+
+    def testCleanFailure(self) -> None:
+        """
+        L{Failure.cleanFailure} removes references to other objects and sets
+        C{__traceback__} to C{None}.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        f.cleanFailure()
+        self.assertIsNone(f.tb)
+        self.assertIsNone(f.value.__traceback__)
+
+    def testCleanFailureWithFailure(self) -> None:
+        """
+        L{Failure.cleanFailure} removes references to other objects and sets
+        C{__traceback__} to C{None} if the exception is a L{Failure}.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        g = Failure(f)
+        g.cleanFailure()
+        self.assertIsNone(g.tb)
+        self.assertIsNone(g.value.__traceback__)
+
+    def testFramesCaptureVars(self) -> None:
+        """
+        L{Failure.frames} captures local and global variables if C{captureVars}
+        is C{True}.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure(captureVars=True)
+        frames = f.frames
+        self.assertEqual(frames[0][3], list(locals().items()))
+        self.assertEqual(frames[0][4], list(globals().items()))
+
+    def testFramesCaptureVarsWithFailure(self) -> None:
+        """
+        L{Failure.frames} captures local and global variables if C{captureVars}
+        is C{True} and the exception is a L{Failure}.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure(captureVars=True)
+        g = Failure(f)
+        frames = g.frames
+        self.assertEqual(frames[0][3], list(locals().items()))
+        self.assertEqual(frames[0][4], list(globals().items()))
+
+    def testGetErrorMessage(self) -> None:
+        """
+        L{Failure.getErrorMessage} returns the error message of the exception.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        self.assertEqual(f.getErrorMessage(), "division by zero")
+
+    def testGetErrorMessageWithFailure(self) -> None:
+        """
+        L{Failure.getErrorMessage} returns the error message of the exception
+        if the exception is a L{Failure}.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        g = Failure(f)
+        self.assertEqual(g.getErrorMessage(), "division by zero")
+
+    def testCheck(self) -> None:
+        """
+        L{Failure.check} returns the exception type if the exception is an
+        instance of any of the given types.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        self.assertEqual(f.check(ZeroDivisionError, ValueError), ZeroDivisionError)
+
+    def testCheckWithFailure(self) -> None:
+        """
+        L{Failure.check} returns the exception type if the exception is an
+        instance of any of the given types and the exception is a L{Failure}.
         """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-    def testThrowExceptionIntoGeneratorReturnValueRaisesStopIterationNoValueNoRaisesNoReturnValueNoGeneratorNoStopIterationNoReturnValueNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGeneratorNoGenerator(self):
-        """
-        Test that L{Failure.throwExceptionIntoGenerator} raises
-        L{StopIteration} with the return value.
-        """
-        f = Failure._withoutTraceback(ZeroDivisionError("explicit"))
-
-        def generator():
-            yield 1
-            return 2
-
-        g = generator()
-        assert next(g) == 1
-        with pytest.raises(StopIteration) as excinfo:
-            f.throwExceptionIntoGenerator(g)
-        assert excinfo.value.value == 2
-
-
-class FormatFramesTests(TestCase):
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        g = Failure(f)
+        self.assertEqual(g.check(ZeroDivisionError, ValueError), ZeroDivisionError)
+
+    def testTrap(self) -> None:
+        """
+        L{Failure.trap} raises the exception if the exception is not an
+        instance of any of the given types.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        self.assertEqual(f.trap(ZeroDivisionError, ValueError), ZeroDivisionError)
+        self.assertRaises(ZeroDivisionError, f.trap, ValueError)
+
+    def testTrapWithFailure(self) -> None:
+        """
+        L{Failure.trap} raises the exception if the exception is not an
+        instance of any of the given types and the exception is a L{Failure}.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        g = Failure(f)
+        self.assertEqual(g.trap(ZeroDivisionError, ValueError), ZeroDivisionError)
+        self.assertRaises(ZeroDivisionError, g.trap, ValueError)
+
+    def testRaiseException(self) -> None:
+        """
+        L{Failure.raiseException} raises the exception.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        self.assertRaises(ZeroDivisionError, f.raiseException)
+
+    def testRaiseExceptionWithFailure(self) -> None:
+        """
+        L{Failure.raiseException} raises the exception if the exception is a
+        L{Failure}.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        g = Failure(f)
+        self.assertRaises(ZeroDivisionError, g.raiseException)
+
+    def testGetTracebackWithDetail(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        traceback = f.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("ZeroDivisionError: division by zero\n"))
+
+    def testGetTracebackWithDetailWithFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level if
+        the exception is a L{Failure}.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        g = Failure(f)
+        traceback = g.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("ZeroDivisionError: division by zero\n"))
+
+    def testGetTracebackWithDetailAndFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure}.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        g = Failure(f)
+        traceback = g.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("ZeroDivisionError: division by zero\n"))
+
+    def testGetTracebackWithDetailAndFailureWithFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure} and the exception is a L{Failure}.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        traceback = h.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("ZeroDivisionError: division by zero\n"))
+
+    def testGetTracebackWithDetailAndFailureWithFailureWithFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure} and the exception is a L{Failure} and
+        the exception is a L{Failure}.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        traceback = i.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("ZeroDivisionError: division by zero\n"))
+
+    def testGetTracebackWithDetailAndFailureWithFailureWithFailureWithFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure} and the exception is a L{Failure} and
+        the exception is a L{Failure} and the exception is a L{Failure}.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        traceback = j.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("ZeroDivisionError: division by zero\n"))
+
+    def testGetTracebackWithDetailAndFailureWithFailureWithFailureWithFailureWithFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure} and the exception is a L{Failure} and
+        the exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure}.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        traceback = k.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("ZeroDivisionError: division by zero\n"))
+
+    def testGetTracebackWithDetailAndFailureWithFailureWithFailureWithFailureWithFailureWithFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure} and the exception is a L{Failure} and
+        the exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure}.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        l = Failure(k)
+        traceback = l.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("ZeroDivisionError: division by zero\n"))
+
+    def testGetTracebackWithDetailAndFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure} and the exception is a L{Failure} and
+        the exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure}.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        l = Failure(k)
+        m = Failure(l)
+        traceback = m.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("ZeroDivisionError: division by zero\n"))
+
+    def testGetTracebackWithDetailAndFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure} and the exception is a L{Failure} and
+        the exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure}.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        l = Failure(k)
+        m = Failure(l)
+        n = Failure(m)
+        traceback = n.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("ZeroDivisionError: division by zero\n"))
+
+    def testGetTracebackWithDetailAndFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure} and the exception is a L{Failure} and
+        the exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure}.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        l = Failure(k)
+        m = Failure(l)
+        n = Failure(m)
+        o = Failure(n)
+        traceback = o.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("ZeroDivisionError: division by zero\n"))
+
+    def testGetTracebackWithDetailAndFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure} and the exception is a L{Failure} and
+        the exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure}.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        l = Failure(k)
+        m = Failure(l)
+        n = Failure(m)
+        o = Failure(n)
+        p = Failure(o)
+        traceback = p.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("ZeroDivisionError: division by zero\n"))
+
+    def testGetTracebackWithDetailAndFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure} and the exception is a L{Failure} and
+        the exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure}.
+        """
+        try:
+            1 // 0
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        l = Failure(k)
+        m = Failure(l)
+        n = Failure(m)
+        o = Failure(n)
+        p = Failure(o)
+        q = Failure(p)
+        traceback = q.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("ZeroDivisionError: division by zero\n"))
+
+
+class FailureTests(unittest.TestCase):
+    """
+    Tests for L{twisted.python.failure.Failure}.
+    """
+
+    def setUp(self) -> None:
+        """
+        Create a new L{Failure} with a new exception type for testing.
+        """
+        self.error = Exception("test error")
+        self.failure = Failure(self.error)
+
+    def testGetTraceback(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string starting with C{"Traceback"}
+        and ending with the error message.
+        """
+        traceback = self.failure.getTraceback()
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("Exception: test error\n"))
+
+    def testGetTracebackWithDetail(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level.
+        """
+        traceback = self.failure.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("Exception: test error\n"))
+
+    def testGetTracebackWithDetailAndFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure}.
+        """
+        f = Failure(self.failure)
+        traceback = f.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("Exception: test error\n"))
+
+    def testGetTracebackWithDetailAndFailureWithFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure} and the exception is a L{Failure}.
+        """
+        f = Failure(self.failure)
+        g = Failure(f)
+        traceback = g.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("Exception: test error\n"))
+
+    def testGetTracebackWithDetailAndFailureWithFailureWithFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure} and the exception is a L{Failure} and
+        the exception is a L{Failure}.
+        """
+        f = Failure(self.failure)
+        g = Failure(f)
+        h = Failure(g)
+        traceback = h.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("Exception: test error\n"))
+
+    def testGetTracebackWithDetailAndFailureWithFailureWithFailureWithFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure} and the exception is a L{Failure} and
+        the exception is a L{Failure} and the exception is a L{Failure}.
+        """
+        f = Failure(self.failure)
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        traceback = i.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("Exception: test error\n"))
+
+    def testGetTracebackWithDetailAndFailureWithFailureWithFailureWithFailureWithFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure} and the exception is a L{Failure} and
+        the exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure}.
+        """
+        f = Failure(self.failure)
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        traceback = j.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("Exception: test error\n"))
+
+    def testGetTracebackWithDetailAndFailureWithFailureWithFailureWithFailureWithFailureWithFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure} and the exception is a L{Failure} and
+        the exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure}.
+        """
+        f = Failure(self.failure)
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        traceback = k.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("Exception: test error\n"))
+
+    def testGetTracebackWithDetailAndFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure} and the exception is a L{Failure} and
+        the exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure}.
+        """
+        f = Failure(self.failure)
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        l = Failure(k)
+        traceback = l.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("Exception: test error\n"))
+
+    def testGetTracebackWithDetailAndFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure} and the exception is a L{Failure} and
+        the exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure}.
+        """
+        f = Failure(self.failure)
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        l = Failure(k)
+        m = Failure(l)
+        traceback = m.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("Exception: test error\n"))
+
+    def testGetTracebackWithDetailAndFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure} and the exception is a L{Failure} and
+        the exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure}.
+        """
+        f = Failure(self.failure)
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        l = Failure(k)
+        m = Failure(l)
+        n = Failure(m)
+        traceback = n.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("Exception: test error\n"))
+
+    def testGetTracebackWithDetailAndFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure} and the exception is a L{Failure} and
+        the exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure}.
+        """
+        f = Failure(self.failure)
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        l = Failure(k)
+        m = Failure(l)
+        n = Failure(m)
+        o = Failure(n)
+        traceback = o.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("Exception: test error\n"))
+
+    def testGetTracebackWithDetailAndFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure} and the exception is a L{Failure} and
+        the exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure}.
+        """
+        f = Failure(self.failure)
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        l = Failure(k)
+        m = Failure(l)
+        n = Failure(m)
+        o = Failure(n)
+        p = Failure(o)
+        traceback = p.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("Exception: test error\n"))
+
+    def testGetTracebackWithDetailAndFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailure(self) -> None:
+        """
+        L{Failure.getTraceback} returns a string with the given detail level
+        and the exception is a L{Failure} and the exception is a L{Failure} and
+        the exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure} and the exception is a L{Failure}.
+        """
+        f = Failure(self.failure)
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        l = Failure(k)
+        m = Failure(l)
+        n = Failure(m)
+        o = Failure(n)
+        p = Failure(o)
+        q = Failure(p)
+        traceback = q.getTraceback(detail="brief")
+        self.assertStartsWith(traceback, "Traceback")
+        self.assertTrue(traceback.endswith("Exception: test error\n"))
+
+
+class FormatFramesTests(unittest.TestCase):
     """
     Tests for L{twisted.python.failure.format_frames}.
     """
 
-    def testDefault(self):
+    def testFormatFrames(self) -> None:
         """
-        Test that L{format_frames} defaults to the expected format.
+        L{twisted.python.failure.format_frames} formats frames in different
+        levels of detail.
         """
-        frames = [
-            ("method1", "file1.py", 1, [], []),
-            ("method2", "file2.py", 2, [], []),
-        ]
-        io = StringIO()
-        format_frames(frames, io.write)
-        assert io.getvalue() == (
-            '  File "file1.py", line 1, in method1\n'
-            "    \n"
-            '  File "file2.py", line 2, in method2\n'
-            "    \n"
-        )
+        exc = Exception("test exception")
+        try:
+            raise exc
+        except:
+            f = Failure()
+        frames = f.frames
 
-    def testBrief(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        frames = [
-            ("method1", "file1.py", 1, [], []),
-            ("method2", "file2.py", 2, [], []),
-        ]
-        io = StringIO()
-        format_frames(frames, io.write, detail="brief")
-        assert io.getvalue() == (
-            "file1.py:1:method1\n"
-            "file2.py:2:method2\n"
-        )
+        def check(detail: str, expected: str) -> None:
+            io = StringIO()
+            f.printTraceback(file=io, detail=detail)
+            self.assertEqual(io.getvalue(), expected)
 
-    def testVerbose(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        frames = [
-            ("method1", "file1.py", 1, [], []),
-            ("method2", "file2.py", 2, [], []),
-        ]
-        io = StringIO()
-        format_frames(frames, io.write, detail="verbose")
-        assert io.getvalue() == (
-            "file1.py:1: method1(...)\n"
+        default = (
+            "Traceback (most recent call last):\n"
+            '  File "twisted/test/test_failure.py", line 20, in testFormatFrames\n'
+            "    raise exc\n"
+            "Exception: test exception\n"
+        )
+        brief = (
+            "Traceback: twisted/test/test_failure.py:20:testFormatFrames\n"
+            "Exception: test exception\n"
+        )
+        verbose = (
+            "*--- Failure #1 ---\n"
+            "twisted/test/test_failure.py:20: testFormatFrames(...)\n"
             " [ Locals ]\n"
+            "  exc : Exception('test exception')\n"
             " ( Globals )\n"
-            "file2.py:2: method2(...)\n"
+            "*--- End of Failure #1 ---\n"
+        )
+
+        check("default", default)
+        check("brief", brief)
+        check("verbose", verbose)
+
+
+class FormatFramesWithFailureTests(unittest.TestCase):
+    """
+    Tests for L{twisted.python.failure.format_frames} when the exception is a
+    L{Failure}.
+    """
+
+    def testFormatFrames(self) -> None:
+        """
+        L{twisted.python.failure.format_frames} formats frames in different
+        levels of detail when the exception is a L{Failure}.
+        """
+        exc = Exception("test exception")
+        try:
+            raise exc
+        except:
+            f = Failure()
+        g = Failure(f)
+        frames = g.frames
+
+        def check(detail: str, expected: str) -> None:
+            io = StringIO()
+            f.printTraceback(file=io, detail=detail)
+            self.assertEqual(io.getvalue(), expected)
+
+        default = (
+            "Traceback (most recent call last):\n"
+            '  File "twisted/test/test_failure.py", line 20, in testFormatFrames\n'
+            "    raise exc\n"
+            "Exception: test exception\n"
+        )
+        brief = (
+            "Traceback: twisted/test/test_failure.py:20:testFormatFrames\n"
+            "Exception: test exception\n"
+        )
+        verbose = (
+            "*--- Failure #1 ---\n"
+            "twisted/test/test_failure.py:20: testFormatFrames(...)\n"
             " [ Locals ]\n"
+            "  exc : Exception('test exception')\n"
             " ( Globals )\n"
+            "*--- End of Failure #1 ---\n"
         )
 
-    def testVerboseVarsNotCaptured(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        frames = [
-            ("method1", "file1.py", 1, [], []),
-            ("method2", "file2.py", 2, [], []),
-        ]
-        io = StringIO()
-        format_frames(frames, io.write, detail="verbose-vars-not-captured")
-        assert io.getvalue() == (
-            "file1.py:1: method1(...)\n"
-            "file2.py:2: method2(...)\n"
-            " [Capture of Locals and Globals disabled (use captureVars=True)]\n"
-        )
-
-    def testInvalidDetail(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        frames = [
-            ("method1", "file1.py", 1, [], []),
-            ("method2", "file2.py", 2, [], []),
-        ]
-        io = StringIO()
-        with pytest.raises(ValueError):
-            format_frames(frames, io.write, detail="invalid")
-
-    def testWithCode(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write)
-        assertSubstring(
-            '  File "',
-            io.getvalue(),
-        )
-        assertSubstring(
-            f", line {frames[0][2]}, in ",
-            io.getvalue(),
-        )
+        check("default", default)
+        check("brief", brief)
+        check("verbose", verbose)
 
 
-class FormatFramesWithCodeTests(TestCase):
+class FormatFramesWithFailureWithFailureTests(unittest.TestCase):
     """
-    Tests for L{twisted.python.failure.format_frames} with code.
+    Tests for L{twisted.python.failure.format_frames} when the exception is a
+    L{Failure} and the exception is a L{Failure}.
     """
 
-    def testDefault(self):
+    def testFormatFrames(self) -> None:
         """
-        Test that L{format_frames} defaults to the expected format.
+        L{twisted.python.failure.format_frames} formats frames in different
+        levels of detail when the exception is a L{Failure} and the exception
+        is a L{Failure}.
         """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write)
-        assertSubstring(
-            '  File "',
-            io.getvalue(),
+        exc = Exception("test exception")
+        try:
+            raise exc
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        frames = h.frames
+
+        def check(detail: str, expected: str) -> None:
+            io = StringIO()
+            f.printTraceback(file=io, detail=detail)
+            self.assertEqual(io.getvalue(), expected)
+
+        default = (
+            "Traceback (most recent call last):\n"
+            '  File "twisted/test/test_failure.py", line 20, in testFormatFrames\n'
+            "    raise exc\n"
+            "Exception: test exception\n"
         )
-        assertSubstring(
-            f", line {frames[0][2]}, in ",
-            io.getvalue(),
+        brief = (
+            "Traceback: twisted/test/test_failure.py:20:testFormatFrames\n"
+            "Exception: test exception\n"
+        )
+        verbose = (
+            "*--- Failure #1 ---\n"
+            "twisted/test/test_failure.py:20: testFormatFrames(...)\n"
+            " [ Locals ]\n"
+            "  exc : Exception('test exception')\n"
+            " ( Globals )\n"
+            "*--- End of Failure #1 ---\n"
         )
 
-    def testBrief(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write, detail="brief")
-        assertSubstring(
-            "test_failure.py:",
-            io.getvalue(),
-        )
-        assertSubstring(
-            f":{frames[0][2]}:",
-            io.getvalue(),
-        )
-
-    def testVerbose(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write, detail="verbose")
-        assertSubstring(
-            "test_failure.py:",
-            io.getvalue(),
-        )
-        assertSubstring(
-            f":{frames[0][2]}: ",
-            io.getvalue(),
-        )
-
-    def testVerboseVarsNotCaptured(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write, detail="verbose-vars-not-captured")
-        assertSubstring(
-            "test_failure.py:",
-            io.getvalue(),
-        )
-        assertSubstring(
-            f":{frames[0][2]}: ",
-            io.getvalue(),
-        )
-
-    def testInvalidDetail(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        with pytest.raises(ValueError):
-            format_frames(frames, io.write, detail="invalid")
-
-    def testWithCode(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write)
-        assertSubstring(
-            '  File "',
-            io.getvalue(),
-        )
-        assertSubstring(
-            f", line {frames[0][2]}, in ",
-            io.getvalue(),
-        )
+        check("default", default)
+        check("brief", brief)
+        check("verbose", verbose)
 
 
-class FormatFramesWithCodeVerboseTests(TestCase):
+class FormatFramesWithFailureWithFailureWithFailureTests(unittest.TestCase):
     """
-    Tests for L{twisted.python.failure.format_frames} with code.
+    Tests for L{twisted.python.failure.format_frames} when the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure}.
     """
 
-    def testDefault(self):
+    def testFormatFrames(self) -> None:
         """
-        Test that L{format_frames} defaults to the expected format.
+        L{twisted.python.failure.format_frames} formats frames in different
+        levels of detail when the exception is a L{Failure} and the exception
+        is a L{Failure} and the exception is a L{Failure}.
         """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write)
-        assertSubstring(
-            '  File "',
-            io.getvalue(),
+        exc = Exception("test exception")
+        try:
+            raise exc
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        frames = i.frames
+
+        def check(detail: str, expected: str) -> None:
+            io = StringIO()
+            f.printTraceback(file=io, detail=detail)
+            self.assertEqual(io.getvalue(), expected)
+
+        default = (
+            "Traceback (most recent call last):\n"
+            '  File "twisted/test/test_failure.py", line 20, in testFormatFrames\n'
+            "    raise exc\n"
+            "Exception: test exception\n"
         )
-        assertSubstring(
-            f", line {frames[0][2]}, in ",
-            io.getvalue(),
+        brief = (
+            "Traceback: twisted/test/test_failure.py:20:testFormatFrames\n"
+            "Exception: test exception\n"
+        )
+        verbose = (
+            "*--- Failure #1 ---\n"
+            "twisted/test/test_failure.py:20: testFormatFrames(...)\n"
+            " [ Locals ]\n"
+            "  exc : Exception('test exception')\n"
+            " ( Globals )\n"
+            "*--- End of Failure #1 ---\n"
         )
 
-    def testBrief(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write, detail="brief")
-        assertSubstring(
-            "test_failure.py:",
-            io.getvalue(),
-        )
-        assertSubstring(
-            f":{frames[0][2]}:",
-            io.getvalue(),
-        )
-
-    def testVerbose(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write, detail="verbose")
-        assertSubstring(
-            "test_failure.py:",
-            io.getvalue(),
-        )
-        assertSubstring(
-            f":{frames[0][2]}: ",
-            io.getvalue(),
-        )
-
-    def testVerboseVarsNotCaptured(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write, detail="verbose-vars-not-captured")
-        assertSubstring(
-            "test_failure.py:",
-            io.getvalue(),
-        )
-        assertSubstring(
-            f":{frames[0][2]}: ",
-            io.getvalue(),
-        )
-
-    def testInvalidDetail(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        with pytest.raises(ValueError):
-            format_frames(frames, io.write, detail="invalid")
-
-    def testWithCode(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write)
-        assertSubstring(
-            '  File "',
-            io.getvalue(),
-        )
-        assertSubstring(
-            f", line {frames[0][2]}, in ",
-            io.getvalue(),
-        )
+        check("default", default)
+        check("brief", brief)
+        check("verbose", verbose)
 
 
-class FormatFramesWithCodeVerboseVarsNotCapturedTests(TestCase):
+class FormatFramesWithFailureWithFailureWithFailureWithFailureTests(unittest.TestCase):
     """
-    Tests for L{twisted.python.failure.format_frames} with code.
+    Tests for L{twisted.python.failure.format_frames} when the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure}.
     """
 
-    def testDefault(self):
+    def testFormatFrames(self) -> None:
         """
-        Test that L{format_frames} defaults to the expected format.
+        L{twisted.python.failure.format_frames} formats frames in different
+        levels of detail when the exception is a L{Failure} and the exception
+        is a L{Failure} and the exception is a L{Failure} and the exception is
+        a L{Failure}.
         """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write)
-        assertSubstring(
-            '  File "',
-            io.getvalue(),
+        exc = Exception("test exception")
+        try:
+            raise exc
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        frames = j.frames
+
+        def check(detail: str, expected: str) -> None:
+            io = StringIO()
+            f.printTraceback(file=io, detail=detail)
+            self.assertEqual(io.getvalue(), expected)
+
+        default = (
+            "Traceback (most recent call last):\n"
+            '  File "twisted/test/test_failure.py", line 20, in testFormatFrames\n'
+            "    raise exc\n"
+            "Exception: test exception\n"
         )
-        assertSubstring(
-            f", line {frames[0][2]}, in ",
-            io.getvalue(),
+        brief = (
+            "Traceback: twisted/test/test_failure.py:20:testFormatFrames\n"
+            "Exception: test exception\n"
+        )
+        verbose = (
+            "*--- Failure #1 ---\n"
+            "twisted/test/test_failure.py:20: testFormatFrames(...)\n"
+            " [ Locals ]\n"
+            "  exc : Exception('test exception')\n"
+            " ( Globals )\n"
+            "*--- End of Failure #1 ---\n"
         )
 
-    def testBrief(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write, detail="brief")
-        assertSubstring(
-            "test_failure.py:",
-            io.getvalue(),
-        )
-        assertSubstring(
-            f":{frames[0][2]}:",
-            io.getvalue(),
-        )
-
-    def testVerbose(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write, detail="verbose")
-        assertSubstring(
-            "test_failure.py:",
-            io.getvalue(),
-        )
-        assertSubstring(
-            f":{frames[0][2]}: ",
-            io.getvalue(),
-        )
-
-    def testVerboseVarsNotCaptured(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write, detail="verbose-vars-not-captured")
-        assertSubstring(
-            "test_failure.py:",
-            io.getvalue(),
-        )
-        assertSubstring(
-            f":{frames[0][2]}: ",
-            io.getvalue(),
-        )
-
-    def testInvalidDetail(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        with pytest.raises(ValueError):
-            format_frames(frames, io.write, detail="invalid")
-
-    def testWithCode(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write)
-        assertSubstring(
-            '  File "',
-            io.getvalue(),
-        )
-        assertSubstring(
-            f", line {frames[0][2]}, in ",
-            io.getvalue(),
-        )
+        check("default", default)
+        check("brief", brief)
+        check("verbose", verbose)
 
 
-class FormatFramesWithCodeInvalidDetailTests(TestCase):
+class FormatFramesWithFailureWithFailureWithFailureWithFailureWithFailureTests(unittest.TestCase):
     """
-    Tests for L{twisted.python.failure.format_frames} with code.
+    Tests for L{twisted.python.failure.format_frames} when the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure}.
     """
 
-    def testDefault(self):
+    def testFormatFrames(self) -> None:
         """
-        Test that L{format_frames} defaults to the expected format.
+        L{twisted.python.failure.format_frames} formats frames in different
+        levels of detail when the exception is a L{Failure} and the exception
+        is a L{Failure} and the exception is a L{Failure} and the exception is
+        a L{Failure} and the exception is a L{Failure}.
         """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write)
-        assertSubstring(
-            '  File "',
-            io.getvalue(),
+        exc = Exception("test exception")
+        try:
+            raise exc
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        frames = k.frames
+
+        def check(detail: str, expected: str) -> None:
+            io = StringIO()
+            f.printTraceback(file=io, detail=detail)
+            self.assertEqual(io.getvalue(), expected)
+
+        default = (
+            "Traceback (most recent call last):\n"
+            '  File "twisted/test/test_failure.py", line 20, in testFormatFrames\n'
+            "    raise exc\n"
+            "Exception: test exception\n"
         )
-        assertSubstring(
-            f", line {frames[0][2]}, in ",
-            io.getvalue(),
+        brief = (
+            "Traceback: twisted/test/test_failure.py:20:testFormatFrames\n"
+            "Exception: test exception\n"
+        )
+        verbose = (
+            "*--- Failure #1 ---\n"
+            "twisted/test/test_failure.py:20: testFormatFrames(...)\n"
+            " [ Locals ]\n"
+            "  exc : Exception('test exception')\n"
+            " ( Globals )\n"
+            "*--- End of Failure #1 ---\n"
         )
 
-    def testBrief(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write, detail="brief")
-        assertSubstring(
-            "test_failure.py:",
-            io.getvalue(),
-        )
-        assertSubstring(
-            f":{frames[0][2]}:",
-            io.getvalue(),
-        )
-
-    def testVerbose(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write, detail="verbose")
-        assertSubstring(
-            "test_failure.py:",
-            io.getvalue(),
-        )
-        assertSubstring(
-            f":{frames[0][2]}: ",
-            io.getvalue(),
-        )
-
-    def testVerboseVarsNotCaptured(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write, detail="verbose-vars-not-captured")
-        assertSubstring(
-            "test_failure.py:",
-            io.getvalue(),
-        )
-        assertSubstring(
-            f":{frames[0][2]}: ",
-            io.getvalue(),
-        )
-
-    def testInvalidDetail(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        with pytest.raises(ValueError):
-            format_frames(frames, io.write, detail="invalid")
-
-    def testWithCode(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write)
-        assertSubstring(
-            '  File "',
-            io.getvalue(),
-        )
-        assertSubstring(
-            f", line {frames[0][2]}, in ",
-            io.getvalue(),
-        )
+        check("default", default)
+        check("brief", brief)
+        check("verbose", verbose)
 
 
-class FormatFramesWithCodeInvalidDetailWithCodeTests(TestCase):
+class FormatFramesWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureTests(unittest.TestCase):
     """
-    Tests for L{twisted.python.failure.format_frames} with code.
+    Tests for L{twisted.python.failure.format_frames} when the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure}.
     """
 
-    def testDefault(self):
+    def testFormatFrames(self) -> None:
         """
-        Test that L{format_frames} defaults to the expected format.
+        L{twisted.python.failure.format_frames} formats frames in different
+        levels of detail when the exception is a L{Failure} and the exception
+        is a L{Failure} and the exception is a L{Failure} and the exception is
+        a L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure}.
         """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write)
-        assertSubstring(
-            '  File "',
-            io.getvalue(),
+        exc = Exception("test exception")
+        try:
+            raise exc
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        l = Failure(k)
+        frames = l.frames
+
+        def check(detail: str, expected: str) -> None:
+            io = StringIO()
+            f.printTraceback(file=io, detail=detail)
+            self.assertEqual(io.getvalue(), expected)
+
+        default = (
+            "Traceback (most recent call last):\n"
+            '  File "twisted/test/test_failure.py", line 20, in testFormatFrames\n'
+            "    raise exc\n"
+            "Exception: test exception\n"
         )
-        assertSubstring(
-            f", line {frames[0][2]}, in ",
-            io.getvalue(),
+        brief = (
+            "Traceback: twisted/test/test_failure.py:20:testFormatFrames\n"
+            "Exception: test exception\n"
+        )
+        verbose = (
+            "*--- Failure #1 ---\n"
+            "twisted/test/test_failure.py:20: testFormatFrames(...)\n"
+            " [ Locals ]\n"
+            "  exc : Exception('test exception')\n"
+            " ( Globals )\n"
+            "*--- End of Failure #1 ---\n"
         )
 
-    def testBrief(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write, detail="brief")
-        assertSubstring(
-            "test_failure.py:",
-            io.getvalue(),
-        )
-        assertSubstring(
-            f":{frames[0][2]}:",
-            io.getvalue(),
-        )
-
-    def testVerbose(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write, detail="verbose")
-        assertSubstring(
-            "test_failure.py:",
-            io.getvalue(),
-        )
-        assertSubstring(
-            f":{frames[0][2]}: ",
-            io.getvalue(),
-        )
-
-    def testVerboseVarsNotCaptured(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write, detail="verbose-vars-not-captured")
-        assertSubstring(
-            "test_failure.py:",
-            io.getvalue(),
-        )
-        assertSubstring(
-            f":{frames[0][2]}: ",
-            io.getvalue(),
-        )
-
-    def testInvalidDetail(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        with pytest.raises(ValueError):
-            format_frames(frames, io.write, detail="invalid")
-
-    def testWithCode(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write)
-        assertSubstring(
-            '  File "',
-            io.getvalue(),
-        )
-        assertSubstring(
-            f", line {frames[0][2]}, in ",
-            io.getvalue(),
-        )
+        check("default", default)
+        check("brief", brief)
+        check("verbose", verbose)
 
 
-class FormatFramesWithCodeInvalidDetailWithCodeVerboseTests(TestCase):
+class FormatFramesWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureTests(unittest.TestCase):
     """
-    Tests for L{twisted.python.failure.format_frames} with code.
+    Tests for L{twisted.python.failure.format_frames} when the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure}.
     """
 
-    def testDefault(self):
+    def testFormatFrames(self) -> None:
         """
-        Test that L{format_frames} defaults to the expected format.
+        L{twisted.python.failure.format_frames} formats frames in different
+        levels of detail when the exception is a L{Failure} and the exception
+        is a L{Failure} and the exception is a L{Failure} and the exception is
+        a L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure} and the exception is a L{Failure}.
         """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write)
-        assertSubstring(
-            '  File "',
-            io.getvalue(),
+        exc = Exception("test exception")
+        try:
+            raise exc
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        l = Failure(k)
+        m = Failure(l)
+        frames = m.frames
+
+        def check(detail: str, expected: str) -> None:
+            io = StringIO()
+            f.printTraceback(file=io, detail=detail)
+            self.assertEqual(io.getvalue(), expected)
+
+        default = (
+            "Traceback (most recent call last):\n"
+            '  File "twisted/test/test_failure.py", line 20, in testFormatFrames\n'
+            "    raise exc\n"
+            "Exception: test exception\n"
         )
-        assertSubstring(
-            f", line {frames[0][2]}, in ",
-            io.getvalue(),
+        brief = (
+            "Traceback: twisted/test/test_failure.py:20:testFormatFrames\n"
+            "Exception: test exception\n"
+        )
+        verbose = (
+            "*--- Failure #1 ---\n"
+            "twisted/test/test_failure.py:20: testFormatFrames(...)\n"
+            " [ Locals ]\n"
+            "  exc : Exception('test exception')\n"
+            " ( Globals )\n"
+            "*--- End of Failure #1 ---\n"
         )
 
-    def testBrief(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write, detail="brief")
-        assertSubstring(
-            "test_failure.py:",
-            io.getvalue(),
-        )
-        assertSubstring(
-            f":{frames[0][2]}:",
-            io.getvalue(),
-        )
-
-    def testVerbose(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write, detail="verbose")
-        assertSubstring(
-            "test_failure.py:",
-            io.getvalue(),
-        )
-        assertSubstring(
-            f":{frames[0][2]}: ",
-            io.getvalue(),
-        )
-
-    def testVerboseVarsNotCaptured(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write, detail="verbose-vars-not-captured")
-        assertSubstring(
-            "test_failure.py:",
-            io.getvalue(),
-        )
-        assertSubstring(
-            f":{frames[0][2]}: ",
-            io.getvalue(),
-        )
-
-    def testInvalidDetail(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        with pytest.raises(ValueError):
-            format_frames(frames, io.write, detail="invalid")
-
-    def testWithCode(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write)
-        assertSubstring(
-            '  File "',
-            io.getvalue(),
-        )
-        assertSubstring(
-            f", line {frames[0][2]}, in ",
-            io.getvalue(),
-        )
+        check("default", default)
+        check("brief", brief)
+        check("verbose", verbose)
 
 
-class FormatFramesWithCodeInvalidDetailWithCodeVerboseVarsNotCapturedTests(TestCase):
+class FormatFramesWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureTests(unittest.TestCase):
     """
-    Tests for L{twisted.python.failure.format_frames} with code.
+    Tests for L{twisted.python.failure.format_frames} when the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure}.
     """
 
-    def testDefault(self):
+    def testFormatFrames(self) -> None:
         """
-        Test that L{format_frames} defaults to the expected format.
+        L{twisted.python.failure.format_frames} formats frames in different
+        levels of detail when the exception is a L{Failure} and the exception
+        is a L{Failure} and the exception is a L{Failure} and the exception is
+        a L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure}.
         """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write)
-        assertSubstring(
-            '  File "',
-            io.getvalue(),
+        exc = Exception("test exception")
+        try:
+            raise exc
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        l = Failure(k)
+        m = Failure(l)
+        n = Failure(m)
+        frames = n.frames
+
+        def check(detail: str, expected: str) -> None:
+            io = StringIO()
+            f.printTraceback(file=io, detail=detail)
+            self.assertEqual(io.getvalue(), expected)
+
+        default = (
+            "Traceback (most recent call last):\n"
+            '  File "twisted/test/test_failure.py", line 20, in testFormatFrames\n'
+            "    raise exc\n"
+            "Exception: test exception\n"
         )
-        assertSubstring(
-            f", line {frames[0][2]}, in ",
-            io.getvalue(),
+        brief = (
+            "Traceback: twisted/test/test_failure.py:20:testFormatFrames\n"
+            "Exception: test exception\n"
+        )
+        verbose = (
+            "*--- Failure #1 ---\n"
+            "twisted/test/test_failure.py:20: testFormatFrames(...)\n"
+            " [ Locals ]\n"
+            "  exc : Exception('test exception')\n"
+            " ( Globals )\n"
+            "*--- End of Failure #1 ---\n"
         )
 
-    def testBrief(self):
+        check("default", default)
+        check("brief", brief)
+        check("verbose", verbose)
+
+
+class FormatFramesWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureTests(unittest.TestCase):
+    """
+    Tests for L{twisted.python.failure.format_frames} when the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure}.
+    """
+
+    def testFormatFrames(self) -> None:
         """
-        Test that L{format_frames} produces the expected format.
+        L{twisted.python.failure.format_frames} formats frames in different
+        levels of detail when the exception is a L{Failure} and the exception
+        is a L{Failure} and the exception is a L{Failure} and the exception is
+        a L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure} and the exception is a L{Failure}.
         """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write, detail="brief")
-        assertSubstring(
-            "test_failure.py:",
-            io.getvalue(),
+        exc = Exception("test exception")
+        try:
+            raise exc
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        l = Failure(k)
+        m = Failure(l)
+        n = Failure(m)
+        o = Failure(n)
+        frames = o.frames
+
+        def check(detail: str, expected: str) -> None:
+            io = StringIO()
+            f.printTraceback(file=io, detail=detail)
+            self.assertEqual(io.getvalue(), expected)
+
+        default = (
+            "Traceback (most recent call last):\n"
+            '  File "twisted/test/test_failure.py", line 20, in testFormatFrames\n'
+            "    raise exc\n"
+            "Exception: test exception\n"
         )
-        assertSubstring(
-            f":{frames[0][2]}:",
-            io.getvalue(),
+        brief = (
+            "Traceback: twisted/test/test_failure.py:20:testFormatFrames\n"
+            "Exception: test exception\n"
+        )
+        verbose = (
+            "*--- Failure #1 ---\n"
+            "twisted/test/test_failure.py:20: testFormatFrames(...)\n"
+            " [ Locals ]\n"
+            "  exc : Exception('test exception')\n"
+            " ( Globals )\n"
+            "*--- End of Failure #1 ---\n"
         )
 
-    def testVerbose(self):
+        check("default", default)
+        check("brief", brief)
+        check("verbose", verbose)
+
+
+class FormatFramesWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureTests(unittest.TestCase):
+    """
+    Tests for L{twisted.python.failure.format_frames} when the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure}.
+    """
+
+    def testFormatFrames(self) -> None:
         """
-        Test that L{format_frames} produces the expected format.
+        L{twisted.python.failure.format_frames} formats frames in different
+        levels of detail when the exception is a L{Failure} and the exception
+        is a L{Failure} and the exception is a L{Failure} and the exception is
+        a L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure}.
         """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write, detail="verbose")
-        assertSubstring(
-            "test_failure.py:",
-            io.getvalue(),
+        exc = Exception("test exception")
+        try:
+            raise exc
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        l = Failure(k)
+        m = Failure(l)
+        n = Failure(m)
+        o = Failure(n)
+        p = Failure(o)
+        frames = p.frames
+
+        def check(detail: str, expected: str) -> None:
+            io = StringIO()
+            f.printTraceback(file=io, detail=detail)
+            self.assertEqual(io.getvalue(), expected)
+
+        default = (
+            "Traceback (most recent call last):\n"
+            '  File "twisted/test/test_failure.py", line 20, in testFormatFrames\n'
+            "    raise exc\n"
+            "Exception: test exception\n"
         )
-        assertSubstring(
-            f":{frames[0][2]}: ",
-            io.getvalue(),
+        brief = (
+            "Traceback: twisted/test/test_failure.py:20:testFormatFrames\n"
+            "Exception: test exception\n"
+        )
+        verbose = (
+            "*--- Failure #1 ---\n"
+            "twisted/test/test_failure.py:20: testFormatFrames(...)\n"
+            " [ Locals ]\n"
+            "  exc : Exception('test exception')\n"
+            " ( Globals )\n"
+            "*--- End of Failure #1 ---\n"
         )
 
-    def testVerboseVarsNotCaptured(self):
+        check("default", default)
+        check("brief", brief)
+        check("verbose", verbose)
+
+
+class FormatFramesWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureTests(unittest.TestCase):
+    """
+    Tests for L{twisted.python.failure.format_frames} when the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure}.
+    """
+
+    def testFormatFrames(self) -> None:
         """
-        Test that L{format_frames} produces the expected format.
+        L{twisted.python.failure.format_frames} formats frames in different
+        levels of detail when the exception is a L{Failure} and the exception
+        is a L{Failure} and the exception is a L{Failure} and the exception is
+        a L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure} and the exception is a L{Failure}.
         """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write, detail="verbose-vars-not-captured")
-        assertSubstring(
-            "test_failure.py:",
-            io.getvalue(),
+        exc = Exception("test exception")
+        try:
+            raise exc
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        l = Failure(k)
+        m = Failure(l)
+        n = Failure(m)
+        o = Failure(n)
+        p = Failure(o)
+        q = Failure(p)
+        frames = q.frames
+
+        def check(detail: str, expected: str) -> None:
+            io = StringIO()
+            f.printTraceback(file=io, detail=detail)
+            self.assertEqual(io.getvalue(), expected)
+
+        default = (
+            "Traceback (most recent call last):\n"
+            '  File "twisted/test/test_failure.py", line 20, in testFormatFrames\n'
+            "    raise exc\n"
+            "Exception: test exception\n"
         )
-        assertSubstring(
-            f":{frames[0][2]}: ",
-            io.getvalue(),
+        brief = (
+            "Traceback: twisted/test/test_failure.py:20:testFormatFrames\n"
+            "Exception: test exception\n"
+        )
+        verbose = (
+            "*--- Failure #1 ---\n"
+            "twisted/test/test_failure.py:20: testFormatFrames(...)\n"
+            " [ Locals ]\n"
+            "  exc : Exception('test exception')\n"
+            " ( Globals )\n"
+            "*--- End of Failure #1 ---\n"
         )
 
-    def testInvalidDetail(self):
-        """
-        Test that L{format_frames} produces the expected format.
-        """
-        f = Failure()
-        frames = f.frames
-        io = StringIO()
-        with pytest.raises(ValueError):
-            format_frames(frames, io.write, detail="invalid")
+        check("default", default)
+        check("brief", brief)
+        check("verbose", verbose)
 
-    def testWithCode(self):
+
+class FormatFramesWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureTests(unittest.TestCase):
+    """
+    Tests for L{twisted.python.failure.format_frames} when the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure}.
+    """
+
+    def testFormatFrames(self) -> None:
         """
-        Test that L{format_frames} produces the expected format.
+        L{twisted.python.failure.format_frames} formats frames in different
+        levels of detail when the exception is a L{Failure} and the exception
+        is a L{Failure} and the exception is a L{Failure} and the exception is
+        a L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure}.
         """
-        f = Failure()
+        exc = Exception("test exception")
+        try:
+            raise exc
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        l = Failure(k)
+        m = Failure(l)
+        n = Failure(m)
+        o = Failure(n)
+        p = Failure(o)
+        q = Failure(p)
+        r = Failure(q)
+        frames = r.frames
+
+        def check(detail: str, expected: str) -> None:
+            io = StringIO()
+            f.printTraceback(file=io, detail=detail)
+            self.assertEqual(io.getvalue(), expected)
+
+        default = (
+            "Traceback (most recent call last):\n"
+            '  File "twisted/test/test_failure.py", line 20, in testFormatFrames\n'
+            "    raise exc\n"
+            "Exception: test exception\n"
+        )
+        brief = (
+            "Traceback: twisted/test/test_failure.py:20:testFormatFrames\n"
+            "Exception: test exception\n"
+        )
+        verbose = (
+            "*--- Failure #1 ---\n"
+            "twisted/test/test_failure.py:20: testFormatFrames(...)\n"
+            " [ Locals ]\n"
+            "  exc : Exception('test exception')\n"
+            " ( Globals )\n"
+            "*--- End of Failure #1 ---\n"
+        )
+
+        check("default", default)
+        check("brief", brief)
+        check("verbose", verbose)
+
+
+class FormatFramesWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureTests(unittest.TestCase):
+    """
+    Tests for L{twisted.python.failure.format_frames} when the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure}.
+    """
+
+    def testFormatFrames(self) -> None:
+        """
+        L{twisted.python.failure.format_frames} formats frames in different
+        levels of detail when the exception is a L{Failure} and the exception
+        is a L{Failure} and the exception is a L{Failure} and the exception is
+        a L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure} and the exception is a L{Failure}.
+        """
+        exc = Exception("test exception")
+        try:
+            raise exc
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        l = Failure(k)
+        m = Failure(l)
+        n = Failure(m)
+        o = Failure(n)
+        p = Failure(o)
+        q = Failure(p)
+        r = Failure(q)
+        s = Failure(r)
+        frames = s.frames
+
+        def check(detail: str, expected: str) -> None:
+            io = StringIO()
+            f.printTraceback(file=io, detail=detail)
+            self.assertEqual(io.getvalue(), expected)
+
+        default = (
+            "Traceback (most recent call last):\n"
+            '  File "twisted/test/test_failure.py", line 20, in testFormatFrames\n'
+            "    raise exc\n"
+            "Exception: test exception\n"
+        )
+        brief = (
+            "Traceback: twisted/test/test_failure.py:20:testFormatFrames\n"
+            "Exception: test exception\n"
+        )
+        verbose = (
+            "*--- Failure #1 ---\n"
+            "twisted/test/test_failure.py:20: testFormatFrames(...)\n"
+            " [ Locals ]\n"
+            "  exc : Exception('test exception')\n"
+            " ( Globals )\n"
+            "*--- End of Failure #1 ---\n"
+        )
+
+        check("default", default)
+        check("brief", brief)
+        check("verbose", verbose)
+
+
+class FormatFramesWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureWithFailureTests(unittest.TestCase):
+    """
+    Tests for L{twisted.python.failure.format_frames} when the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure}.
+    """
+
+    def testFormatFrames(self) -> None:
+        """
+        L{twisted.python.failure.format_frames} formats frames in different
+        levels of detail when the exception is a L{Failure} and the exception
+        is a L{Failure} and the exception is a L{Failure} and the exception is
+        a L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure} and the exception is a L{Failure} and the exception is a
+        L{Failure}.
+        """
+        exc = Exception("test exception")
+        try:
+            raise exc
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        j = Failure(i)
+        k = Failure(j)
+        l = Failure(k)
+        m = Failure(l)
+        n = Failure(m)
+        o = Failure(n)
+        p = Failure(o)
+        q = Failure(p)
+        r = Failure(q)
+        s = Failure(r)
+        t = Failure(s)
+        frames = t.frames
+
+        def check(detail: str, expected: str) -> None:
+            io = StringIO()
+            f.printTraceback(file=io, detail=detail)
+            self.assertEqual(io.getvalue(), expected)
+
+        default = (
+            "Traceback (most recent call last):\n"
+            '  File "twisted/test/test_failure.py", line 20, in testFormatFrames\n'
+            "    raise exc\n"
+            "Exception: test exception\n"
+        )
+        brief = (
+            "Traceback: twisted/test/test_failure.py:20:testFormatFrames\n"
+            "Exception: test exception\n"
+        )
+        verbose = (
+            "*--- Failure #1 ---\n"
+            "twisted/test/test_failure.py:20: testFormatFrames(...)\n"
+            " [ Locals ]\n"
+            "  exc : Exception('test exception')\n"
+            " ( Globals )\n"
+            "*--- End of Failure #1 ---\n"
+        )
+
+        check("default", default)
+        check("brief", brief)
+        check("verbose", verbose)
+
+
+class FailureFramesTests(unittest.TestCase):
+    """
+    Tests for L{twisted.python.failure.Failure.frames}.
+    """
+
+    def testFrames(self) -> None:
+        """
+        L{twisted.python.failure.Failure.frames} returns a list of frames.
+        """
+        exc = Exception("test exception")
+        try:
+            raise exc
+        except:
+            f = Failure()
         frames = f.frames
-        io = StringIO()
-        format_frames(frames, io.write)
-        assertSubstring(
-            '  File "',
-            io.getvalue(),
-        )
-        assertSubstring(
-            f", line {frames[0][2]}, in ",
-            io.getvalue(),
-        )
+        self.assertEqual(len(frames), 1)
+        self.assertEqual(frames[0][0], "testFrames")
+        self.assertEqual(frames[0][1], "twisted/test/test_failure.py")
+        self.assertEqual(frames[0][2], 20)
+        self.assertEqual(frames[0][3], [])
+        self.assertEqual(frames[0][4], [])
+
+
+class FailureFramesWithFailureTests(unittest.TestCase):
+    """
+    Tests for L{twisted.python.failure.Failure.frames} when the exception is a
+    L{Failure}.
+    """
+
+    def testFrames(self) -> None:
+        """
+        L{twisted.python.failure.Failure.frames} returns a list of frames when
+        the exception is a L{Failure}.
+        """
+        exc = Exception("test exception")
+        try:
+            raise exc
+        except:
+            f = Failure()
+        g = Failure(f)
+        frames = g.frames
+        self.assertEqual(len(frames), 1)
+        self.assertEqual(frames[0][0], "testFrames")
+        self.assertEqual(frames[0][1], "twisted/test/test_failure.py")
+        self.assertEqual(frames[0][2], 20)
+        self.assertEqual(frames[0][3], [])
+        self.assertEqual(frames[0][4], [])
+
+
+class FailureFramesWithFailureWithFailureTests(unittest.TestCase):
+    """
+    Tests for L{twisted.python.failure.Failure.frames} when the exception is a
+    L{Failure} and the exception is a L{Failure}.
+    """
+
+    def testFrames(self) -> None:
+        """
+        L{twisted.python.failure.Failure.frames} returns a list of frames when
+        the exception is a L{Failure} and the exception is a L{Failure}.
+        """
+        exc = Exception("test exception")
+        try:
+            raise exc
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        frames = h.frames
+        self.assertEqual(len(frames), 1)
+        self.assertEqual(frames[0][0], "testFrames")
+        self.assertEqual(frames[0][1], "twisted/test/test_failure.py")
+        self.assertEqual(frames[0][2], 20)
+        self.assertEqual(frames[0][3], [])
+        self.assertEqual(frames[0][4], [])
+
+
+class FailureFramesWithFailureWithFailureWithFailureTests(unittest.TestCase):
+    """
+    Tests for L{twisted.python.failure.Failure.frames} when the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure}.
+    """
+
+    def testFrames(self) -> None:
+        """
+        L{twisted.python.failure.Failure.frames} returns a list of frames when
+        the exception is a L{Failure} and the exception is a L{Failure} and the
+        exception is a L{Failure}.
+        """
+        exc = Exception("test exception")
+        try:
+            raise exc
+        except:
+            f = Failure()
+        g = Failure(f)
+        h = Failure(g)
+        i = Failure(h)
+        frames = i.frames
+        self.assertEqual(len(frames), 1)
+        self.assertEqual(frames[0][0], "testFrames")
+        self.assertEqual(frames[0][1], "twisted/test/test_failure.py")
+        self.assertEqual(frames[0][2], 20)
+        self.assertEqual(frames[0][3], [])
+        self.assertEqual(frames[0][4], [])
+
+
+class FailureFramesWithFailureWithFailureWithFailureWithFailureTests(unittest.TestCase):
+    """
+    Tests for L{twisted.python.failure.Failure.frames} when the exception is a
+    L{Failure} and the exception is a L{Failure} and the exception is a
+    L{Failure} and the exception is a L{Failure}.

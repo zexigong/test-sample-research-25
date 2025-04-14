@@ -1,0 +1,43 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: hug\nTest File Path: hug\\test_store\\test_store.py\n\
+    Project Programming Language: python\nTesting Framework: pytest\n### Source File\
+    \ Content\n### Source File Content:\n\"\"\"hug/store.py.\n\nA collecton of native\
+    \ stores which can be used with, among others, the session middleware.\n\nCopyright\
+    \ (C) 2016 Timothy Edmund Crosley\n\nPermission is hereby granted, free of charge,\
+    \ to any person obtaining a copy of this software and associated\ndocumentation\
+    \ files (the \"Software\"), to deal in the Software without restriction, including\
+    \ without limitation\nthe rights to use, copy, modify, merge, publish, distribute,\
+    \ sublicense, and/or sell copies of the Software, and\nto permit persons to whom\
+    \ the Software is furnished to do so, subject to the following conditions:\n\n\
+    The above copyright notice and this permission notice shall be included in all\
+    \ copies or\nsubstantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED\
+    \ \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT\
+    \ LIMITED\nTO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE\
+    \ AND NONINFRINGEMENT. IN NO EVENT SHALL\nTHE AUTHORS OR COPYRIGHT HOLDERS BE\
+    \ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF\n\
+    CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE\
+    \ OR THE USE OR\nOTHER DEALINGS IN THE SOFTWARE.\n\n\"\"\"\nfrom hug.exceptions\
+    \ import StoreKeyNotFound\n\n\nclass InMemoryStore:\n    \"\"\"\n    Naive store\
+    \ class which can be used for the session middleware and unit tests.\n    It is\
+    \ not thread-safe and no data will survive the lifecycle of the hug process.\n\
+    \    Regard this as a blueprint for more useful and probably more complex store\
+    \ implementations, for example stores\n    which make use of databases like Redis,\
+    \ PostgreSQL or others.\n    \"\"\"\n\n    def __init__(self):\n        self._data\
+    \ = {}\n\n    def get(self, key):\n        \"\"\"Get data for given store key.\
+    \ Raise hug.exceptions.StoreKeyNotFound if key does not exist.\"\"\"\n       \
+    \ try:\n            data = self._data[key]\n        except KeyError:\n       \
+    \     raise StoreKeyNotFound(key)\n        return data\n\n    def exists(self,\
+    \ key):\n        \"\"\"Return whether key exists or not.\"\"\"\n        return\
+    \ key in self._data\n\n    def set(self, key, data):\n        \"\"\"Set data object\
+    \ for given store key.\"\"\"\n        self._data[key] = data\n\n    def delete(self,\
+    \ key):\n        \"\"\"Delete data for given store key.\"\"\"\n        if key\
+    \ in self._data:\n            del self._data[key]\n\n### Source File Dependency\
+    \ Files Content\n### Dependency File: empty.txt\n\nOutput the complete test file,\
+    \ code only, no explanations.\n```python\n<complete test code>\n```\n### Time\n\
+    Current time: 2025-04-11 19:03:23\n"
+  role: user

@@ -1,97 +1,136 @@
-import pytest
-from twisted.test_compat import test_compat
+# -*- test-case-name: twisted.test_compat.test_compat -*-
+#
+# Copyright (c) Twisted Matrix Laboratories.
+# See LICENSE for details.
 
-def test_iteritems():
-    d = {"a": 1, "b": 2}
-    assert list(test_compat.iteritems(d)) == [("a", 1), ("b", 2)]
+import os
+import unittest
+from io import BytesIO, StringIO
+from twisted.test.compat import (
+    iteritems,
+    itervalues,
+    items,
+    currentframe,
+    execfile,
+    cmp,
+    comparable,
+    ioType,
+    nativeString,
+    _matchingString,
+    reraise,
+    iterbytes,
+    intToBytes,
+    lazyByteSlice,
+    networkString,
+    bytesEnviron,
+    _constructMethod,
+)
 
-def test_itervalues():
-    d = {"a": 1, "b": 2}
-    assert list(test_compat.itervalues(d)) == [1, 2]
+class CompatibilityTests(unittest.TestCase):
+    def test_iteritems(self):
+        d = {'a': 1, 'b': 2}
+        self.assertEqual(list(iteritems(d)), list(d.items()))
 
-def test_items():
-    d = {"a": 1, "b": 2}
-    assert test_compat.items(d) == [("a", 1), ("b", 2)]
+    def test_itervalues(self):
+        d = {'a': 1, 'b': 2}
+        self.assertEqual(list(itervalues(d)), list(d.values()))
 
-def test_currentframe():
-    frame = test_compat.currentframe()
-    assert frame is not None
+    def test_items(self):
+        d = {'a': 1, 'b': 2}
+        self.assertEqual(items(d), list(d.items()))
 
-def test_execfile(tmp_path):
-    filename = tmp_path / "test_execfile.py"
-    filename.write_text("x = 42\n")
-    globals_dict = {}
-    test_compat.execfile(str(filename), globals_dict)
-    assert globals_dict["x"] == 42
+    def test_currentframe(self):
+        f = currentframe(0)
+        self.assertTrue(f)
 
-def test_cmp():
-    assert test_compat.cmp(1, 2) == -1
-    assert test_compat.cmp(2, 2) == 0
-    assert test_compat.cmp(3, 2) == 1
+    def test_execfile(self):
+        globals = {}
+        locals = {}
+        script = "x = 42\n"
+        filename = "test_execfile.py"
+        with open(filename, "w") as f:
+            f.write(script)
+        
+        try:
+            execfile(filename, globals, locals)
+            self.assertEqual(locals['x'], 42)
+        finally:
+            os.remove(filename)
 
-def test_comparable():
-    @test_compat.comparable
-    class Example:
-        def __init__(self, value):
-            self.value = value
+    def test_cmp(self):
+        self.assertEqual(cmp(1, 2), -1)
+        self.assertEqual(cmp(2, 2), 0)
+        self.assertEqual(cmp(3, 2), 1)
 
-        def __cmp__(self, other):
-            if self.value < other.value:
-                return -1
-            elif self.value == other.value:
-                return 0
-            else:
-                return 1
+    def test_comparable(self):
+        @comparable
+        class ComparableExample:
+            def __init__(self, value):
+                self.value = value
 
-    e1 = Example(1)
-    e2 = Example(2)
-    assert e1 < e2
-    assert e1 != e2
-    assert e2 > e1
+            def __cmp__(self, other):
+                if not isinstance(other, ComparableExample):
+                    return NotImplemented
+                return cmp(self.value, other.value)
 
-def test_ioType():
-    with open(__file__, "rb") as f:
-        assert test_compat.ioType(f) == bytes
-    with open(__file__, "r") as f:
-        assert test_compat.ioType(f) == str
+        a = ComparableExample(1)
+        b = ComparableExample(2)
 
-def test_nativeString():
-    assert test_compat.nativeString(b"test") == "test"
-    assert test_compat.nativeString("test") == "test"
-    with pytest.raises(TypeError):
-        test_compat.nativeString(123)
+        self.assertTrue(a < b)
+        self.assertTrue(b > a)
+        self.assertFalse(a == b)
 
-def test_matchingString():
-    assert test_compat._matchingString("constant", "input") == "constant"
-    assert test_compat._matchingString(b"constant", b"input") == b"constant"
-    assert test_compat._matchingString("constant", b"input") == b"constant"
-    assert test_compat._matchingString(b"constant", "input") == "constant"
+    def test_ioType_textIO(self):
+        self.assertEqual(ioType(StringIO()), str)
 
-def test_reraise():
-    try:
-        raise ValueError("test")
-    except ValueError as e:
-        tb = e.__traceback__
-        with pytest.raises(ValueError):
-            test_compat.reraise(e, tb)
+    def test_ioType_bytesIO(self):
+        self.assertEqual(ioType(BytesIO()), bytes)
 
-def test_iterbytes():
-    b = b"test"
-    assert list(test_compat.iterbytes(b)) == [b"t", b"e", b"s", b"t"]
+    def test_nativeString(self):
+        self.assertEqual(nativeString(b"hello"), "hello")
+        self.assertEqual(nativeString("hello"), "hello")
 
-def test_intToBytes():
-    assert test_compat.intToBytes(123) == b"123"
+    def test_matchingString(self):
+        self.assertEqual(_matchingString("constant", b"input"), b"constant")
+        self.assertEqual(_matchingString(b"constant", "input"), "constant")
 
-def test_lazyByteSlice():
-    b = b"abcdef"
-    assert bytes(test_compat.lazyByteSlice(b, 1, 3)) == b"bc"
+    def test_reraise(self):
+        try:
+            raise ValueError("Test")
+        except ValueError as e:
+            try:
+                reraise(e, e.__traceback__)
+            except ValueError as re_raised:
+                self.assertEqual(str(re_raised), "Test")
 
-def test_networkString():
-    assert test_compat.networkString("test") == b"test"
-    with pytest.raises(TypeError):
-        test_compat.networkString(b"test")
+    def test_iterbytes(self):
+        b = b"abc"
+        self.assertEqual(list(iterbytes(b)), [b"a", b"b", b"c"])
 
-def test_bytesEnviron(monkeypatch):
-    monkeypatch.setattr("os.environ", {"key": "value"})
-    environ = test_compat.bytesEnviron()
-    assert environ == {b"key": b"value"}
+    def test_intToBytes(self):
+        self.assertEqual(intToBytes(123), b"123")
+
+    def test_lazyByteSlice(self):
+        b = b"abcdef"
+        self.assertEqual(lazyByteSlice(b, 2, 3).tobytes(), b"cde")
+        self.assertEqual(lazyByteSlice(b, 4).tobytes(), b"ef")
+
+    def test_networkString(self):
+        self.assertEqual(networkString("hello"), b"hello")
+
+    def test_bytesEnviron(self):
+        if os.name == 'posix':
+            environ = bytesEnviron()
+            self.assertIsInstance(environ, dict)
+            for key, value in environ.items():
+                self.assertIsInstance(key, bytes)
+                self.assertIsInstance(value, bytes)
+
+    def test_constructMethod(self):
+        class TestClass:
+            def method(self):
+                return "result"
+
+        instance = TestClass()
+        method = _constructMethod(TestClass, "method", instance)
+        self.assertEqual(method(), "result")

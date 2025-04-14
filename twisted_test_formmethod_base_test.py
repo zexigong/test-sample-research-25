@@ -1,5 +1,5 @@
-import pytest
-from twisted.test_formmethod import (
+from twisted.trial import unittest
+from twisted.test.test_formmethod import (
     FormException,
     InputError,
     Argument,
@@ -23,119 +23,93 @@ from twisted.test_formmethod import (
     FormMethod,
 )
 
-def test_form_exception():
-    with pytest.raises(FormException):
-        raise FormException("Error occurred")
 
-def test_input_error():
-    with pytest.raises(InputError):
-        raise InputError("Input error occurred")
+class FormMethodTests(unittest.TestCase):
+    def test_form_exception(self):
+        exception = FormException("Error occurred", description="Test error")
+        self.assertEqual(str(exception), "Error occurred")
+        self.assertEqual(exception.descriptions["description"], "Test error")
 
-def test_argument_initialization():
-    arg = Argument("test", default="default", shortDesc="short", longDesc="long", hints={"hint": "value"}, allowNone=False)
-    assert arg.name == "test"
-    assert arg.default == "default"
-    assert arg.shortDesc == "short"
-    assert arg.longDesc == "long"
-    assert arg.hints["hint"] == "value"
-    assert arg.allowNone is False
+    def test_input_error(self):
+        exception = InputError("Input error occurred")
+        self.assertEqual(str(exception), "Input error occurred")
 
-def test_argument_add_hints():
-    arg = Argument("test")
-    arg.addHints(newHint="newValue")
-    assert arg.hints["newHint"] == "newValue"
+    def test_string_coerce(self):
+        arg = String(name="testString", min=2, max=5)
+        self.assertEqual(arg.coerce("test"), "test")
+        self.assertRaises(InputError, arg.coerce, "t")
+        self.assertRaises(InputError, arg.coerce, "toolong")
 
-def test_argument_get_hint():
-    arg = Argument("test", hints={"hint": "value"})
-    assert arg.getHint("hint") == "value"
-    assert arg.getHint("nonexistent", "default") == "default"
+    def test_verified_password_coerce(self):
+        arg = VerifiedPassword(name="password", min=3, max=8)
+        self.assertEqual(arg.coerce(("pass", "pass")), "pass")
+        self.assertRaises(InputError, arg.coerce, ("pass", "fail"))
+        self.assertRaises(InputError, arg.coerce, ("short", "short"))
 
-def test_argument_descriptions():
-    arg = Argument("test", shortDesc="short", longDesc="long")
-    assert arg.getShortDescription() == "short"
-    assert arg.getLongDescription() == "long"
+    def test_integer_coerce(self):
+        arg = Integer(name="testInteger")
+        self.assertEqual(arg.coerce("10"), 10)
+        self.assertRaises(InputError, arg.coerce, "abc")
 
-def test_string_coerce():
-    string_arg = String("test", min=3, max=5)
-    assert string_arg.coerce("abc") == "abc"
-    with pytest.raises(InputError):
-        string_arg.coerce("ab")
-    with pytest.raises(InputError):
-        string_arg.coerce("abcdef")
+    def test_integer_range_coerce(self):
+        arg = IntegerRange(name="range", min=1, max=10)
+        self.assertEqual(arg.coerce("5"), 5)
+        self.assertRaises(InputError, arg.coerce, "0")
+        self.assertRaises(InputError, arg.coerce, "11")
 
-def test_verified_password_coerce():
-    password_arg = VerifiedPassword("password", min=3, max=5)
-    assert password_arg.coerce(("abc", "abc")) == "abc"
-    with pytest.raises(InputError):
-        password_arg.coerce(("abc", "def"))
+    def test_float_coerce(self):
+        arg = Float(name="testFloat")
+        self.assertEqual(arg.coerce("10.5"), 10.5)
+        self.assertRaises(InputError, arg.coerce, "abc")
 
-def test_integer_coerce():
-    integer_arg = Integer("number")
-    assert integer_arg.coerce("10") == 10
-    with pytest.raises(InputError):
-        integer_arg.coerce("abc")
+    def test_choice_coerce(self):
+        choices = [("one", 1, "First"), ("two", 2, "Second")]
+        arg = Choice(name="choice", choices=choices)
+        self.assertEqual(arg.coerce("one"), 1)
+        self.assertRaises(InputError, arg.coerce, "three")
 
-def test_integer_range_coerce():
-    range_arg = IntegerRange("range", min=1, max=10)
-    assert range_arg.coerce("5") == 5
-    with pytest.raises(InputError):
-        range_arg.coerce("0")
-    with pytest.raises(InputError):
-        range_arg.coerce("11")
+    def test_flags_coerce(self):
+        flags = [("flag1", 1, "Flag 1"), ("flag2", 2, "Flag 2")]
+        arg = Flags(name="flags", flags=flags)
+        self.assertEqual(arg.coerce(["flag1", "flag2"]), [1, 2])
+        self.assertRaises(InputError, arg.coerce, ["invalid"])
 
-def test_float_coerce():
-    float_arg = Float("float")
-    assert float_arg.coerce("10.5") == 10.5
-    with pytest.raises(InputError):
-        float_arg.coerce("abc")
+    def test_boolean_coerce(self):
+        arg = Boolean(name="boolean")
+        self.assertEqual(arg.coerce("yes"), 1)
+        self.assertEqual(arg.coerce("no"), 0)
+        self.assertEqual(arg.coerce("true"), 1)
+        self.assertEqual(arg.coerce("false"), 0)
 
-def test_choice_coerce():
-    choice_arg = Choice("choice", choices=[("tag1", "value1", "desc1"), ("tag2", "value2", "desc2")])
-    assert choice_arg.coerce("tag1") == "value1"
-    with pytest.raises(InputError):
-        choice_arg.coerce("invalid_tag")
+    def test_file_coerce(self):
+        arg = File(name="file", allowNone=True)
+        self.assertIsNone(arg.coerce(None))
+        self.assertEqual(arg.coerce("file.txt"), "file.txt")
+        arg = File(name="file", allowNone=False)
+        self.assertRaises(InputError, arg.coerce, None)
 
-def test_flags_coerce():
-    flags_arg = Flags("flags", flags=[("flag1", "value1", "desc1"), ("flag2", "value2", "desc2")])
-    assert flags_arg.coerce(["flag1", "flag2"]) == ["value1", "value2"]
-    with pytest.raises(InputError):
-        flags_arg.coerce(["invalid_flag"])
+    def test_date_coerce(self):
+        arg = Date(name="date")
+        self.assertEqual(arg.coerce(("2023", "12", "31")), (2023, 12, 31))
+        self.assertRaises(InputError, arg.coerce, ("2023", "02", "30"))
+        self.assertRaises(InputError, arg.coerce, ("", "", ""))
 
-def test_boolean_coerce():
-    bool_arg = Boolean("bool")
-    assert bool_arg.coerce("yes") == 1
-    assert bool_arg.coerce("no") == 0
+    def test_submit_coerce(self):
+        arg = Submit(name="submit", choices=[("Submit", "submit", "Submit form")])
+        self.assertEqual(arg.coerce("Submit"), "submit")
+        self.assertRaises(InputError, arg.coerce, "Invalid")
 
-def test_file_coerce():
-    file_arg = File("file")
-    assert file_arg.coerce("file_content") == "file_content"
-    with pytest.raises(InputError):
-        file_arg.coerce("")
+    def test_method_signature_get_argument(self):
+        sig = MethodSignature(String(name="arg1"), Integer(name="arg2"))
+        arg = sig.getArgument("arg1")
+        self.assertIsInstance(arg, String)
+        self.assertEqual(arg.name, "arg1")
+        self.assertIsNone(sig.getArgument("nonexistent"))
 
-def test_date_coerce():
-    date_arg = Date("date")
-    assert date_arg.coerce(["2020", "12", "31"]) == (2020, 12, 31)
-    with pytest.raises(InputError):
-        date_arg.coerce(["2020", "02", "30"])
+    def test_form_method_call(self):
+        def sample_callable(arg1, arg2):
+            return arg1 + arg2
 
-def test_submit_coerce():
-    submit_arg = Submit("submit")
-    assert submit_arg.coerce("Submit") == "submit"
-    with pytest.raises(InputError):
-        submit_arg.coerce("Invalid")
-
-def test_method_signature_get_argument():
-    arg1 = Integer("arg1")
-    arg2 = String("arg2")
-    signature = MethodSignature(arg1, arg2)
-    assert signature.getArgument("arg1") == arg1
-    assert signature.getArgument("arg2") == arg2
-    assert signature.getArgument("nonexistent") is None
-
-def test_form_method_call():
-    def callable_func(arg1, arg2):
-        return arg1 + arg2
-
-    signature = MethodSignature(Integer("arg1"), Integer("arg2"))
-    form_method = FormMethod(signature, callable_func)
-    assert form_method.call(1, 2) == 3
+        sig = MethodSignature(String(name="arg1"), Integer(name="arg2"))
+        form_method = FormMethod(sig, sample_callable)
+        self.assertEqual(form_method.call("hello", 5), "hello5")

@@ -5,7 +5,7 @@ messages:
   role: system
 - content: "### Task Information\nBased on the source code, write/rewrite tests to\
     \ cover the source code.\nRepository: seaborn\nTest File Path: seaborn\\test_aggregation\\\
-    test_aggregation.py\nProject Programming Language: Python\nTesting Framework:\
+    test_aggregation.py\nProject Programming Language: python\nTesting Framework:\
     \ pytest\n### Source File Content\n### Source File Content:\nfrom __future__ import\
     \ annotations\nfrom dataclasses import dataclass\nfrom typing import ClassVar,\
     \ Callable\n\nimport pandas as pd\nfrom pandas import DataFrame\n\nfrom seaborn._core.scales\
@@ -951,5 +951,5 @@ messages:
     \ err\n\n    _check_argument(\"errorbar\", list(DEFAULT_LEVELS), method)\n   \
     \ if level is not None and not isinstance(level, Number):\n        raise TypeError(usage)\n\
     \n    return method, level\n\nOutput the complete test file, code only, no explanations.\n\
-    ### Time\nCurrent time: 2025-03-17 01:25:43\n"
+    ```python\n<complete test code>\n```\n### Time\nCurrent time: 2025-04-11 13:49:16\n"
   role: user

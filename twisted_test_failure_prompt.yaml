@@ -5,29 +5,30 @@ messages:
   role: system
 - content: "### Task Information\nBased on the source code, write/rewrite tests to\
     \ cover the source code.\nRepository: twisted\nTest File Path: twisted\\test_failure\\\
-    test_failure.py\nProject Programming Language: Python\nTesting Framework: pytest\n\
-    ### Source File Content\n### Source File Content:\n# -*- test-case-name: twisted.test.test_failure\
-    \ -*-\n# See also test suite twisted.test.test_pbfailure\n\n# Copyright (c) Twisted\
-    \ Matrix Laboratories.\n# See LICENSE for details.\n\n\n\"\"\"\nAsynchronous-friendly\
-    \ error mechanism.\n\nSee L{Failure}.\n\"\"\"\n\nfrom __future__ import annotations\n\
-    \n# System Imports\nimport builtins\nimport copy\nimport inspect\nimport linecache\n\
-    import sys\nfrom functools import partial\nfrom inspect import getmro\nfrom io\
-    \ import StringIO\nfrom typing import Callable, NoReturn, TypeVar\n\nfrom incremental\
-    \ import Version\n\nfrom twisted.python import reflect\nfrom twisted.python.deprecate\
-    \ import deprecatedProperty\n\n_T_Callable = TypeVar(\"_T_Callable\", bound=Callable[...,\
-    \ object])\n\ncount = 0\ntraceupLength = 4\n\n\nclass DefaultException(Exception):\n\
-    \    pass\n\n\ndef format_frames(frames, write, detail=\"default\"):\n    \"\"\
-    \"\n    Format and write frames.\n\n    @param frames: is a list of frames as\
-    \ used by Failure.frames, with\n        each frame being a list of\n        (funcName,\
-    \ fileName, lineNumber, locals.items(), globals.items())\n    @type frames: list\n\
-    \    @param write: this will be called with formatted strings.\n    @type write:\
-    \ callable\n    @param detail: Four detail levels are available:\n        default,\
-    \ brief, verbose, and verbose-vars-not-captured.\n        C{Failure.printDetailedTraceback}\
-    \ uses the latter when the caller asks\n        for verbose, but no vars were\
-    \ captured, so that an explicit warning\n        about the missing data is shown.\n\
-    \    @type detail: string\n    \"\"\"\n    if detail not in (\"default\", \"brief\"\
-    , \"verbose\", \"verbose-vars-not-captured\"):\n        raise ValueError(\n  \
-    \          \"Detail must be default, brief, verbose, or \"\n            \"verbose-vars-not-captured.\
+    test_failure.py\nProject Programming Language: Python\nTesting Framework: Twisted\
+    \ Trial\n### Source File Content\n### Source File Content:\n# -*- test-case-name:\
+    \ twisted.test.test_failure -*-\n# See also test suite twisted.test.test_pbfailure\n\
+    \n# Copyright (c) Twisted Matrix Laboratories.\n# See LICENSE for details.\n\n\
+    \n\"\"\"\nAsynchronous-friendly error mechanism.\n\nSee L{Failure}.\n\"\"\"\n\n\
+    from __future__ import annotations\n\n# System Imports\nimport builtins\nimport\
+    \ copy\nimport inspect\nimport linecache\nimport sys\nfrom functools import partial\n\
+    from inspect import getmro\nfrom io import StringIO\nfrom typing import Callable,\
+    \ NoReturn, TypeVar\n\nfrom incremental import Version\n\nfrom twisted.python\
+    \ import reflect\nfrom twisted.python.deprecate import deprecatedProperty\n\n\
+    _T_Callable = TypeVar(\"_T_Callable\", bound=Callable[..., object])\n\ncount =\
+    \ 0\ntraceupLength = 4\n\n\nclass DefaultException(Exception):\n    pass\n\n\n\
+    def format_frames(frames, write, detail=\"default\"):\n    \"\"\"\n    Format\
+    \ and write frames.\n\n    @param frames: is a list of frames as used by Failure.frames,\
+    \ with\n        each frame being a list of\n        (funcName, fileName, lineNumber,\
+    \ locals.items(), globals.items())\n    @type frames: list\n    @param write:\
+    \ this will be called with formatted strings.\n    @type write: callable\n   \
+    \ @param detail: Four detail levels are available:\n        default, brief, verbose,\
+    \ and verbose-vars-not-captured.\n        C{Failure.printDetailedTraceback} uses\
+    \ the latter when the caller asks\n        for verbose, but no vars were captured,\
+    \ so that an explicit warning\n        about the missing data is shown.\n    @type\
+    \ detail: string\n    \"\"\"\n    if detail not in (\"default\", \"brief\", \"\
+    verbose\", \"verbose-vars-not-captured\"):\n        raise ValueError(\n      \
+    \      \"Detail must be default, brief, verbose, or \"\n            \"verbose-vars-not-captured.\
     \ (not %r)\" % (detail,)\n        )\n    w = write\n    if detail == \"brief\"\
     :\n        for method, filename, lineno, localVars, globalVars in frames:\n  \
     \          w(f\"{filename}:{lineno}:{method}\\n\")\n    elif detail == \"default\"\
@@ -944,5 +945,5 @@ messages:
     ,\n    \"isOfType\",\n    \"findInstances\",\n    \"objgrep\",\n    \"filenameToModuleName\"\
     ,\n    \"fullyQualifiedName\",\n]\n\n\n# This is to be removed when fixing #6986\n\
     __all__.remove(\"objgrep\")\n\nOutput the complete test file, code only, no explanations.\n\
-    ### Time\nCurrent time: 2025-03-17 01:41:59\n"
+    ### Time\nCurrent time: 2025-03-18 00:27:18\n"
   role: user

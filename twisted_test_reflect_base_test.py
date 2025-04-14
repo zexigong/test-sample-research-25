@@ -1,23 +1,25 @@
-import pytest
-import types
-import os
-import sys
-import weakref
-from collections import deque
+# -*- test-case-name: twisted.test.test_reflect -*-
+# Copyright (c) Twisted Matrix Laboratories.
+# See LICENSE for details.
+
+"""
+Tests for twisted.python.reflect module.
+"""
+
+from twisted.trial import unittest
 from twisted.python.reflect import (
-    InvalidName,
-    ModuleNotFound,
-    ObjectNotFound,
     prefixedMethodNames,
     addMethodNamesToDict,
     prefixedMethods,
     accumulateMethods,
     namedModule,
     namedObject,
-    requireModule,
     namedAny,
     filenameToModuleName,
-    qual,
+    requireModule,
+    InvalidName,
+    ModuleNotFound,
+    ObjectNotFound,
     safe_repr,
     safe_str,
     fullFuncName,
@@ -31,129 +33,196 @@ from twisted.python.reflect import (
     findInstances,
 )
 
-class TestReflect:
 
+class ReflectTests(unittest.TestCase):
     def test_prefixedMethodNames(self):
-        class TestClass:
-            def prefix_method1(self): pass
-            def prefix_method2(self): pass
-            def other_method(self): pass
+        class SampleClass:
+            def prefix_method1(self):
+                pass
 
-        assert prefixedMethodNames(TestClass, 'prefix_') == ['method1', 'method2']
+            def prefix_method2(self):
+                pass
+
+            def other_method(self):
+                pass
+
+        result = prefixedMethodNames(SampleClass, "prefix_")
+        self.assertIn("method1", result)
+        self.assertIn("method2", result)
+        self.assertNotIn("other_method", result)
 
     def test_addMethodNamesToDict(self):
-        class TestClass:
-            def prefix_method1(self): pass
-            def prefix_method2(self): pass
-            def other_method(self): pass
+        class SampleClass:
+            def prefix_method1(self):
+                pass
 
-        methods_dict = {}
-        addMethodNamesToDict(TestClass, methods_dict, 'prefix_')
-        assert methods_dict == {'method1': 1, 'method2': 1}
+            def prefix_method2(self):
+                pass
+
+            def other_method(self):
+                pass
+
+        methodsDict = {}
+        addMethodNamesToDict(SampleClass, methodsDict, "prefix_")
+        self.assertIn("method1", methodsDict)
+        self.assertIn("method2", methodsDict)
+        self.assertNotIn("other_method", methodsDict)
 
     def test_prefixedMethods(self):
-        class TestClass:
-            def prefix_method1(self): pass
-            def prefix_method2(self): pass
-            def other_method(self): pass
+        class SampleClass:
+            def prefix_method1(self):
+                pass
 
-        obj = TestClass()
-        methods = prefixedMethods(obj, 'prefix_')
-        assert len(methods) == 2
-        assert all(callable(m) for m in methods)
+            def prefix_method2(self):
+                pass
+
+            def other_method(self):
+                pass
+
+        instance = SampleClass()
+        result = prefixedMethods(instance, "prefix_")
+        self.assertEqual(len(result), 2)
+        self.assertTrue(callable(result[0]))
+        self.assertTrue(callable(result[1]))
 
     def test_accumulateMethods(self):
-        class TestClass:
-            def prefix_method1(self): pass
-            def prefix_method2(self): pass
-            def other_method(self): pass
+        class SampleClass:
+            def prefix_method1(self):
+                pass
 
-        obj = TestClass()
-        methods_dict = {}
-        accumulateMethods(obj, methods_dict, 'prefix_')
-        assert len(methods_dict) == 2
-        assert all(callable(m) for m in methods_dict.values())
+            def prefix_method2(self):
+                pass
+
+            def other_method(self):
+                pass
+
+        instance = SampleClass()
+        methodsDict = {}
+        accumulateMethods(instance, methodsDict, "prefix_")
+        self.assertEqual(len(methodsDict), 2)
+        self.assertTrue(callable(methodsDict["method1"]))
+        self.assertTrue(callable(methodsDict["method2"]))
 
     def test_namedModule(self):
-        assert namedModule('os') is os
+        module = namedModule("twisted.python.reflect")
+        self.assertEqual(module.__name__, "twisted.python.reflect")
 
     def test_namedObject(self):
-        assert namedObject('os.path') is os.path
+        obj = namedObject("twisted.python.reflect.namedObject")
+        self.assertEqual(obj, namedObject)
 
-    def test_requireModule(self):
-        assert requireModule('os') is os
-        assert requireModule('non_existent_module', default='default') == 'default'
+    def test_namedAny_invalidName(self):
+        with self.assertRaises(InvalidName):
+            namedAny("")
 
-    def test_namedAny(self):
-        assert namedAny('os.path') is os.path
-        with pytest.raises(InvalidName):
-            namedAny('')
-        with pytest.raises(ModuleNotFound):
-            namedAny('non_existent_module')
-        with pytest.raises(ObjectNotFound):
-            namedAny('os.non_existent_object')
+        with self.assertRaises(InvalidName):
+            namedAny(".")
+
+        with self.assertRaises(InvalidName):
+            namedAny("invalid..name")
+
+    def test_namedAny_moduleNotFound(self):
+        with self.assertRaises(ModuleNotFound):
+            namedAny("non.existent.module")
+
+    def test_namedAny_objectNotFound(self):
+        with self.assertRaises(ObjectNotFound):
+            namedAny("twisted.python.reflect.nonexistent")
+
+    def test_namedAny_valid(self):
+        obj = namedAny("twisted.python.reflect.namedAny")
+        self.assertEqual(obj, namedAny)
 
     def test_filenameToModuleName(self):
-        assert filenameToModuleName('/path/to/twisted/test_reflect.py') == 'twisted.test_reflect'
+        moduleName = filenameToModuleName("twisted/python/reflect.py")
+        self.assertEqual(moduleName, "twisted.python.reflect")
 
-    def test_qual(self):
-        assert qual(types.FunctionType) == 'types.FunctionType'
+    def test_requireModule(self):
+        module = requireModule("twisted.python.reflect")
+        self.assertEqual(module.__name__, "twisted.python.reflect")
+
+        default = object()
+        result = requireModule("non.existent.module", default)
+        self.assertIs(result, default)
 
     def test_safe_repr(self):
-        class BadRepr:
+        class ReprRaises:
             def __repr__(self):
-                raise ValueError("bad repr")
-        assert "bad repr" in safe_repr(BadRepr())
+                raise Exception("repr failed")
+
+        obj = ReprRaises()
+        result = safe_repr(obj)
+        self.assertIn("<ReprRaises instance at 0x", result)
+        self.assertIn("with repr error:", result)
 
     def test_safe_str(self):
-        class BadStr:
+        class StrRaises:
             def __str__(self):
-                raise ValueError("bad str")
-        assert "bad str" in safe_str(BadStr())
+                raise Exception("str failed")
+
+        obj = StrRaises()
+        result = safe_str(obj)
+        self.assertIn("<StrRaises instance at 0x", result)
+        self.assertIn("with str error:", result)
+
+    def test_safe_str_bytes(self):
+        obj = b"\xff"
+        result = safe_str(obj)
+        self.assertEqual(result, "<bytes instance at 0x")
 
     def test_fullFuncName(self):
-        def sample_function(): pass
-        assert fullFuncName(sample_function) == __name__ + '.sample_function'
+        def sampleFunction():
+            pass
+
+        name = fullFuncName(sampleFunction)
+        self.assertEqual(name, "twisted.test_reflect.test_reflect.sampleFunction")
 
     def test_getClass(self):
-        assert getClass(5) is int
+        class SampleClass:
+            pass
+
+        instance = SampleClass()
+        self.assertEqual(getClass(instance), SampleClass)
 
     def test_accumulateClassDict(self):
-        class Base:
-            props = {'a': 1}
-        class Derived(Base):
-            props = {'b': 2}
+        class BaseClass:
+            attr = {"key1": "value1"}
 
-        d = {}
-        accumulateClassDict(Derived, 'props', d)
-        assert d == {'a': 1, 'b': 2}
+        class DerivedClass(BaseClass):
+            attr = {"key2": "value2"}
+
+        resultDict = {}
+        accumulateClassDict(DerivedClass, "attr", resultDict)
+        self.assertEqual(resultDict, {"key1": "value1", "key2": "value2"})
 
     def test_accumulateClassList(self):
-        class Base:
-            props = [1]
-        class Derived(Base):
-            props = [2]
+        class BaseClass:
+            attr = ["value1"]
 
-        l = []
-        accumulateClassList(Derived, 'props', l)
-        assert l == [1, 2]
+        class DerivedClass(BaseClass):
+            attr = ["value2"]
+
+        resultList = []
+        accumulateClassList(DerivedClass, "attr", resultList)
+        self.assertEqual(resultList, ["value1", "value2"])
 
     def test_isSame(self):
-        a = b = object()
-        assert isSame(a, b)
-        assert not isSame(a, object())
+        obj = object()
+        self.assertTrue(isSame(obj, obj))
+        self.assertFalse(isSame(obj, object()))
 
     def test_isLike(self):
-        assert isLike(1, 1)
-        assert not isLike(1, 2)
+        self.assertTrue(isLike("test", "test"))
+        self.assertFalse(isLike("test", "different"))
 
     def test_modgrep(self):
-        # This will depend on the environment
-        assert isinstance(modgrep('sys'), list)
+        paths = modgrep("twisted")
+        self.assertTrue(any(path.startswith("sys.modules") for path in paths))
 
     def test_isOfType(self):
-        assert isOfType(1, int)
-        assert not isOfType(1, str)
+        self.assertTrue(isOfType("test", str))
+        self.assertFalse(isOfType("test", int))
 
     def test_findInstances(self):
-        assert isinstance(findInstances(sys.modules, type(sys)), list)
+        instances = findInstances(sys.modules, dict)
+        self.assertTrue(any(instance.startswith("sys.modules") for instance in instances))

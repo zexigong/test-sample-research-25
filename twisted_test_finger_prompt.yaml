@@ -5,18 +5,18 @@ messages:
   role: system
 - content: "### Task Information\nBased on the source code, write/rewrite tests to\
     \ cover the source code.\nRepository: twisted\nTest File Path: twisted\\test_finger\\\
-    test_finger.py\nProject Programming Language: Python\nTesting Framework: pytest\n\
-    ### Source File Content\n### Source File Content:\n# Copyright (c) Twisted Matrix\
-    \ Laboratories.\n# See LICENSE for details.\n\n\n\"\"\"The Finger User Information\
-    \ Protocol (RFC 1288)\"\"\"\n\nfrom twisted.protocols import basic\n\n\nclass\
-    \ Finger(basic.LineReceiver):\n    def lineReceived(self, line):\n        parts\
-    \ = line.split()\n        if not parts:\n            parts = [b\"\"]\n       \
-    \ if len(parts) == 1:\n            slash_w = 0\n        else:\n            slash_w\
-    \ = 1\n        user = parts[-1]\n        if b\"@\" in user:\n            hostPlace\
-    \ = user.rfind(b\"@\")\n            user = user[:hostPlace]\n            host\
-    \ = user[hostPlace + 1 :]\n            return self.forwardQuery(slash_w, user,\
-    \ host)\n        if user:\n            return self.getUser(slash_w, user)\n  \
-    \      else:\n            return self.getDomain(slash_w)\n\n    def _refuseMessage(self,\
+    test_finger.py\nProject Programming Language: Python\nTesting Framework: Twisted\
+    \ Trial\n### Source File Content\n### Source File Content:\n# Copyright (c) Twisted\
+    \ Matrix Laboratories.\n# See LICENSE for details.\n\n\n\"\"\"The Finger User\
+    \ Information Protocol (RFC 1288)\"\"\"\n\nfrom twisted.protocols import basic\n\
+    \n\nclass Finger(basic.LineReceiver):\n    def lineReceived(self, line):\n   \
+    \     parts = line.split()\n        if not parts:\n            parts = [b\"\"\
+    ]\n        if len(parts) == 1:\n            slash_w = 0\n        else:\n     \
+    \       slash_w = 1\n        user = parts[-1]\n        if b\"@\" in user:\n  \
+    \          hostPlace = user.rfind(b\"@\")\n            user = user[:hostPlace]\n\
+    \            host = user[hostPlace + 1 :]\n            return self.forwardQuery(slash_w,\
+    \ user, host)\n        if user:\n            return self.getUser(slash_w, user)\n\
+    \        else:\n            return self.getDomain(slash_w)\n\n    def _refuseMessage(self,\
     \ message):\n        self.transport.write(message + b\"\\n\")\n        self.transport.loseConnection()\n\
     \n    def forwardQuery(self, slash_w, user, host):\n        self._refuseMessage(b\"\
     Finger forwarding service denied\")\n\n    def getDomain(self, slash_w):\n   \
@@ -430,5 +430,5 @@ messages:
     \ pass\n\n    def stopProducing(self):\n        if self.deferred:\n          \
     \  self.deferred.errback(Exception(\"Consumer asked us to stop producing\"))\n\
     \            self.deferred = None\n\nOutput the complete test file, code only,\
-    \ no explanations.\n### Time\nCurrent time: 2025-03-17 01:42:24\n"
+    \ no explanations.\n### Time\nCurrent time: 2025-03-18 00:52:25\n"
   role: user

@@ -1,0 +1,54 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: hug\nTest File Path: hug\\test_input_format\\\
+    test_input_format.py\nProject Programming Language: python\nTesting Framework:\
+    \ pytest\n### Source File Content\n\n### Source File Dependency Files Content\n\
+    ### Dependency File: format.py\n\"\"\"hug/format.py\n\nDefines formatting utility\
+    \ methods that are common both to input and output formatting and aid in general\
+    \ formatting of\nfields and content\n\nCopyright (C) 2016  Timothy Edmund Crosley\n\
+    \nPermission is hereby granted, free of charge, to any person obtaining a copy\
+    \ of this software and associated\ndocumentation files (the \"Software\"), to\
+    \ deal in the Software without restriction, including without limitation\nthe\
+    \ rights to use, copy, modify, merge, publish, distribute, sublicense, and/or\
+    \ sell copies of the Software, and\nto permit persons to whom the Software is\
+    \ furnished to do so, subject to the following conditions:\n\nThe above copyright\
+    \ notice and this permission notice shall be included in all copies or\nsubstantial\
+    \ portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY\
+    \ OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES\
+    \ OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN\
+    \ NO EVENT SHALL\nTHE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES\
+    \ OR OTHER LIABILITY, WHETHER IN AN ACTION OF\nCONTRACT, TORT OR OTHERWISE, ARISING\
+    \ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR\nOTHER DEALINGS\
+    \ IN THE SOFTWARE.\n\n\"\"\"\nfrom __future__ import absolute_import\n\nimport\
+    \ re\nfrom cgi import parse_header\n\nfrom hug import _empty as empty\n\nUNDERSCORE\
+    \ = (re.compile(\"(.)([A-Z][a-z]+)\"), re.compile(\"([a-z0-9])([A-Z])\"))\n\n\n\
+    def parse_content_type(content_type):\n    \"\"\"Separates out the parameters\
+    \ from the content_type and returns both in a tuple (content_type, parameters)\"\
+    \"\"\n    if content_type is not None and \";\" in content_type:\n        return\
+    \ parse_header(content_type)\n    return (content_type, empty.dict)\n\n\ndef content_type(content_type):\n\
+    \    \"\"\"Attaches the supplied content_type to a Hug formatting function\"\"\
+    \"\n\n    def decorator(method):\n        method.content_type = content_type\n\
+    \        return method\n\n    return decorator\n\n\ndef underscore(text):\n  \
+    \  \"\"\"Converts text that may be camelcased into an underscored format\"\"\"\
+    \n    return UNDERSCORE[1].sub(r\"\\1_\\2\", UNDERSCORE[0].sub(r\"\\1_\\2\", text)).lower()\n\
+    \n\ndef camelcase(text):\n    \"\"\"Converts text that may be underscored into\
+    \ a camelcase format\"\"\"\n    return text[0] + \"\".join(text.title().split(\"\
+    _\"))[1:]\n\n\n### Dependency File: json_module.py\nimport os\n\nHUG_USE_UJSON\
+    \ = bool(os.environ.get(\"HUG_USE_UJSON\", 1))\ntry:  # pragma: no cover\n   \
+    \ if HUG_USE_UJSON:\n        import ujson as json\n\n        class dumps_proxy:\
+    \  # noqa: N801\n            \"\"\"Proxies the call so non supported kwargs are\
+    \ skipped\n            and it enables escape_forward_slashes to simulate built-in\
+    \ json\n            \"\"\"\n\n            _dumps = json.dumps\n\n            def\
+    \ __call__(self, *args, **kwargs):\n                kwargs.pop(\"default\", None)\n\
+    \                kwargs.pop(\"separators\", None)\n                kwargs.update(escape_forward_slashes=False)\n\
+    \                try:\n                    return self._dumps(*args, **kwargs)\n\
+    \                except Exception as exc:\n                    raise TypeError(\"\
+    Type[ujson] is not Serializable\", exc)\n\n        json.dumps = dumps_proxy()\n\
+    \    else:\n        import json\nexcept ImportError:  # pragma: no cover\n   \
+    \ import json\n\nOutput the complete test file, code only, no explanations.\n\
+    ```python\n<complete test code>\n```\n### Time\nCurrent time: 2025-04-11 18:53:49\n"
+  role: user

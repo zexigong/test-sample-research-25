@@ -1,0 +1,34 @@
+response: "```python\nimport numpy as np\nfrom numpy.testing import assert_array_equal\n\
+  import pytest\nfrom seaborn._algorithms import bootstrap\n\n\nclass TestBootstrap:\n\
+  \n    rs = np.random.RandomState(sum(map(ord, \"bootstrap\")))\n\n    def test_bootstrap(self):\n\
+  \n        x = self.rs.normal(size=100)\n        y = x + self.rs.normal(size=100)\n\
+  \        w = np.ones(100)\n        z = np.ones(200)\n\n        # Test array input\n\
+  \        boot_dist = bootstrap(x, y)\n        assert boot_dist.shape == (10000,)\n\
+  \n        # Test list input\n        boot_dist = bootstrap(list(x), list(y))\n \
+  \       assert boot_dist.shape == (10000,)\n\n        # Test n_boot\n        boot_dist\
+  \ = bootstrap(x, y, n_boot=500)\n        assert boot_dist.shape == (500,)\n\n  \
+  \      # Test custom functions\n        boot_dist = bootstrap(x, y, func=lambda\
+  \ a, b: np.corrcoef(a, b)[0, 1])\n        assert boot_dist.shape == (10000,)\n\n\
+  \        # Test with weights\n        boot_dist = bootstrap(x, y, w, z, axis=0)\n\
+  \        assert boot_dist.shape == (10000,)\n\n        # Test for errors with unequal\
+  \ length arrays\n        with pytest.raises(ValueError):\n            bootstrap(x,\
+  \ z)\n\n        # Test for errors with unequal length arrays\n        with pytest.raises(ValueError):\n\
+  \            bootstrap(x, list(z))\n\n        # Test seed\n        one = bootstrap(x,\
+  \ y, seed=0)\n        two = bootstrap(x, y, seed=0)\n        assert_array_equal(one,\
+  \ two)\n\n    def test_bootstrap_units(self):\n\n        x = self.rs.normal(size=100)\n\
+  \        y = x + self.rs.normal(size=100)\n        w = np.ones(100)\n        z =\
+  \ np.ones(200)\n        u = np.ones(100)\n\n        # Test array input\n       \
+  \ boot_dist = bootstrap(x, y, units=u)\n        assert boot_dist.shape == (10000,)\n\
+  \n        # Test list input\n        boot_dist = bootstrap(list(x), list(y), units=list(u))\n\
+  \        assert boot_dist.shape == (10000,)\n\n        # Test n_boot\n        boot_dist\
+  \ = bootstrap(x, y, units=u, n_boot=500)\n        assert boot_dist.shape == (500,)\n\
+  \n        # Test custom functions\n        boot_dist = bootstrap(x, y, units=u,\n\
+  \                              func=lambda a, b: np.corrcoef(a, b)[0, 1])\n    \
+  \    assert boot_dist.shape == (10000,)\n\n        # Test with weights\n       \
+  \ boot_dist = bootstrap(x, y, w, z, axis=0, units=u)\n        assert boot_dist.shape\
+  \ == (10000,)\n\n        # Test for errors with unequal length arrays\n        with\
+  \ pytest.raises(ValueError):\n            bootstrap(x, z, units=u)\n\n        #\
+  \ Test for errors with unequal length arrays\n        with pytest.raises(ValueError):\n\
+  \            bootstrap(x, list(z), units=u)\n\n        # Test seed\n        one\
+  \ = bootstrap(x, y, units=u, seed=0)\n        two = bootstrap(x, y, units=u, seed=0)\n\
+  \        assert_array_equal(one, two)\n\n```"

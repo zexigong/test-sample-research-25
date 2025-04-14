@@ -5,7 +5,7 @@ messages:
   role: system
 - content: "### Task Information\nBased on the source code, write/rewrite tests to\
     \ cover the source code.\nRepository: seaborn\nTest File Path: seaborn\\test_algorithms\\\
-    test_algorithms.py\nProject Programming Language: Python\nTesting Framework: pytest\n\
+    test_algorithms.py\nProject Programming Language: python\nTesting Framework: pytest\n\
     ### Source File Content\n### Source File Content:\n\"\"\"Algorithms to support\
     \ fitting routines in seaborn plotting functions.\"\"\"\nimport numpy as np\n\
     import warnings\n\n\ndef bootstrap(*args, **kwargs):\n    \"\"\"Resample one or\
@@ -62,5 +62,6 @@ messages:
     \        sample = list(map(np.concatenate, sample))\n        boot_dist.append(func(*sample,\
     \ **func_kwargs))\n    return np.array(boot_dist)\n\n### Source File Dependency\
     \ Files Content\n### Dependency File: empty.txt\n\nOutput the complete test file,\
-    \ code only, no explanations.\n### Time\nCurrent time: 2025-03-17 01:25:53\n"
+    \ code only, no explanations.\n```python\n<complete test code>\n```\n### Time\n\
+    Current time: 2025-04-11 13:52:57\n"
   role: user

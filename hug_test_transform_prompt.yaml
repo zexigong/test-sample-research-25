@@ -1,0 +1,173 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: hug\nTest File Path: hug\\test_transform\\\
+    test_transform.py\nProject Programming Language: python\nTesting Framework: pytest\n\
+    ### Source File Content\n### Source File Content:\n\"\"\"hug/transform.py\n\n\
+    Defines Hug's built-in output transforming functions\n\nCopyright (C) 2016  Timothy\
+    \ Edmund Crosley\n\nPermission is hereby granted, free of charge, to any person\
+    \ obtaining a copy of this software and associated\ndocumentation files (the \"\
+    Software\"), to deal in the Software without restriction, including without limitation\n\
+    the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or\
+    \ sell copies of the Software, and\nto permit persons to whom the Software is\
+    \ furnished to do so, subject to the following conditions:\n\nThe above copyright\
+    \ notice and this permission notice shall be included in all copies or\nsubstantial\
+    \ portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY\
+    \ OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES\
+    \ OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN\
+    \ NO EVENT SHALL\nTHE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES\
+    \ OR OTHER LIABILITY, WHETHER IN AN ACTION OF\nCONTRACT, TORT OR OTHERWISE, ARISING\
+    \ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR\nOTHER DEALINGS\
+    \ IN THE SOFTWARE.\n\n\"\"\"\nfrom __future__ import absolute_import\n\nfrom hug.decorators\
+    \ import auto_kwargs\n\n\ndef content_type(transformers, default=None):\n    \"\
+    \"\"Returns a different transformer depending on the content type passed in.\n\
+    \       If none match and no default is given no transformation takes place.\n\
+    \n       should pass in a dict with the following format:\n\n            {'[content-type]':\
+    \ transformation_action,\n             ...\n            }\n    \"\"\"\n    transformers\
+    \ = {\n        content_type: auto_kwargs(transformer) if transformer else transformer\n\
+    \        for content_type, transformer in transformers.items()\n    }\n    default\
+    \ = default and auto_kwargs(default)\n\n    def transform(data, request):\n  \
+    \      transformer = transformers.get(request.content_type.split(\";\")[0], default)\n\
+    \        if not transformer:\n            return data\n\n        return transformer(data)\n\
+    \n    return transform\n\n\ndef suffix(transformers, default=None):\n    \"\"\"\
+    Returns a different transformer depending on the suffix at the end of the requested\
+    \ URL.\n       If none match and no default is given no transformation takes place.\n\
+    \n       should pass in a dict with the following format:\n\n            {'[suffix]':\
+    \ transformation_action,\n             ...\n            }\n    \"\"\"\n    transformers\
+    \ = {\n        suffix: auto_kwargs(transformer) if transformer else transformer\n\
+    \        for suffix, transformer in transformers.items()\n    }\n    default =\
+    \ default and auto_kwargs(default)\n\n    def transform(data, request):\n    \
+    \    path = request.path\n        transformer = default\n        for suffix_test,\
+    \ suffix_transformer in transformers.items():\n            if path.endswith(suffix_test):\n\
+    \                transformer = suffix_transformer\n                break\n\n \
+    \       return transformer(data) if transformer else data\n\n    return transform\n\
+    \n\ndef prefix(transformers, default=None):\n    \"\"\"Returns a different transformer\
+    \ depending on the prefix at the end of the requested URL.\n       If none match\
+    \ and no default is given no transformation takes place.\n\n       should pass\
+    \ in a dict with the following format:\n\n            {'[prefix]': transformation_action,\n\
+    \             ...\n            }\n    \"\"\"\n    transformers = {\n        prefix:\
+    \ auto_kwargs(transformer) if transformer else transformer\n        for prefix,\
+    \ transformer in transformers.items()\n    }\n    default = default and auto_kwargs(default)\n\
+    \n    def transform(data, request=None, response=None):\n        path = request.path\n\
+    \        transformer = default\n        for prefix_test, prefix_transformer in\
+    \ transformers.items():\n            if path.startswith(prefix_test):\n      \
+    \          transformer = prefix_transformer\n                break\n\n       \
+    \ return transformer(data) if transformer else data\n\n    return transform\n\n\
+    \ndef all(*transformers):\n    \"\"\"Returns the results of applying all passed\
+    \ in transformers to data\n\n       should pass in list of transformers\n\n  \
+    \          [transformer_1, transformer_2...]\n    \"\"\"\n    transformers = tuple(auto_kwargs(transformer)\
+    \ for transformer in transformers)\n\n    def transform(data, request=None, response=None):\n\
+    \        for transformer in transformers:\n            data = transformer(data,\
+    \ request=request, response=response)\n\n        return data\n\n    return transform\n\
+    \n### Source File Dependency Files Content\n### Dependency File: decorators.py\n\
+    \"\"\"hug/decorators.py\n\nDefines the method decorators at the core of Hug's\
+    \ approach to creating HTTP APIs\n\n- Decorators for exposing python method as\
+    \ HTTP methods (get, post, etc)\n- Decorators for setting the default output and\
+    \ input formats used throughout an API using the framework\n- Decorator for registering\
+    \ a new directive method\n- Decorator for including another API modules handlers\
+    \ into the current one, with opitonal prefix route\n\nCopyright (C) 2016  Timothy\
+    \ Edmund Crosley\n\nPermission is hereby granted, free of charge, to any person\
+    \ obtaining a copy of this software and associated\ndocumentation files (the \"\
+    Software\"), to deal in the Software without restriction, including without limitation\n\
+    the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or\
+    \ sell copies of the Software, and\nto permit persons to whom the Software is\
+    \ furnished to do so, subject to the following conditions:\n\nThe above copyright\
+    \ notice and this permission notice shall be included in all copies or\nsubstantial\
+    \ portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY\
+    \ OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES\
+    \ OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN\
+    \ NO EVENT SHALL\nTHE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES\
+    \ OR OTHER LIABILITY, WHETHER IN AN ACTION OF\nCONTRACT, TORT OR OTHERWISE, ARISING\
+    \ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR\nOTHER DEALINGS\
+    \ IN THE SOFTWARE.\n\n\"\"\"\nfrom __future__ import absolute_import\n\nimport\
+    \ functools\nfrom collections import namedtuple\n\nfrom falcon import HTTP_METHODS\n\
+    \nimport hug.api\nimport hug.defaults\nimport hug.output_format\nfrom hug import\
+    \ introspect\nfrom hug.format import underscore\n\n\ndef default_output_format(\n\
+    \    content_type=\"application/json\", apply_globally=False, api=None, cli=False,\
+    \ http=True\n):\n    \"\"\"A decorator that allows you to override the default\
+    \ output format for an API\"\"\"\n\n    def decorator(formatter):\n        formatter\
+    \ = hug.output_format.content_type(content_type)(formatter)\n        if apply_globally:\n\
+    \            if http:\n                hug.defaults.output_format = formatter\n\
+    \            if cli:\n                hug.defaults.cli_output_format = formatter\n\
+    \        else:\n            apply_to_api = hug.API(api) if api else hug.api.from_object(formatter)\n\
+    \            if http:\n                apply_to_api.http.output_format = formatter\n\
+    \            if cli:\n                apply_to_api.cli.output_format = formatter\n\
+    \        return formatter\n\n    return decorator\n\n\ndef default_input_format(content_type=\"\
+    application/json\", apply_globally=False, api=None):\n    \"\"\"A decorator that\
+    \ allows you to override the default output format for an API\"\"\"\n\n    def\
+    \ decorator(formatter):\n        formatter = hug.output_format.content_type(content_type)(formatter)\n\
+    \        if apply_globally:\n            hug.defaults.input_format[content_type]\
+    \ = formatter\n        else:\n            apply_to_api = hug.API(api) if api else\
+    \ hug.api.from_object(formatter)\n            apply_to_api.http.set_input_format(content_type,\
+    \ formatter)\n        return formatter\n\n    return decorator\n\n\ndef directive(apply_globally=False,\
+    \ api=None):\n    \"\"\"A decorator that registers a single hug directive\"\"\"\
+    \n\n    def decorator(directive_method):\n        if apply_globally:\n       \
+    \     hug.defaults.directives[underscore(directive_method.__name__)] = directive_method\n\
+    \        else:\n            apply_to_api = hug.API(api) if api else hug.api.from_object(directive_method)\n\
+    \            apply_to_api.add_directive(directive_method)\n        directive_method.directive\
+    \ = True\n        return directive_method\n\n    return decorator\n\n\ndef context_factory(apply_globally=False,\
+    \ api=None):\n    \"\"\"A decorator that registers a single hug context factory\"\
+    \"\"\n\n    def decorator(context_factory_):\n        if apply_globally:\n   \
+    \         hug.defaults.context_factory = context_factory_\n        else:\n   \
+    \         apply_to_api = hug.API(api) if api else hug.api.from_object(context_factory_)\n\
+    \            apply_to_api.context_factory = context_factory_\n        return context_factory_\n\
+    \n    return decorator\n\n\ndef delete_context(apply_globally=False, api=None):\n\
+    \    \"\"\"A decorator that registers a single hug delete context function\"\"\
+    \"\n\n    def decorator(delete_context_):\n        if apply_globally:\n      \
+    \      hug.defaults.delete_context = delete_context_\n        else:\n        \
+    \    apply_to_api = hug.API(api) if api else hug.api.from_object(delete_context_)\n\
+    \            apply_to_api.delete_context = delete_context_\n        return delete_context_\n\
+    \n    return decorator\n\n\ndef startup(api=None):\n    \"\"\"Runs the provided\
+    \ function on startup, passing in an instance of the api\"\"\"\n\n    def startup_wrapper(startup_function):\n\
+    \        apply_to_api = hug.API(api) if api else hug.api.from_object(startup_function)\n\
+    \        apply_to_api.add_startup_handler(startup_function)\n        return startup_function\n\
+    \n    return startup_wrapper\n\n\ndef request_middleware(api=None):\n    \"\"\"\
+    Registers a middleware function that will be called on every request\"\"\"\n\n\
+    \    def decorator(middleware_method):\n        apply_to_api = hug.API(api) if\
+    \ api else hug.api.from_object(middleware_method)\n\n        class MiddlewareRouter(object):\n\
+    \            __slots__ = ()\n\n            def process_request(self, request,\
+    \ response):\n                return middleware_method(request, response)\n\n\
+    \        apply_to_api.http.add_middleware(MiddlewareRouter())\n        return\
+    \ middleware_method\n\n    return decorator\n\n\ndef response_middleware(api=None):\n\
+    \    \"\"\"Registers a middleware function that will be called on every response\"\
+    \"\"\n\n    def decorator(middleware_method):\n        apply_to_api = hug.API(api)\
+    \ if api else hug.api.from_object(middleware_method)\n\n        class MiddlewareRouter(object):\n\
+    \            __slots__ = ()\n\n            def process_response(self, request,\
+    \ response, resource, _req_succeeded):\n                return middleware_method(request,\
+    \ response, resource)\n\n        apply_to_api.http.add_middleware(MiddlewareRouter())\n\
+    \        return middleware_method\n\n    return decorator\n\n\ndef reqresp_middleware(api=None):\n\
+    \    \"\"\"Registers a middleware function that will be called on every request\
+    \ and response\"\"\"\n\n    def decorator(middleware_generator):\n        apply_to_api\
+    \ = hug.API(api) if api else hug.api.from_object(middleware_generator)\n\n   \
+    \     class MiddlewareRouter(object):\n            __slots__ = (\"gen\",)\n\n\
+    \            def process_request(self, request, response):\n                self.gen\
+    \ = middleware_generator(request)\n                return self.gen.__next__()\n\
+    \n            def process_response(self, request, response, resource, _req_succeeded):\n\
+    \                return self.gen.send((response, resource))\n\n        apply_to_api.http.add_middleware(MiddlewareRouter())\n\
+    \        return middleware_generator\n\n    return decorator\n\n\ndef middleware_class(api=None):\n\
+    \    \"\"\"Registers a middleware class\"\"\"\n\n    def decorator(middleware_class):\n\
+    \        apply_to_api = hug.API(api) if api else hug.api.from_object(middleware_class)\n\
+    \        apply_to_api.http.add_middleware(middleware_class())\n        return\
+    \ middleware_class\n\n    return decorator\n\n\ndef extend_api(route=\"\", api=None,\
+    \ base_url=\"\", **kwargs):\n    \"\"\"Extends the current api, with handlers\
+    \ from an imported api. Optionally provide a route that prefixes access\"\"\"\n\
+    \n    def decorator(extend_with):\n        apply_to_api = hug.API(api) if api\
+    \ else hug.api.from_object(extend_with)\n        for extended_api in extend_with():\n\
+    \            apply_to_api.extend(extended_api, route, base_url, **kwargs)\n  \
+    \      return extend_with\n\n    return decorator\n\n\ndef wraps(function):\n\
+    \    \"\"\"Enables building decorators around functions used for hug routes without\
+    \ changing their function signature\"\"\"\n\n    def wrap(decorator):\n      \
+    \  decorator = functools.wraps(function)(decorator)\n        if not hasattr(function,\
+    \ \"original\"):\n            decorator.original = function\n        else:\n \
+    \           decorator.original = function.original\n            delattr(function,\
+    \ \"original\")\n        return decorator\n\n    return wrap\n\n\ndef auto_kwargs(function):\n\
+    \    \"\"\"Modifies the provided function to support kwargs by only passing along\
+    \ kwargs for parameters it accepts\"\"\"\n    supported = introspect.arguments(function)\n\
+    \n    @wraps(function)\n    def call_function(*args, **kwargs):\n        return\
+    \ function(*args, **{key: value for key, value in kwargs.items() if key in supported})\n\
+    \n    return call_function\n\nOutput the complete test file, code only, no explanations.\n\
+    ```python\n<complete test code>\n```\n### Time\nCurrent time: 2025-04-11 19:03:27\n"
+  role: user

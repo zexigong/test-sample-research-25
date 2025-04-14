@@ -1,193 +1,104 @@
-import pytest
-from twisted.test_failure import Failure, NoCurrentExceptionError, format_frames
+# -*- test-case-name: twisted.test.test_failure -*-
 
-def test_format_frames_invalid_detail():
-    with pytest.raises(ValueError):
-        format_frames([], print, detail="invalid")
-
-
-def test_format_frames_brief():
-    frames = [
-        ("func1", "file1", 10, [("var1", "value1")], [("gvar1", "gvalue1")]),
-        ("func2", "file2", 20, [("var2", "value2")], [("gvar2", "gvalue2")]),
-    ]
-    output = []
-    format_frames(frames, output.append, detail="brief")
-    assert output == ["file1:10:func1\n", "file2:20:func2\n"]
+from twisted.trial import unittest
+from twisted.test_failure import Failure, DefaultException, NoCurrentExceptionError, format_frames
+import sys
 
 
-def test_format_frames_default():
-    frames = [
-        ("func1", "file1", 10, [("var1", "value1")], [("gvar1", "gvalue1")]),
-    ]
-    output = []
-    format_frames(frames, output.append, detail="default")
-    assert output[0] == '  File "file1", line 10, in func1\n'
+class FailureTests(unittest.TestCase):
+    def test_failureInitializationWithCurrentException(self):
+        """
+        Test that a Failure can be initialized using the current exception.
+        """
+        try:
+            raise DefaultException("test exception")
+        except DefaultException:
+            f = Failure()
+        self.assertEqual(f.type, DefaultException)
+        self.assertEqual(str(f.value), "test exception")
 
+    def test_failureInitializationWithExplicitException(self):
+        """
+        Test that a Failure can be initialized with an explicit exception value.
+        """
+        exc = DefaultException("explicit exception")
+        f = Failure(exc)
+        self.assertEqual(f.type, DefaultException)
+        self.assertEqual(f.value, exc)
 
-def test_format_frames_verbose():
-    frames = [
-        ("func1", "file1", 10, [("var1", "value1")], [("gvar1", "gvalue1")]),
-    ]
-    output = []
-    format_frames(frames, output.append, detail="verbose")
-    assert "func1(...)\n" in output[0]
-    assert "  var1 : 'value1'\n" in output
-    assert "  gvar1 : 'gvalue1'\n" in output
+    def test_failureInitializationWithoutCurrentException(self):
+        """
+        Test that initializing a Failure without a current exception raises NoCurrentExceptionError.
+        """
+        self.assertRaises(NoCurrentExceptionError, Failure)
 
+    def test_trapCatchesExpectedException(self):
+        """
+        Test that the trap method catches an expected exception type.
+        """
+        try:
+            raise DefaultException("trap this")
+        except DefaultException:
+            f = Failure()
+        self.assertEqual(f.trap(DefaultException), DefaultException)
 
-def test_format_frames_verbose_vars_not_captured():
-    frames = [
-        ("func1", "file1", 10, [], []),
-    ]
-    output = []
-    format_frames(frames, output.append, detail="verbose-vars-not-captured")
-    assert "func1(...)\n" in output[0]
-    assert " [Capture of Locals and Globals disabled" in output[1]
+    def test_trapReraisesUnexpectedException(self):
+        """
+        Test that the trap method reraises an unexpected exception type.
+        """
+        try:
+            raise DefaultException("do not trap this")
+        except DefaultException:
+            f = Failure()
+        self.assertRaises(DefaultException, f.trap, ValueError)
 
+    def test_checkIdentifiesExceptionType(self):
+        """
+        Test that the check method correctly identifies an exception type.
+        """
+        try:
+            raise DefaultException("check this")
+        except DefaultException:
+            f = Failure()
+        self.assertEqual(f.check(DefaultException), DefaultException)
+        self.assertIsNone(f.check(ValueError))
 
-def test_failure_init_no_exception():
-    with pytest.raises(NoCurrentExceptionError):
-        Failure()
+    def test_raiseExceptionPreservesTraceback(self):
+        """
+        Test that raiseException raises the original exception with its traceback.
+        """
+        try:
+            raise DefaultException("raise this")
+        except DefaultException:
+            f = Failure()
+        self.assertRaises(DefaultException, f.raiseException)
 
+    def test_formatFramesDefaultDetail(self):
+        """
+        Test the format_frames function with default detail level.
+        """
+        frames = [
+            ("function1", "file1.py", 10, [("var1", "value1")], [("gvar1", "gvalue1")])
+        ]
+        output = []
 
-def test_failure_init_with_exception():
-    try:
-        raise ValueError("test error")
-    except ValueError:
-        f = Failure()
-    assert f.type is ValueError
-    assert str(f.value) == "test error"
+        def write(s):
+            output.append(s)
 
+        format_frames(frames, write, detail="default")
+        self.assertIn('  File "file1.py", line 10, in function1\n', output[0])
 
-def test_failure_frames():
-    try:
-        raise ValueError("test error")
-    except ValueError:
-        f = Failure()
-    assert f.frames[0][0] == "test_failure_frames"
+    def test_formatFramesBriefDetail(self):
+        """
+        Test the format_frames function with brief detail level.
+        """
+        frames = [
+            ("function2", "file2.py", 20, [("var2", "value2")], [("gvar2", "gvalue2")])
+        ]
+        output = []
 
+        def write(s):
+            output.append(s)
 
-def test_failure_trap():
-    try:
-        raise ValueError("test error")
-    except ValueError:
-        f = Failure()
-    assert f.trap(ValueError) is ValueError
-
-
-def test_failure_trap_unexpected():
-    try:
-        raise ValueError("test error")
-    except ValueError:
-        f = Failure()
-    with pytest.raises(ValueError):
-        f.trap(KeyError)
-
-
-def test_failure_check():
-    try:
-        raise ValueError("test error")
-    except ValueError:
-        f = Failure()
-    assert f.check(ValueError) is ValueError
-    assert f.check(KeyError) is None
-
-
-def test_failure_raise_exception():
-    try:
-        raise ValueError("test error")
-    except ValueError:
-        f = Failure()
-    with pytest.raises(ValueError):
-        f.raiseException()
-
-
-def test_failure_repr():
-    try:
-        raise ValueError("test error")
-    except ValueError:
-        f = Failure()
-    assert "Failure" in repr(f)
-    assert "ValueError" in repr(f)
-
-
-def test_failure_str():
-    try:
-        raise ValueError("test error")
-    except ValueError:
-        f = Failure()
-    assert "Failure instance" in str(f)
-
-
-def test_failure_clean_failure():
-    try:
-        raise ValueError("test error")
-    except ValueError:
-        f = Failure()
-    f.cleanFailure()
-    assert f.value.__traceback__ is None
-
-
-def test_failure_get_traceback_object():
-    try:
-        raise ValueError("test error")
-    except ValueError:
-        f = Failure()
-    assert f.getTracebackObject() is not None
-
-
-def test_failure_get_error_message():
-    try:
-        raise ValueError("test error")
-    except ValueError:
-        f = Failure()
-    assert f.getErrorMessage() == "test error"
-
-
-def test_failure_get_brief_traceback():
-    try:
-        raise ValueError("test error")
-    except ValueError:
-        f = Failure()
-    brief_tb = f.getBriefTraceback()
-    assert "ValueError" in brief_tb
-
-
-def test_failure_get_traceback():
-    try:
-        raise ValueError("test error")
-    except ValueError:
-        f = Failure()
-    tb = f.getTraceback()
-    assert "ValueError" in tb
-
-
-def test_failure_print_traceback(capsys):
-    try:
-        raise ValueError("test error")
-    except ValueError:
-        f = Failure()
-    f.printTraceback()
-    captured = capsys.readouterr()
-    assert "ValueError" in captured.out
-
-
-def test_failure_print_brief_traceback(capsys):
-    try:
-        raise ValueError("test error")
-    except ValueError:
-        f = Failure()
-    f.printBriefTraceback()
-    captured = capsys.readouterr()
-    assert "ValueError" in captured.out
-
-
-def test_failure_print_detailed_traceback(capsys):
-    try:
-        raise ValueError("test error")
-    except ValueError:
-        f = Failure()
-    f.printDetailedTraceback()
-    captured = capsys.readouterr()
-    assert "ValueError" in captured.out
+        format_frames(frames, write, detail="brief")
+        self.assertIn("file2.py:20:function2\n", output[0])

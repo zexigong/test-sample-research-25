@@ -1,0 +1,763 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: hug\nTest File Path: hug\\test_route\\test_route.py\n\
+    Project Programming Language: python\nTesting Framework: pytest\n### Source File\
+    \ Content\n### Source File Content:\n\"\"\"hug/route.py\n\nDefines user usable\
+    \ routers\n\nCopyright (C) 2016  Timothy Edmund Crosley\n\nPermission is hereby\
+    \ granted, free of charge, to any person obtaining a copy of this software and\
+    \ associated\ndocumentation files (the \"Software\"), to deal in the Software\
+    \ without restriction, including without limitation\nthe rights to use, copy,\
+    \ modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,\
+    \ and\nto permit persons to whom the Software is furnished to do so, subject to\
+    \ the following conditions:\n\nThe above copyright notice and this permission\
+    \ notice shall be included in all copies or\nsubstantial portions of the Software.\n\
+    \nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\
+    \ IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES OF MERCHANTABILITY, FITNESS\
+    \ FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL\nTHE AUTHORS\
+    \ OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER\
+    \ IN AN ACTION OF\nCONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION\
+    \ WITH THE SOFTWARE OR THE USE OR\nOTHER DEALINGS IN THE SOFTWARE.\n\n\"\"\"\n\
+    from __future__ import absolute_import\n\nfrom functools import partial\nfrom\
+    \ types import FunctionType, MethodType\n\nfrom falcon import HTTP_METHODS\n\n\
+    import hug.api\nfrom hug.routing import CLIRouter as cli  # noqa:  N813\nfrom\
+    \ hug.routing import ExceptionRouter as exception  # noqa:  N813\nfrom hug.routing\
+    \ import LocalRouter as local  # noqa:  N813\nfrom hug.routing import NotFoundRouter\
+    \ as not_found  # noqa:  N813\nfrom hug.routing import SinkRouter as sink  # noqa:\
+    \  N813\nfrom hug.routing import StaticRouter as static  # noqa:  N813\nfrom hug.routing\
+    \ import URLRouter as http  # noqa:  N813\n\n\nclass Object(http):\n    \"\"\"\
+    Defines a router for classes and objects\"\"\"\n\n    def __init__(self, urls=None,\
+    \ accept=HTTP_METHODS, output=None, **kwargs):\n        super().__init__(urls=urls,\
+    \ accept=accept, output=output, **kwargs)\n\n    def __call__(self, method_or_class=None,\
+    \ **kwargs):\n        if not method_or_class and kwargs:\n            return self.where(**kwargs)\n\
+    \n        if isinstance(method_or_class, (MethodType, FunctionType)):\n      \
+    \      routes = getattr(method_or_class, \"_hug_http_routes\", [])\n         \
+    \   routes.append(self.route)\n            method_or_class._hug_http_routes =\
+    \ routes\n            return method_or_class\n\n        instance = method_or_class\n\
+    \        if isinstance(method_or_class, type):\n            instance = method_or_class()\n\
+    \n        for argument in dir(instance):\n            argument = getattr(instance,\
+    \ argument, None)\n\n            http_routes = getattr(argument, \"_hug_http_routes\"\
+    , ())\n            for route in http_routes:\n                http(**self.where(**route).route)(argument)\n\
+    \n            cli_routes = getattr(argument, \"_hug_cli_routes\", ())\n      \
+    \      for route in cli_routes:\n                cli(**self.where(**route).route)(argument)\n\
+    \n        return method_or_class\n\n    def http_methods(self, urls=None, **route_data):\n\
+    \        \"\"\"Creates routes from a class, where the class method names should\
+    \ line up to HTTP METHOD types\"\"\"\n\n        def decorator(class_definition):\n\
+    \            instance = class_definition\n            if isinstance(class_definition,\
+    \ type):\n                instance = class_definition()\n\n            router\
+    \ = self.urls(\n                urls if urls else \"/{0}\".format(instance.__class__.__name__.lower()),\
+    \ **route_data\n            )\n            for method in HTTP_METHODS:\n     \
+    \           handler = getattr(instance, method.lower(), None)\n              \
+    \  if handler:\n                    http_routes = getattr(handler, \"_hug_http_routes\"\
+    , ())\n                    if http_routes:\n                        for route\
+    \ in http_routes:\n                            http(**router.accept(method).where(**route).route)(handler)\n\
+    \                    else:\n                        http(**router.accept(method).route)(handler)\n\
+    \n                    cli_routes = getattr(handler, \"_hug_cli_routes\", ())\n\
+    \                    if cli_routes:\n                        for route in cli_routes:\n\
+    \                            cli(**self.where(**route).route)(handler)\n     \
+    \       return class_definition\n\n        return decorator\n\n    def cli(self,\
+    \ method):\n        \"\"\"Registers a method on an Object as a CLI route\"\"\"\
+    \n        routes = getattr(method, \"_hug_cli_routes\", [])\n        routes.append(self.route)\n\
+    \        method._hug_cli_routes = routes\n        return method\n\n\nclass API(object):\n\
+    \    \"\"\"Provides a convient way to route functions to a single API independent\
+    \ of where they live\"\"\"\n\n    __slots__ = (\"api\",)\n\n    def __init__(self,\
+    \ api):\n        if type(api) == str:\n            api = hug.api.API(api)\n  \
+    \      self.api = api\n\n    def http(self, *args, **kwargs):\n        \"\"\"\
+    Starts the process of building a new HTTP route linked to this API instance\"\"\
+    \"\n        kwargs[\"api\"] = self.api\n        return http(*args, **kwargs)\n\
+    \n    def urls(self, *args, **kwargs):\n        \"\"\"DEPRECATED: for backwords\
+    \ compatibility with < hug 2.2.0. `API.http` should be used instead.\n\n     \
+    \      Starts the process of building a new URL HTTP route linked to this API\
+    \ instance\n        \"\"\"\n        return self.http(*args, **kwargs)\n\n    def\
+    \ not_found(self, *args, **kwargs):\n        \"\"\"Defines the handler that should\
+    \ handle not found requests against this API\"\"\"\n        kwargs[\"api\"] =\
+    \ self.api\n        return not_found(*args, **kwargs)\n\n    def static(self,\
+    \ *args, **kwargs):\n        \"\"\"Define the routes to static files the API should\
+    \ expose\"\"\"\n        kwargs[\"api\"] = self.api\n        return static(*args,\
+    \ **kwargs)\n\n    def sink(self, *args, **kwargs):\n        \"\"\"Define URL\
+    \ prefixes/handler matches where everything under the URL prefix should be handled\"\
+    \"\"\n        kwargs[\"api\"] = self.api\n        return sink(*args, **kwargs)\n\
+    \n    def exception(self, *args, **kwargs):\n        \"\"\"Defines how this API\
+    \ should handle the provided exceptions\"\"\"\n        kwargs[\"api\"] = self.api\n\
+    \        return exception(*args, **kwargs)\n\n    def cli(self, *args, **kwargs):\n\
+    \        \"\"\"Defines a CLI function that should be routed by this API\"\"\"\n\
+    \        kwargs[\"api\"] = self.api\n        return cli(*args, **kwargs)\n\n \
+    \   def object(self, *args, **kwargs):\n        \"\"\"Registers a class based\
+    \ router to this API\"\"\"\n        kwargs[\"api\"] = self.api\n        return\
+    \ Object(*args, **kwargs)\n\n    def get(self, *args, **kwargs):\n        \"\"\
+    \"Builds a new GET HTTP route that is registered to this API\"\"\"\n        kwargs[\"\
+    api\"] = self.api\n        kwargs[\"accept\"] = (\"GET\",)\n        return http(*args,\
+    \ **kwargs)\n\n    def post(self, *args, **kwargs):\n        \"\"\"Builds a new\
+    \ POST HTTP route that is registered to this API\"\"\"\n        kwargs[\"api\"\
+    ] = self.api\n        kwargs[\"accept\"] = (\"POST\",)\n        return http(*args,\
+    \ **kwargs)\n\n    def put(self, *args, **kwargs):\n        \"\"\"Builds a new\
+    \ PUT HTTP route that is registered to this API\"\"\"\n        kwargs[\"api\"\
+    ] = self.api\n        kwargs[\"accept\"] = (\"PUT\",)\n        return http(*args,\
+    \ **kwargs)\n\n    def delete(self, *args, **kwargs):\n        \"\"\"Builds a\
+    \ new DELETE HTTP route that is registered to this API\"\"\"\n        kwargs[\"\
+    api\"] = self.api\n        kwargs[\"accept\"] = (\"DELETE\",)\n        return\
+    \ http(*args, **kwargs)\n\n    def connect(self, *args, **kwargs):\n        \"\
+    \"\"Builds a new CONNECT HTTP route that is registered to this API\"\"\"\n   \
+    \     kwargs[\"api\"] = self.api\n        kwargs[\"accept\"] = (\"CONNECT\",)\n\
+    \        return http(*args, **kwargs)\n\n    def head(self, *args, **kwargs):\n\
+    \        \"\"\"Builds a new HEAD HTTP route that is registered to this API\"\"\
+    \"\n        kwargs[\"api\"] = self.api\n        kwargs[\"accept\"] = (\"HEAD\"\
+    ,)\n        return http(*args, **kwargs)\n\n    def options(self, *args, **kwargs):\n\
+    \        \"\"\"Builds a new OPTIONS HTTP route that is registered to this API\"\
+    \"\"\n        kwargs[\"api\"] = self.api\n        kwargs[\"accept\"] = (\"OPTIONS\"\
+    ,)\n        return http(*args, **kwargs)\n\n    def patch(self, *args, **kwargs):\n\
+    \        \"\"\"Builds a new PATCH HTTP route that is registered to this API\"\"\
+    \"\n        kwargs[\"api\"] = self.api\n        kwargs[\"accept\"] = (\"PATCH\"\
+    ,)\n        return http(*args, **kwargs)\n\n    def trace(self, *args, **kwargs):\n\
+    \        \"\"\"Builds a new TRACE HTTP route that is registered to this API\"\"\
+    \"\n        kwargs[\"api\"] = self.api\n        kwargs[\"accept\"] = (\"TRACE\"\
+    ,)\n        return http(*args, **kwargs)\n\n    def get_post(self, *args, **kwargs):\n\
+    \        \"\"\"Builds a new GET or POST HTTP route that is registered to this\
+    \ API\"\"\"\n        kwargs[\"api\"] = self.api\n        kwargs[\"accept\"] =\
+    \ (\"GET\", \"POST\")\n        return http(*args, **kwargs)\n\n    def put_post(self,\
+    \ *args, **kwargs):\n        \"\"\"Builds a new PUT or POST HTTP route that is\
+    \ registered to this API\"\"\"\n        kwargs[\"api\"] = self.api\n        kwargs[\"\
+    accept\"] = (\"PUT\", \"POST\")\n        return http(*args, **kwargs)\n\n\nfor\
+    \ method in HTTP_METHODS:\n    method_handler = partial(http, accept=(method,))\n\
+    \    method_handler.__doc__ = \"Exposes a Python method externally as an HTTP\
+    \ {0} method\".format(\n        method.upper()\n    )\n    globals()[method.lower()]\
+    \ = method_handler\n\nget_post = partial(http, accept=(\"GET\", \"POST\"))\nget_post.__doc__\
+    \ = \"Exposes a Python method externally under both the HTTP POST and GET methods\"\
+    \n\nput_post = partial(http, accept=(\"PUT\", \"POST\"))\nput_post.__doc__ = \"\
+    Exposes a Python method externally under both the HTTP POST and PUT methods\"\n\
+    \nobject = Object()\n\n# DEPRECATED: for backwords compatibility with hug 1.x.x\n\
+    call = http\n\n### Source File Dependency Files Content\n### Dependency File:\
+    \ api.py\n\"\"\"hug/api.py\n\nDefines the dynamically generated Hug API object\
+    \ that is responsible for storing all routes and state within a module\n\nCopyright\
+    \ (C) 2016  Timothy Edmund Crosley\n\nPermission is hereby granted, free of charge,\
+    \ to any person obtaining a copy of this software and associated\ndocumentation\
+    \ files (the \"Software\"), to deal in the Software without restriction, including\
+    \ without limitation\nthe rights to use, copy, modify, merge, publish, distribute,\
+    \ sublicense, and/or sell copies of the Software, and\nto permit persons to whom\
+    \ the Software is furnished to do so, subject to the following conditions:\n\n\
+    The above copyright notice and this permission notice shall be included in all\
+    \ copies or\nsubstantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED\
+    \ \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT\
+    \ LIMITED\nTO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE\
+    \ AND NONINFRINGEMENT. IN NO EVENT SHALL\nTHE AUTHORS OR COPYRIGHT HOLDERS BE\
+    \ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF\n\
+    CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE\
+    \ OR THE USE OR\nOTHER DEALINGS IN THE SOFTWARE.\n\n\"\"\"\nfrom __future__ import\
+    \ absolute_import\n\nimport asyncio\nimport sys\nfrom collections import OrderedDict,\
+    \ namedtuple\nfrom distutils.util import strtobool\nfrom functools import partial\n\
+    from itertools import chain\nfrom types import ModuleType\nfrom wsgiref.simple_server\
+    \ import make_server\n\nimport falcon\nfrom falcon import HTTP_METHODS\n\nimport\
+    \ hug.defaults\nimport hug.output_format\nfrom hug import introspect\nfrom hug._version\
+    \ import current\n\nINTRO = \"\"\"\n/#######################################################################\\\
+    \\\n          `.----``..-------..``.----.\n         :/:::::--:---------:--::::://.\n\
+    \        .+::::----##/-/oo+:-##----:::://\n        `//::-------/oosoo-------::://.\
+    \       ##    ##  ##    ##    #####\n          .-:------./++o/o-.------::-`  \
+    \ ```  ##    ##  ##    ##  ##\n             `----.-./+o+:..----.     `.:///. ########\
+    \  ##    ## ##\n   ```        `----.-::::::------  `.-:::://. ##    ##  ##   \
+    \ ## ##   ####\n  ://::--.``` -:``...-----...` `:--::::::-.`  ##    ##  ##   ##\
+    \   ##    ##\n  :/:::::::::-:-     `````      .:::::-.`     ##    ##    #### \
+    \    ######\n   ``.--:::::::.                .:::.`\n         ``..::.        \
+    \        .::         EMBRACE THE APIs OF THE FUTURE\n             ::-        \
+    \        .:-\n             -::`               ::-                   VERSION {0}\n\
+    \             `::-              -::`\n              -::-`           -::-\n\\\\\
+    ########################################################################/\n\n\
+    \ Copyright (C) 2016 Timothy Edmund Crosley\n Under the MIT License\n\n\"\"\"\
+    .format(\n    current\n)\n\n\nclass InterfaceAPI(object):\n    \"\"\"Defines the\
+    \ per-interface API which defines all shared information for a specific interface,\
+    \ and how it should\n        be exposed\n    \"\"\"\n\n    __slots__ = (\"api\"\
+    ,)\n\n    def __init__(self, api):\n        self.api = api\n\n\nclass HTTPInterfaceAPI(InterfaceAPI):\n\
+    \    \"\"\"Defines the HTTP interface specific API\"\"\"\n\n    __slots__ = (\n\
+    \        \"routes\",\n        \"versions\",\n        \"base_url\",\n        \"\
+    falcon\",\n        \"_output_format\",\n        \"_input_format\",\n        \"\
+    versioned\",\n        \"_middleware\",\n        \"_not_found_handlers\",\n   \
+    \     \"sinks\",\n        \"_not_found\",\n        \"_exception_handlers\",\n\
+    \    )\n\n    def __init__(self, api, base_url=\"\"):\n        super().__init__(api)\n\
+    \        self.versions = set()\n        self.routes = OrderedDict()\n        self.sinks\
+    \ = OrderedDict()\n        self.versioned = OrderedDict()\n        self.base_url\
+    \ = base_url\n\n    @property\n    def output_format(self):\n        return getattr(self,\
+    \ \"_output_format\", hug.defaults.output_format)\n\n    @output_format.setter\n\
+    \    def output_format(self, formatter):\n        self._output_format = formatter\n\
+    \n    @property\n    def not_found(self):\n        \"\"\"Returns the active not\
+    \ found handler\"\"\"\n        return getattr(self, \"_not_found\", self.base_404)\n\
+    \n    def urls(self):\n        \"\"\"Returns a generator of all URLs attached\
+    \ to this API\"\"\"\n        for base_url, mapping in self.routes.items():\n \
+    \           for url, _ in mapping.items():\n                yield base_url + url\n\
+    \n    def handlers(self):\n        \"\"\"Returns all registered handlers attached\
+    \ to this API\"\"\"\n        used = []\n        for _base_url, mapping in self.routes.items():\n\
+    \            for _url, methods in mapping.items():\n                for _method,\
+    \ versions in methods.items():\n                    for _version, handler in versions.items():\n\
+    \                        if not handler in used:\n                           \
+    \ used.append(handler)\n                            yield handler\n\n    def input_format(self,\
+    \ content_type):\n        \"\"\"Returns the set input_format handler for the given\
+    \ content_type\"\"\"\n        return getattr(self, \"_input_format\", {}).get(\n\
+    \            content_type, hug.defaults.input_format.get(content_type, None)\n\
+    \        )\n\n    def set_input_format(self, content_type, handler):\n       \
+    \ \"\"\"Sets an input format handler for this Hug API, given the specified content_type\"\
+    \"\"\n        if getattr(self, \"_input_format\", None) is None:\n           \
+    \ self._input_format = {}\n        self._input_format[content_type] = handler\n\
+    \n    @property\n    def middleware(self):\n        return getattr(self, \"_middleware\"\
+    , None)\n\n    def add_middleware(self, middleware):\n        \"\"\"Adds a middleware\
+    \ object used to process all incoming requests against the API\"\"\"\n       \
+    \ if self.middleware is None:\n            self._middleware = []\n        self.middleware.append(middleware)\n\
+    \n    def add_sink(self, sink, url, base_url=\"\"):\n        base_url = base_url\
+    \ or self.base_url\n        self.sinks.setdefault(base_url, OrderedDict())\n \
+    \       self.sinks[base_url][url] = sink\n\n    def exception_handlers(self, version=None):\n\
+    \        if not hasattr(self, \"_exception_handlers\"):\n            return None\n\
+    \n        return self._exception_handlers.get(version, self._exception_handlers.get(None,\
+    \ None))\n\n    def add_exception_handler(self, exception_type, error_handler,\
+    \ versions=(None,)):\n        \"\"\"Adds a error handler to the hug api\"\"\"\n\
+    \        versions = (versions,) if not isinstance(versions, (tuple, list)) else\
+    \ versions\n        if not hasattr(self, \"_exception_handlers\"):\n         \
+    \   self._exception_handlers = {}\n\n        for version in versions:\n      \
+    \      placement = self._exception_handlers.setdefault(version, OrderedDict())\n\
+    \            placement[exception_type] = (error_handler,) + placement.get(exception_type,\
+    \ ())\n\n    def extend(self, http_api, route=\"\", base_url=\"\", **kwargs):\n\
+    \        \"\"\"Adds handlers from a different Hug API to this one - to create\
+    \ a single API\"\"\"\n        self.versions.update(http_api.versions)\n      \
+    \  base_url = base_url or self.base_url\n\n        for _router_base_url, routes\
+    \ in http_api.routes.items():\n            self.routes.setdefault(base_url, OrderedDict())\n\
+    \            for item_route, handler in routes.items():\n                for _method,\
+    \ versions in handler.items():\n                    for _version, function in\
+    \ versions.items():\n                        function.interface.api = self.api\n\
+    \                self.routes[base_url].setdefault(route + item_route, {}).update(handler)\n\
+    \n        for _sink_base_url, sinks in http_api.sinks.items():\n            for\
+    \ url, sink in sinks.items():\n                self.add_sink(sink, route + url,\
+    \ base_url=base_url)\n\n        for middleware in http_api.middleware or ():\n\
+    \            self.add_middleware(middleware)\n\n        for version, handler in\
+    \ getattr(http_api, \"_exception_handlers\", {}).items():\n            for exception_type,\
+    \ exception_handlers in handler.items():\n                target_exception_handlers\
+    \ = self.exception_handlers(version) or {}\n                for exception_handler\
+    \ in exception_handlers:\n                    if exception_type not in target_exception_handlers:\n\
+    \                        self.add_exception_handler(exception_type, exception_handler,\
+    \ version)\n\n        for input_format, input_format_handler in getattr(http_api,\
+    \ \"_input_format\", {}).items():\n            if not input_format in getattr(self,\
+    \ \"_input_format\", {}):\n                self.set_input_format(input_format,\
+    \ input_format_handler)\n\n        for version, handler in http_api.not_found_handlers.items():\n\
+    \            if version not in self.not_found_handlers:\n                self.set_not_found_handler(handler,\
+    \ version)\n\n    @property\n    def not_found_handlers(self):\n        return\
+    \ getattr(self, \"_not_found_handlers\", {})\n\n    def set_not_found_handler(self,\
+    \ handler, version=None):\n        \"\"\"Sets the not_found handler for the specified\
+    \ version of the api\"\"\"\n        if not self.not_found_handlers:\n        \
+    \    self._not_found_handlers = {}\n\n        self.not_found_handlers[version]\
+    \ = handler\n\n    def documentation(self, base_url=None, api_version=None, prefix=\"\
+    \"):\n        \"\"\"Generates and returns documentation for this API endpoint\"\
+    \"\"\n        documentation = OrderedDict()\n        base_url = self.base_url\
+    \ if base_url is None else base_url\n        overview = self.api.doc\n       \
+    \ if overview:\n            documentation[\"overview\"] = overview\n\n       \
+    \ version_dict = OrderedDict()\n        versions = self.versions\n        versions_list\
+    \ = list(versions)\n        if None in versions_list:\n            versions_list.remove(None)\n\
+    \        if False in versions_list:\n            versions_list.remove(False)\n\
+    \        if api_version is None and len(versions_list) > 0:\n            api_version\
+    \ = max(versions_list)\n            documentation[\"version\"] = api_version\n\
+    \        elif api_version is not None:\n            documentation[\"version\"\
+    ] = api_version\n        if versions_list:\n            documentation[\"versions\"\
+    ] = versions_list\n        for router_base_url, routes in self.routes.items():\n\
+    \            for url, methods in routes.items():\n                for method,\
+    \ method_versions in methods.items():\n                    for version, handler\
+    \ in method_versions.items():\n                        if getattr(handler, \"\
+    private\", False):\n                            continue\n                   \
+    \     if version is None:\n                            applies_to = versions\n\
+    \                        else:\n                            applies_to = (version,)\n\
+    \                        for version in applies_to:\n                        \
+    \    if api_version and version != api_version:\n                            \
+    \    continue\n                            if base_url and router_base_url !=\
+    \ base_url:\n                                continue\n                      \
+    \      doc = version_dict.setdefault(url, OrderedDict())\n                   \
+    \         doc[method] = handler.documentation(\n                             \
+    \   doc.get(method, None),\n                                version=version,\n\
+    \                                prefix=prefix,\n                            \
+    \    base_url=router_base_url,\n                                url=url,\n   \
+    \                         )\n        documentation[\"handlers\"] = version_dict\n\
+    \        return documentation\n\n    def serve(self, host=\"\", port=8000, no_documentation=False,\
+    \ display_intro=True):\n        \"\"\"Runs the basic hug development server against\
+    \ this API\"\"\"\n        if no_documentation:\n            api = self.server(None)\n\
+    \        else:\n            api = self.server()\n\n        if display_intro:\n\
+    \            print(INTRO)\n\n        httpd = make_server(host, port, api)\n  \
+    \      print(\"Serving on {0}:{1}...\".format(host, port))\n        httpd.serve_forever()\n\
+    \n    @staticmethod\n    def base_404(request, response, *args, **kwargs):\n \
+    \       \"\"\"Defines the base 404 handler\"\"\"\n        response.status = falcon.HTTP_NOT_FOUND\n\
+    \n    def determine_version(self, request, api_version=None):\n        \"\"\"\
+    Determines the appropriate version given the set api_version, the request header,\
+    \ and URL query params\"\"\"\n        if api_version is False:\n            api_version\
+    \ = None\n            for version in self.versions:\n                if version\
+    \ and \"v{0}\".format(version) in request.path:\n                    api_version\
+    \ = version\n                    break\n\n        request_version = set()\n  \
+    \      if api_version is not None:\n            request_version.add(api_version)\n\
+    \n        version_header = request.get_header(\"X-API-VERSION\")\n        if version_header:\n\
+    \            request_version.add(version_header)\n\n        version_param = request.get_param(\"\
+    api_version\")\n        if version_param is not None:\n            request_version.add(version_param)\n\
+    \n        if len(request_version) > 1:\n            raise ValueError(\"You are\
+    \ requesting conflicting versions\")\n\n        return next(iter(request_version\
+    \ or (None,)))\n\n    def documentation_404(self, base_url=None):\n        \"\"\
+    \"Returns a smart 404 page that contains documentation for the written API\"\"\
+    \"\n        base_url = self.base_url if base_url is None else base_url\n\n   \
+    \     def handle_404(request, response, *args, **kwargs):\n            url_prefix\
+    \ = request.forwarded_uri[:-1]\n            if request.path and request.path !=\
+    \ \"/\":\n                url_prefix = request.forwarded_uri.split(request.path)[0]\n\
+    \n            to_return = OrderedDict()\n            to_return[\"404\"] = (\n\
+    \                \"The API call you tried to make was not defined. \"\n      \
+    \          \"Here's a definition of the API to help you get going :)\"\n     \
+    \       )\n            to_return[\"documentation\"] = self.documentation(\n  \
+    \              base_url, self.determine_version(request, False), prefix=url_prefix\n\
+    \            )\n\n            if self.output_format == hug.output_format.json:\n\
+    \                response.data = hug.output_format.json(to_return, indent=4, separators=(\"\
+    ,\", \": \"))\n                response.content_type = \"application/json; charset=utf-8\"\
+    \n            else:\n                response.data = self.output_format(to_return,\
+    \ request=request, response=response)\n                response.content_type =\
+    \ self.output_format.content_type\n\n            response.status = falcon.HTTP_NOT_FOUND\n\
+    \n        handle_404.interface = True\n        return handle_404\n\n    def version_router(\n\
+    \        self, request, response, api_version=None, versions=None, not_found=None,\
+    \ **kwargs\n    ):\n        \"\"\"Intelligently routes a request to the correct\
+    \ handler based on the version being requested\"\"\"\n        versions = {} if\
+    \ versions is None else versions\n        request_version = self.determine_version(request,\
+    \ api_version)\n        if request_version:\n            request_version = int(request_version)\n\
+    \        versions.get(request_version or False, versions.get(None, not_found))(\n\
+    \            request, response, api_version=api_version, **kwargs\n        )\n\
+    \n    def server(self, default_not_found=True, base_url=None):\n        \"\"\"\
+    Returns a WSGI compatible API server for the given Hug API module\"\"\"\n    \
+    \    falcon_api = self.falcon = falcon.API(middleware=self.middleware)\n     \
+    \   if not self.api.future:\n            falcon_api.req_options.keep_blank_qs_values\
+    \ = False\n            falcon_api.req_options.auto_parse_qs_csv = True\n     \
+    \       falcon_api.req_options.strip_url_path_trailing_slash = True\n\n      \
+    \  default_not_found = self.documentation_404() if default_not_found is True else\
+    \ None\n        base_url = self.base_url if base_url is None else base_url\n\n\
+    \        not_found_handler = default_not_found\n        self.api._ensure_started()\n\
+    \        if self.not_found_handlers:\n            if len(self.not_found_handlers)\
+    \ == 1 and None in self.not_found_handlers:\n                not_found_handler\
+    \ = self.not_found_handlers[None]\n            else:\n                not_found_handler\
+    \ = partial(\n                    self.version_router,\n                    api_version=False,\n\
+    \                    versions=self.not_found_handlers,\n                    not_found=default_not_found,\n\
+    \                )\n                not_found_handler.interface = True\n\n   \
+    \     if not_found_handler:\n            falcon_api.add_sink(not_found_handler)\n\
+    \            self._not_found = not_found_handler\n\n        for sink_base_url,\
+    \ sinks in self.sinks.items():\n            for url, extra_sink in sinks.items():\n\
+    \                falcon_api.add_sink(extra_sink, sink_base_url + url + \"(?P<path>.*)\"\
+    )\n\n        for router_base_url, routes in self.routes.items():\n           \
+    \ for url, methods in routes.items():\n                router = {}\n         \
+    \       for method, versions in methods.items():\n                    method_function\
+    \ = \"on_{0}\".format(method.lower())\n                    if len(versions) ==\
+    \ 1 and None in versions.keys():\n                        router[method_function]\
+    \ = versions[None]\n                    else:\n                        router[method_function]\
+    \ = partial(\n                            self.version_router, versions=versions,\
+    \ not_found=not_found_handler\n                        )\n\n                router\
+    \ = namedtuple(\"Router\", router.keys())(**router)\n                falcon_api.add_route(router_base_url\
+    \ + url, router)\n                if self.versions and self.versions != (None,):\n\
+    \                    falcon_api.add_route(router_base_url + \"/v{api_version}\"\
+    \ + url, router)\n\n        def error_serializer(request, response, error):\n\
+    \            response.content_type = self.output_format.content_type\n       \
+    \     response.body = self.output_format(\n                {\"errors\": {error.title:\
+    \ error.description}}, request, response\n            )\n\n        falcon_api.set_error_serializer(error_serializer)\n\
+    \        return falcon_api\n\n\nHTTPInterfaceAPI.base_404.interface = True\n\n\
+    \nclass CLIInterfaceAPI(InterfaceAPI):\n    \"\"\"Defines the CLI interface specific\
+    \ API\"\"\"\n\n    __slots__ = (\"commands\", \"error_exit_codes\", \"_output_format\"\
+    )\n\n    def __init__(self, api, version=\"\", error_exit_codes=False):\n    \
+    \    super().__init__(api)\n        self.commands = {}\n        self.error_exit_codes\
+    \ = error_exit_codes\n\n    def __call__(self, args=None):\n        \"\"\"Routes\
+    \ to the correct command line tool\"\"\"\n        self.api._ensure_started()\n\
+    \        args = sys.argv if args is None else args\n        if not len(args) >\
+    \ 1 or not args[1] in self.commands:\n            print(str(self))\n         \
+    \   return sys.exit(1)\n\n        command = args.pop(1)\n        result = self.commands.get(command)()\n\
+    \n        if self.error_exit_codes and bool(strtobool(result.decode(\"utf-8\"\
+    ))) is False:\n            sys.exit(1)\n\n    def handlers(self):\n        \"\"\
+    \"Returns all registered handlers attached to this API\"\"\"\n        return self.commands.values()\n\
+    \n    def extend(self, cli_api, command_prefix=\"\", sub_command=\"\", **kwargs):\n\
+    \        \"\"\"Extends this CLI api with the commands present in the provided\
+    \ cli_api object\"\"\"\n        if sub_command and command_prefix:\n         \
+    \   raise ValueError(\n                \"It is not currently supported to provide\
+    \ both a command_prefix and sub_command\"\n            )\n\n        if sub_command:\n\
+    \            self.commands[sub_command] = cli_api\n        else:\n           \
+    \ for name, command in cli_api.commands.items():\n                self.commands[\"\
+    {}{}\".format(command_prefix, name)] = command\n\n    @property\n    def output_format(self):\n\
+    \        return getattr(self, \"_output_format\", hug.defaults.cli_output_format)\n\
+    \n    @output_format.setter\n    def output_format(self, formatter):\n       \
+    \ self._output_format = formatter\n\n    def __str__(self):\n        output =\
+    \ \"{0}\\n\\nAvailable Commands:\\n\\n\".format(self.api.doc or self.api.name)\n\
+    \        for command_name, command in self.commands.items():\n            command_string\
+    \ = \" - {}{}\".format(\n                command_name, \": \" + str(command).replace(\"\
+    \\n\", \" \") if str(command) else \"\"\n            )\n            output +=\
+    \ command_string[:77] + \"...\" if len(command_string) > 80 else command_string\n\
+    \            output += \"\\n\"\n        return output\n\n\nclass ModuleSingleton(type):\n\
+    \    \"\"\"Defines the module level __hug__ singleton\"\"\"\n\n    def __call__(cls,\
+    \ module=None, *args, **kwargs):\n        if isinstance(module, API):\n      \
+    \      return module\n\n        if type(module) == str:\n            if module\
+    \ not in sys.modules:\n                sys.modules[module] = ModuleType(module)\n\
+    \            module = sys.modules[module]\n        elif module is None:\n    \
+    \        return super().__call__(*args, **kwargs)\n\n        if not \"__hug__\"\
+    \ in module.__dict__:\n\n            def api_auto_instantiate(*args, **kwargs):\n\
+    \                if not hasattr(module, \"__hug_serving__\"):\n              \
+    \      module.__hug_wsgi__ = module.__hug__.http.server()\n                  \
+    \  module.__hug_serving__ = True\n                return module.__hug_wsgi__(*args,\
+    \ **kwargs)\n\n            module.__hug__ = super().__call__(module, *args, **kwargs)\n\
+    \            module.__hug_wsgi__ = api_auto_instantiate\n        return module.__hug__\n\
+    \n\nclass API(object, metaclass=ModuleSingleton):\n    \"\"\"Stores the information\
+    \ necessary to expose API calls within this module externally\"\"\"\n\n    __slots__\
+    \ = (\n        \"module\",\n        \"_directives\",\n        \"_http\",\n   \
+    \     \"_cli\",\n        \"_context\",\n        \"_context_factory\",\n      \
+    \  \"_delete_context\",\n        \"_startup_handlers\",\n        \"started\",\n\
+    \        \"name\",\n        \"doc\",\n        \"future\",\n        \"cli_error_exit_codes\"\
+    ,\n    )\n\n    def __init__(self, module=None, name=\"\", doc=\"\", cli_error_exit_codes=False,\
+    \ future=False):\n        self.module = module\n        if module:\n         \
+    \   self.name = name or module.__name__ or \"\"\n            self.doc = doc or\
+    \ module.__doc__ or \"\"\n        else:\n            self.name = name\n      \
+    \      self.doc = doc\n        self.started = False\n        self.cli_error_exit_codes\
+    \ = cli_error_exit_codes\n        self.future = future\n\n    def directives(self):\n\
+    \        \"\"\"Returns all directives applicable to this Hug API\"\"\"\n     \
+    \   directive_sources = chain(\n            hug.defaults.directives.items(), getattr(self,\
+    \ \"_directives\", {}).items()\n        )\n        return {\n            \"hug_\"\
+    \ + directive_name: directive for directive_name, directive in directive_sources\n\
+    \        }\n\n    def directive(self, name, default=None):\n        \"\"\"Returns\
+    \ the loaded directive with the specified name, or default if passed name is not\
+    \ present\"\"\"\n        return getattr(self, \"_directives\", {}).get(\n    \
+    \        name, hug.defaults.directives.get(name, default)\n        )\n\n    def\
+    \ add_directive(self, directive):\n        self._directives = getattr(self, \"\
+    _directives\", {})\n        self._directives[directive.__name__] = directive\n\
+    \n    def handlers(self):\n        \"\"\"Returns all registered handlers attached\
+    \ to this API\"\"\"\n        if getattr(self, \"_http\", None):\n            yield\
+    \ from self.http.handlers()\n        if getattr(self, \"_cli\", None):\n     \
+    \       yield from self.cli.handlers()\n\n    @property\n    def http(self):\n\
+    \        if not hasattr(self, \"_http\"):\n            self._http = HTTPInterfaceAPI(self)\n\
+    \        return self._http\n\n    @property\n    def cli(self):\n        if not\
+    \ hasattr(self, \"_cli\"):\n            self._cli = CLIInterfaceAPI(self, error_exit_codes=self.cli_error_exit_codes)\n\
+    \        return self._cli\n\n    @property\n    def context_factory(self):\n \
+    \       return getattr(self, \"_context_factory\", hug.defaults.context_factory)\n\
+    \n    @context_factory.setter\n    def context_factory(self, context_factory_):\n\
+    \        self._context_factory = context_factory_\n\n    @property\n    def delete_context(self):\n\
+    \        return getattr(self, \"_delete_context\", hug.defaults.delete_context)\n\
+    \n    @delete_context.setter\n    def delete_context(self, delete_context_):\n\
+    \        self._delete_context = delete_context_\n\n    @property\n    def context(self):\n\
+    \        if not hasattr(self, \"_context\"):\n            self._context = {}\n\
+    \        return self._context\n\n    def extend(self, api, route=\"\", base_url=\"\
+    \", http=True, cli=True, **kwargs):\n        \"\"\"Adds handlers from a different\
+    \ Hug API to this one - to create a single API\"\"\"\n        api = API(api)\n\
+    \n        if http and hasattr(api, \"_http\"):\n            self.http.extend(api.http,\
+    \ route, base_url, **kwargs)\n\n        if cli and hasattr(api, \"_cli\"):\n \
+    \           self.cli.extend(api.cli, **kwargs)\n\n        for directive in getattr(api,\
+    \ \"_directives\", {}).values():\n            self.add_directive(directive)\n\n\
+    \        for startup_handler in api.startup_handlers or ():\n            self.add_startup_handler(startup_handler)\n\
+    \n    def add_startup_handler(self, handler):\n        \"\"\"Adds a startup handler\
+    \ to the hug api\"\"\"\n        if not self.startup_handlers:\n            self._startup_handlers\
+    \ = []\n\n        self.startup_handlers.append(handler)\n\n    def _ensure_started(self):\n\
+    \        \"\"\"Marks the API as started and runs all startup handlers\"\"\"\n\
+    \        if not self.started:\n            async_handlers = [\n              \
+    \  startup_handler\n                for startup_handler in self.startup_handlers\n\
+    \                if introspect.is_coroutine(startup_handler)\n            ]\n\
+    \            if async_handlers:\n                loop = asyncio.get_event_loop()\n\
+    \                loop.run_until_complete(\n                    asyncio.gather(*[handler(self)\
+    \ for handler in async_handlers])\n                )\n            for startup_handler\
+    \ in self.startup_handlers:\n                if not startup_handler in async_handlers:\n\
+    \                    startup_handler(self)\n\n    @property\n    def startup_handlers(self):\n\
+    \        return getattr(self, \"_startup_handlers\", ())\n\n\ndef from_object(obj):\n\
+    \    \"\"\"Returns a Hug API instance from a given object (function, class, instance)\"\
+    \"\"\n    return API(obj.__module__)\n\n\n### Dependency File: routing.py\n\"\"\
+    \"hug/routing.py\n\nDefines the chainable classes responsible for defining the\
+    \ routing of Python functions for use with Falcon\nand CLIs\n\nCopyright (C) 2016\
+    \  Timothy Edmund Crosley\n\nPermission is hereby granted, free of charge, to\
+    \ any person obtaining a copy of this software and associated\ndocumentation files\
+    \ (the \"Software\"), to deal in the Software without restriction, including without\
+    \ limitation\nthe rights to use, copy, modify, merge, publish, distribute, sublicense,\
+    \ and/or sell copies of the Software, and\nto permit persons to whom the Software\
+    \ is furnished to do so, subject to the following conditions:\n\nThe above copyright\
+    \ notice and this permission notice shall be included in all copies or\nsubstantial\
+    \ portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY\
+    \ OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES\
+    \ OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN\
+    \ NO EVENT SHALL\nTHE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES\
+    \ OR OTHER LIABILITY, WHETHER IN AN ACTION OF\nCONTRACT, TORT OR OTHERWISE, ARISING\
+    \ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR\nOTHER DEALINGS\
+    \ IN THE SOFTWARE.\n\n\"\"\"\nfrom __future__ import absolute_import\n\nimport\
+    \ os\nimport re\nfrom collections import OrderedDict\nfrom functools import wraps\n\
+    from urllib.parse import urljoin\n\nimport falcon\nfrom falcon import HTTP_METHODS\n\
+    \nimport hug.api\nimport hug.interface\nimport hug.output_format\nfrom hug import\
+    \ introspect\nfrom hug.exceptions import InvalidTypeData\n\n\nclass Router(object):\n\
+    \    \"\"\"The base chainable router object\"\"\"\n\n    __slots__ = (\"route\"\
+    ,)\n\n    def __init__(\n        self,\n        transform=None,\n        output=None,\n\
+    \        validate=None,\n        api=None,\n        requires=(),\n        map_params=None,\n\
+    \        args=None,\n        **kwargs\n    ):\n        self.route = {}\n     \
+    \   if transform is not None:\n            self.route[\"transform\"] = transform\n\
+    \        if output:\n            self.route[\"output\"] = output\n        if validate:\n\
+    \            self.route[\"validate\"] = validate\n        if api:\n          \
+    \  self.route[\"api\"] = api\n        if requires:\n            self.route[\"\
+    requires\"] = (\n                (requires,) if not isinstance(requires, (tuple,\
+    \ list)) else requires\n            )\n        if map_params:\n            self.route[\"\
+    map_params\"] = map_params\n        if args:\n            self.route[\"args\"\
+    ] = args\n\n    def output(self, formatter, **overrides):\n        \"\"\"Sets\
+    \ the output formatter that should be used to render this route\"\"\"\n      \
+    \  return self.where(output=formatter, **overrides)\n\n    def transform(self,\
+    \ function, **overrides):\n        \"\"\"Sets the function that should be used\
+    \ to transform the returned Python structure into something\n           serializable\
+    \ by specified output format\n        \"\"\"\n        return self.where(transform=function,\
+    \ **overrides)\n\n    def validate(self, validation_function, **overrides):\n\
+    \        \"\"\"Sets the secondary validation fucntion to use for this handler\"\
+    \"\"\n        return self.where(validate=validation_function, **overrides)\n\n\
+    \    def api(self, api, **overrides):\n        \"\"\"Sets the API that should\
+    \ contain this route\"\"\"\n        return self.where(api=api, **overrides)\n\n\
+    \    def requires(self, requirements, **overrides):\n        \"\"\"Adds additional\
+    \ requirements to the specified route\"\"\"\n        return self.where(\n    \
+    \        requires=tuple(self.route.get(\"requires\", ())) + tuple(requirements),\
+    \ **overrides\n        )\n\n    def doesnt_require(self, requirements, **overrides):\n\
+    \        \"\"\"Removes individual requirements while keeping all other defined\
+    \ ones within a route\"\"\"\n        return self.where(\n            requires=tuple(\n\
+    \                set(self.route.get(\"requires\", ())).difference(\n         \
+    \           requirements if type(requirements) in (list, tuple) else (requirements,)\n\
+    \                )\n            )\n        )\n\n    def map_params(self, **map_params):\n\
+    \        \"\"\"Map interface specific params to an internal name representation\"\
+    \"\"\n        return self.where(map_params=map_params)\n\n    def where(self,\
+    \ **overrides):\n        \"\"\"Creates a new route, based on the current route,\
+    \ with the specified overrided values\"\"\"\n        route_data = self.route.copy()\n\
+    \        route_data.update(overrides)\n        return self.__class__(**route_data)\n\
+    \n\nclass CLIRouter(Router):\n    \"\"\"The CLIRouter provides a chainable router\
+    \ that can be used to route a CLI command to a Python function\"\"\"\n\n    __slots__\
+    \ = ()\n\n    def __init__(self, name=None, version=None, doc=None, **kwargs):\n\
+    \        super().__init__(**kwargs)\n        if name is not None:\n          \
+    \  self.route[\"name\"] = name\n        if version:\n            self.route[\"\
+    version\"] = version\n        if doc:\n            self.route[\"doc\"] = doc\n\
+    \n    def name(self, name, **overrides):\n        \"\"\"Sets the name for the\
+    \ CLI interface\"\"\"\n        return self.where(name=name, **overrides)\n\n \
+    \   def version(self, version, **overrides):\n        \"\"\"Sets the version for\
+    \ the CLI interface\"\"\"\n        return self.where(version=version, **overrides)\n\
+    \n    def doc(self, documentation, **overrides):\n        \"\"\"Sets the documentation\
+    \ for the CLI interface\"\"\"\n        return self.where(doc=documentation, **overrides)\n\
+    \n    def __call__(self, api_function):\n        \"\"\"Enables exposing a Hug\
+    \ compatible function as a Command Line Interface\"\"\"\n        hug.interface.CLI(self.route,\
+    \ api_function)\n        return api_function\n\n\nclass InternalValidation(Router):\n\
+    \    \"\"\"Defines the base route for interfaces that define their own internal\
+    \ validation\"\"\"\n\n    __slots__ = ()\n\n    def __init__(self, raise_on_invalid=False,\
+    \ on_invalid=None, output_invalid=None, **kwargs):\n        super().__init__(**kwargs)\n\
+    \        if raise_on_invalid:\n            self.route[\"raise_on_invalid\"] =\
+    \ raise_on_invalid\n        if on_invalid is not None:\n            self.route[\"\
+    on_invalid\"] = on_invalid\n        if output_invalid is not None:\n         \
+    \   self.route[\"output_invalid\"] = output_invalid\n\n    def raise_on_invalid(self,\
+    \ setting=True, **overrides):\n        \"\"\"Sets the route to raise validation\
+    \ errors instead of catching them\"\"\"\n        return self.where(raise_on_invalid=setting,\
+    \ **overrides)\n\n    def on_invalid(self, function, **overrides):\n        \"\
+    \"\"Sets a function to use to transform data on validation errors.\n\n       \
+    \ Defaults to the transform function if one is set to ensure no special\n    \
+    \    handling occurs for invalid data set to `False`.\n        \"\"\"\n      \
+    \  return self.where(on_invalid=function, **overrides)\n\n    def output_invalid(self,\
+    \ output_handler, **overrides):\n        \"\"\"Sets an output handler to be used\
+    \ when handler validation fails.\n\n        Defaults to the output formatter set\
+    \ globally for the route.\n        \"\"\"\n        return self.where(output_invalid=output_handler,\
+    \ **overrides)\n\n\nclass LocalRouter(InternalValidation):\n    \"\"\"The LocalRouter\
+    \ defines how interfaces should be handled when accessed locally from within Python\
+    \ code\"\"\"\n\n    __slots__ = ()\n\n    def __init__(self, directives=True,\
+    \ validate=True, version=None, **kwargs):\n        super().__init__(**kwargs)\n\
+    \        if version is not None:\n            self.route[\"version\"] = version\n\
+    \        if not directives:\n            self.route[\"skip_directives\"] = True\n\
+    \        if not validate:\n            self.route[\"skip_validation\"] = True\n\
+    \n    def directives(self, use=True, **kwargs):\n        return self.where(directives=use)\n\
+    \n    def validate(self, enforce=True, **kwargs):\n        return self.where(validate=enforce)\n\
+    \n    def version(self, supported, **kwargs):\n        return self.where(version=supported)\n\
+    \n    def __call__(self, api_function):\n        \"\"\"Enables exposing a hug\
+    \ compatible function locally\"\"\"\n        return hug.interface.Local(self.route,\
+    \ api_function)\n\n\nclass HTTPRouter(InternalValidation):\n    \"\"\"The HTTPRouter\
+    \ provides the base concept of a router from an HTTPRequest to a Python function\"\
+    \"\"\n\n    __slots__ = ()\n\n    def __init__(\n        self,\n        versions=any,\n\
+    \        parse_body=False,\n        parameters=None,\n        defaults=None,\n\
+    \        status=None,\n        response_headers=None,\n        private=False,\n\
+    \        inputs=None,\n        **kwargs\n    ):\n        if defaults is None:\n\
+    \            defaults = {}\n        super().__init__(**kwargs)\n        if versions\
+    \ is not any:\n            self.route[\"versions\"] = (\n                (versions,)\
+    \ if isinstance(versions, (int, float, None.__class__)) else versions\n      \
+    \      )\n            self.route[\"versions\"] = tuple(\n                int(version)\
+    \ if version else version for version in self.route[\"versions\"]\n          \
+    \  )\n        if parse_body:\n            self.route[\"parse_body\"] = parse_body\n\
+    \        if parameters:\n            self.route[\"parameters\"] = parameters\n\
+    \        if defaults:\n            self.route[\"defaults\"] = defaults\n     \
+    \   if status:\n            self.route[\"status\"] = status\n        if response_headers:\n\
+    \            self.route[\"response_headers\"] = response_headers\n        if private:\n\
+    \            self.route[\"private\"] = private\n        if inputs:\n         \
+    \   self.route[\"inputs\"] = inputs\n\n    def versions(self, supported, **overrides):\n\
+    \        \"\"\"Sets the versions that this route should be compatiable with\"\"\
+    \"\n        return self.where(versions=supported, **overrides)\n\n    def parse_body(self,\
+    \ automatic=True, **overrides):\n        \"\"\"Tells hug to automatically parse\
+    \ the input body if it matches a registered input format\"\"\"\n        return\
+    \ self.where(parse_body=automatic, **overrides)\n\n    def set_status(self, status,\
+    \ **overrides):\n        \"\"\"Sets the status that will be returned by default\"\
+    \"\"\n        return self.where(status=status, **overrides)\n\n    def parameters(self,\
+    \ parameters, **overrides):\n        \"\"\"Sets the custom parameters that will\
+    \ be used instead of those found introspecting the decorated function\"\"\"\n\
+    \        return self.where(parameters=parameters, **overrides)\n\n    def defaults(self,\
+    \ defaults, **overrides):\n        \"\"\"Sets the custom defaults that will be\
+    \ used for custom parameters\"\"\"\n        return self.where(defaults=defaults,\
+    \ **overrides)\n\n    def _create_interface(self, api, api_function, catch_exceptions=True):\n\
+    \        interface = hug.interface.HTTP(self.route, api_function, catch_exceptions)\n\
+    \        return (interface, api_function)\n\n    def response_headers(self, headers,\
+    \ **overrides):\n        \"\"\"Sets the response headers automatically injected\
+    \ by the router\"\"\"\n        return self.where(response_headers=headers, **overrides)\n\
+    \n    def add_response_headers(self, headers, **overrides):\n        \"\"\"Adds\
+    \ the specified response headers while keeping existing ones in-tact\"\"\"\n \
+    \       response_headers = self.route.get(\"response_headers\", {}).copy()\n \
+    \       response_headers.update(headers)\n        return self.where(response_headers=response_headers,\
+    \ **overrides)\n\n    def cache(\n        self,\n        private=False,\n    \
+    \    max_age=31536000,\n        s_maxage=None,\n        no_cache=False,\n    \
+    \    no_store=False,\n        must_revalidate=False,\n        **overrides\n  \
+    \  ):\n        \"\"\"Convenience method for quickly adding cache header to route\"\
+    \"\"\n        parts = (\n            \"private\" if private else \"public\",\n\
+    \            \"max-age={0}\".format(max_age),\n            \"s-maxage={0}\".format(s_maxage)\
+    \ if s_maxage is not None else None,\n            no_cache and \"no-cache\",\n\
+    \            no_store and \"no-store\",\n            must_revalidate and \"must-revalidate\"\
+    ,\n        )\n        return self.add_response_headers(\n            {\"cache-control\"\
+    : \", \".join(filter(bool, parts))}, **overrides\n        )\n\n    def allow_origins(\n\
+    \        self, *origins, methods=None, max_age=None, credentials=None, headers=None,\
+    \ **overrides\n    ):\n        \"\"\"Convenience method for quickly allowing other\
+    \ resources to access this one\"\"\"\n        response_headers = {}\n        if\
+    \ origins:\n\n            @hug.response_middleware(api=self.route.get(\"api\"\
+    , None))\n            def process_data(request, response, resource):\n       \
+    \         if \"ORIGIN\" in request.headers:\n                    origin = request.headers[\"\
+    ORIGIN\"]\n                    if origin in origins:\n                       \
+    \ response.set_header(\"Access-Control-Allow-Origin\", origin)\n\n        else:\n\
+    \            response_headers[\"Access-Control-Allow-Origin\"] = \"*\"\n\n   \
+    \     if methods:\n            response_headers[\"Access-Control-Allow-Methods\"\
+    ] = \", \".join(methods)\n        if max_age:\n            response_headers[\"\
+    Access-Control-Max-Age\"] = max_age\n        if credentials:\n            response_headers[\"\
+    Access-Control-Allow-Credentials\"] = str(credentials).lower()\n        if headers:\n\
+    \            response_headers[\"Access-Control-Allow-Headers\"] = headers\n  \
+    \      return self.add_response_headers(response_headers, **overrides)\n\n\nclass\
+    \ NotFoundRouter(HTTPRouter):\n    \"\"\"Provides a chainable router that can\
+    \ be used to route 404'd request to a Python function\"\"\"\n\n    __slots__ =\
+    \ ()\n\n    def __init__(self, output=None, versions=any, status=falcon.HTTP_NOT_FOUND,\
+    \ **kwargs):\n        super().__init__(output=output, versions=versions, status=status,\
+    \ **kwargs)\n\n    def __call__(self, api_function):\n        api = self.route.get(\"\
+    api\", hug.api.from_object(api_function))\n        (interface, callable_method)\
+    \ = self._create_interface(api, api_function)\n        for version in self.route.get(\"\
+    versions\", (None,)):\n            api.http.set_not_found_handler(interface, version)\n\
+    \n        return callable_method\n\n\nclass SinkRouter(HTTPRouter):\n    \"\"\"\
+    Provides a chainable router that can be used to route all routes pass a certain\
+    \ base URL (essentially route/*)\"\"\"\n\n    __slots__ = ()\n\n    def __init__(self,\
+    \ urls=None, output=None, **kwargs):\n        super().__init__(output=output,\
+    \ **kwargs)\n        if urls:\n            self.route[\"urls\"] = (urls,) if isinstance(urls,\
+    \ str) else urls\n\n    def __call__(self, api_function):\n        api = self.route.get(\"\
+    api\", hug.api.from_object(api_function))\n        (interface, callable_method)\
+    \ = self._create_interface(api, api_function)\n        for base_url in self.route.get(\"\
+    urls\", (\"/{0}\".format(api_function.__name__),)):\n            api.http.add_sink(interface,\
+    \ base_url)\n        return callable_method\n\n\nclass StaticRouter(SinkRouter):\n\
+    \    \"\"\"Provides a chainable router that can be used to return static files\
+    \ automatically from a set of directories\"\"\"\n\n    __slots__ = (\"route\"\
+    ,)\n\n    def __init__(self, urls=None, output=hug.output_format.file, cache=False,\
+    \ **kwargs):\n        super().__init__(urls=urls, output=output, **kwargs)\n \
+    \       if cache is True:\n            self.cache()\n        elif cache is not\
+    \ False:\n            self.cache(**cache)\n\n    def __call__(self, api_function):\n\
+    \        directories = []\n        for directory in api_function():\n        \
+    \    path = os.path.abspath(directory)\n            directories.append(path)\n\
+    \n        api = self.route.get(\"api\", hug.api.from_object(api_function))\n \
+    \       for base_url in self.route.get(\"urls\", (\"/{0}\".format(api_function.__name__),)):\n\
+    \n            def read_file(request=None, path=\"\"):\n                filename\
+    \ = path.lstrip(\"/\")\n                for directory in directories:\n      \
+    \              path = os.path.abspath(os.path.join(directory, filename))\n   \
+    \                 if not path.startswith(directory):\n                       \
+    \ hug.redirect.not_found()\n                    if os.path.isdir(path):\n    \
+    \                    new_path = os.path.join(path, \"index.html\")\n         \
+    \               if os.path.exists(new_path) and os.path.isfile(new_path):\n  \
+    \                          path = new_path\n                    if os.path.exists(path)\
+    \ and os.path.isfile(path):\n                        return path\n\n         \
+    \       hug.redirect.not_found()\n\n            api.http.add_sink(self._create_interface(api,\
+    \ read_file)[0], base_url)\n        return api_function\n\n\nclass ExceptionRouter(HTTPRouter):\n\
+    \    \"\"\"Provides a chainable router that can be used to route exceptions thrown\
+    \ during request handling\"\"\"\n\n    __slots__ = ()\n\n    def __init__(self,\
+    \ exceptions=(Exception,), exclude=(), output=None, **kwargs):\n        super().__init__(output=output,\
+    \ **kwargs)\n        self.route[\"exceptions\"] = (\n            (exceptions,)\
+    \ if not isinstance(exceptions, (list, tuple)) else exceptions\n        )\n  \
+    \      self.route[\"exclude\"] = (exclude,) if not isinstance(exclude, (list,\
+    \ tuple)) else exclude\n\n    def __call__(self, api_function):\n        api =\
+    \ self.route.get(\"api\", hug.api.from_object(api_function))\n        (interface,\
+    \ callable_method) = self._create_interface(\n            api, api_function, catch_exceptions=False\n\
+    \        )\n        for version in self.route.get(\"versions\", (None,)):\n  \
+    \          for exception in self.route[\"exceptions\"]:\n                api.http.add_exception_handler(exception,\
+    \ interface, version)\n\n        return callable_method\n\n    def _create_interface(self,\
+    \ api, api_function, catch_exceptions=False):\n        interface = hug.interface.ExceptionRaised(self.route,\
+    \ api_function, catch_exceptions)\n        return (interface, api_function)\n\n\
+    \nclass URLRouter(HTTPRouter):\n    \"\"\"Provides a chainable router that can\
+    \ be used to route a URL to a Python function\"\"\"\n\n    __slots__ = ()\n\n\
+    \    def __init__(\n        self,\n        urls=None,\n        accept=HTTP_METHODS,\n\
+    \        output=None,\n        examples=(),\n        versions=any,\n        suffixes=(),\n\
+    \        prefixes=(),\n        response_headers=None,\n        parse_body=True,\n\
+    \        **kwargs\n    ):\n        super().__init__(\n            output=output,\n\
+    \            versions=versions,\n            parse_body=parse_body,\n        \
+    \    response_headers=response_headers,\n            **kwargs\n        )\n   \
+    \     if urls is not None:\n            self.route[\"urls\"] = (urls,) if isinstance(urls,\
+    \ str) else urls\n        if accept:\n            self.route[\"accept\"] = (accept,)\
+    \ if isinstance(accept, str) else accept\n        if examples:\n            self.route[\"\
+    examples\"] = (examples,) if isinstance(examples, str) else examples\n       \
+    \ if suffixes:\n            self.route[\"suffixes\"] = (suffixes,) if isinstance(suffixes,\
+    \ str) else suffixes\n        if prefixes:\n            self.route[\"prefixes\"\
+    ] = (prefixes,) if isinstance(prefixes, str) else prefixes\n\n    def __call__(self,\
+    \ api_function):\n        api = self.route.get(\"api\", hug.api.from_object(api_function))\n\
+    \        api.http.routes.setdefault(api.http.base_url, OrderedDict())\n      \
+    \  (interface, callable_method) = self._create_interface(api, api_function)\n\n\
+    \        use_examples = self.route.get(\"examples\", ())\n        if not interface.required\
+    \ and not use_examples:\n            use_examples = (True,)\n\n        for base_url\
+    \ in self.route.get(\"urls\", (\"/{0}\".format(api_function.__name__),)):\n  \
+    \          expose = [base_url]\n            for suffix in self.route.get(\"suffixes\"\
+    , ()):\n                if suffix.startswith(\"/\"):\n                    expose.append(os.path.join(base_url,\
+    \ suffix.lstrip(\"/\")))\n                else:\n                    expose.append(base_url\
+    \ + suffix)\n            for prefix in self.route.get(\"prefixes\", ()):\n   \
+    \             expose.append(prefix + base_url)\n            for url in expose:\n\
+    \                handlers = api.http.routes[api.http.base_url].setdefault(url,\
+    \ {})\n                for method in self.route.get(\"accept\", ()):\n       \
+    \             version_mapping = handlers.setdefault(method.upper(), {})\n    \
+    \                for version in self.route.get(\"versions\", (None,)):\n     \
+    \                   version_mapping[version] = interface\n                   \
+    \     api.http.versioned.setdefault(version, {})[\n                          \
+    \  callable_method.__name__\n                        ] = callable_method\n\n \
+    \       interface.examples = use_examples\n        return callable_method\n\n\
+    \    def urls(self, *urls, **overrides):\n        \"\"\"Sets the URLs that will\
+    \ map to this API call\"\"\"\n        return self.where(urls=urls, **overrides)\n\
+    \n    def accept(self, *accept, **overrides):\n        \"\"\"Sets a list of HTTP\
+    \ methods this router should accept\"\"\"\n        return self.where(accept=accept,\
+    \ **overrides)\n\n    def get(self, urls=None, **overrides):\n        \"\"\"Sets\
+    \ the acceptable HTTP method to a GET\"\"\"\n        if urls is not None:\n  \
+    \          overrides[\"urls\"] = urls\n        return self.where(accept=\"GET\"\
+    , **overrides)\n\n    def delete(self, urls=None, **overrides):\n        \"\"\"\
+    Sets the acceptable HTTP method to DELETE\"\"\"\n        if urls is not None:\n\
+    \            overrides[\"urls\"] = urls\n        return self.where(accept=\"DELETE\"\
+    , **overrides)\n\n    def post(self, urls=None, **overrides):\n        \"\"\"\
+    Sets the acceptable HTTP method to POST\"\"\"\n        if urls is not None:\n\
+    \            overrides[\"urls\"] = urls\n        return self.where(accept=\"POST\"\
+    , **overrides)\n\n    def put(self, urls=None, **overrides):\n        \"\"\"Sets\
+    \ the acceptable HTTP method to PUT\"\"\"\n        if urls is not None:\n    \
+    \        overrides[\"urls\"] = urls\n        return self.where(accept=\"PUT\"\
+    , **overrides)\n\n    def trace(self, urls=None, **overrides):\n        \"\"\"\
+    Sets the acceptable HTTP method to TRACE\"\"\"\n        if urls is not None:\n\
+    \            overrides[\"urls\"] = urls\n        return self.where(accept=\"TRACE\"\
+    , **overrides)\n\n    def patch(self, urls=None, **overrides):\n        \"\"\"\
+    Sets the acceptable HTTP method to PATCH\"\"\"\n        if urls is not None:\n\
+    \            overrides[\"urls\"] = urls\n        return self.where(accept=\"PATCH\"\
+    , **overrides)\n\n    def options(self, urls=None, **overrides):\n        \"\"\
+    \"Sets the acceptable HTTP method to OPTIONS\"\"\"\n        if urls is not None:\n\
+    \            overrides[\"urls\"] = urls\n        return self.where(accept=\"OPTIONS\"\
+    , **overrides)\n\n    def head(self, urls=None, **overrides):\n        \"\"\"\
+    Sets the acceptable HTTP method to HEAD\"\"\"\n        if urls is not None:\n\
+    \            overrides[\"urls\"] = urls\n        return self.where(accept=\"HEAD\"\
+    , **overrides)\n\n    def connect(self, urls=None, **overrides):\n        \"\"\
+    \"Sets the acceptable HTTP method to CONNECT\"\"\"\n        if urls is not None:\n\
+    \            overrides[\"urls\"] = urls\n        return self.where(accept=\"CONNECT\"\
+    , **overrides)\n\n    def call(self, **overrides):\n        \"\"\"Sets the acceptable\
+    \ HTTP method to all known\"\"\"\n        return self.where(accept=HTTP_METHODS,\
+    \ **overrides)\n\n    def http(self, **overrides):\n        \"\"\"Sets the acceptable\
+    \ HTTP method to all known\"\"\"\n        return self.where(accept=HTTP_METHODS,\
+    \ **overrides)\n\n    def get_post(self, **overrides):\n        \"\"\"Exposes\
+    \ a Python method externally under both the HTTP POST and GET methods\"\"\"\n\
+    \        return self.where(accept=(\"GET\", \"POST\"), **overrides)\n\n    def\
+    \ put_post(self, **overrides):\n        \"\"\"Exposes a Python method externally\
+    \ under both the HTTP POST and PUT methods\"\"\"\n        return self.where(accept=(\"\
+    PUT\", \"POST\"), **overrides)\n\n    def examples(self, *examples, **overrides):\n\
+    \        \"\"\"Sets the examples that the route should use\"\"\"\n        return\
+    \ self.where(examples=examples, **overrides)\n\n    def suffixes(self, *suffixes,\
+    \ **overrides):\n        \"\"\"Sets the suffixes supported by the route\"\"\"\n\
+    \        return self.where(suffixes=suffixes, **overrides)\n\n    def prefixes(self,\
+    \ *prefixes, **overrides):\n        \"\"\"Sets the prefixes supported by the route\"\
+    \"\"\n        return self.where(prefixes=prefixes, **overrides)\n\n    def where(self,\
+    \ **overrides):\n        if \"urls\" in overrides:\n            existing_urls\
+    \ = self.route.get(\"urls\", ())\n            use_urls = []\n            for url\
+    \ in (\n                (overrides[\"urls\"],) if isinstance(overrides[\"urls\"\
+    ], str) else overrides[\"urls\"]\n            ):\n                if url.startswith(\"\
+    /\") or not existing_urls:\n                    use_urls.append(url)\n       \
+    \         else:\n                    for existing in existing_urls:\n        \
+    \                use_urls.append(urljoin(existing.rstrip(\"/\") + \"/\", url))\n\
+    \            overrides[\"urls\"] = tuple(use_urls)\n\n        return super().where(**overrides)\n\
+    \nOutput the complete test file, code only, no explanations.\n```python\n<complete\
+    \ test code>\n```\n### Time\nCurrent time: 2025-04-11 19:02:25\n"
+  role: user

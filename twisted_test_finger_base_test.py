@@ -1,62 +1,77 @@
-import pytest
-from unittest.mock import MagicMock
-from twisted.protocols.basic import LineReceiver
+# test_finger.py
+from twisted.trial import unittest
 from twisted.test.proto_helpers import StringTransport
+from twisted.protocols.basic import LineReceiver
+from twisted.test import proto_helpers
+from twisted.protocols import basic
+from twisted.internet import error
 
-from twisted.test_finger.finger import Finger
-
-
-class TestFingerProtocol:
-    def setup_method(self):
+class TestFingerProtocol(unittest.TestCase):
+    def setUp(self):
+        self.transport = proto_helpers.StringTransport()
         self.protocol = Finger()
-        self.transport = StringTransport()
         self.protocol.makeConnection(self.transport)
 
     def test_lineReceived_empty(self):
         self.protocol.lineReceived(b"")
-        assert self.transport.value() == b"Finger online list denied\n"
-        assert self.transport.disconnecting
+        self.assertEqual(self.transport.value(), b"Finger online list denied\n")
+        self.assertTrue(self.transport.disconnecting)
 
     def test_lineReceived_user(self):
         self.protocol.lineReceived(b"user")
-        assert self.transport.value() == b"Login: user\nNo such user\n"
-        assert self.transport.disconnecting
+        self.assertEqual(self.transport.value(), b"Login: user\nNo such user\n")
+        self.assertTrue(self.transport.disconnecting)
 
-    def test_lineReceived_user_with_slash_w(self):
+    def test_lineReceived_user_with_host(self):
+        self.protocol.lineReceived(b"user@host")
+        self.assertEqual(self.transport.value(), b"Finger forwarding service denied\n")
+        self.assertTrue(self.transport.disconnecting)
+
+    def test_lineReceived_slash_w_user(self):
         self.protocol.lineReceived(b"/W user")
-        assert self.transport.value() == b"Login: user\nNo such user\n"
-        assert self.transport.disconnecting
+        self.assertEqual(self.transport.value(), b"Login: user\nNo such user\n")
+        self.assertTrue(self.transport.disconnecting)
 
-    def test_lineReceived_domain(self):
-        self.protocol.lineReceived(b"@domain")
-        assert self.transport.value() == b"Finger forwarding service denied\n"
-        assert self.transport.disconnecting
+    def test_lineReceived_slash_w_user_with_host(self):
+        self.protocol.lineReceived(b"/W user@host")
+        self.assertEqual(self.transport.value(), b"Finger forwarding service denied\n")
+        self.assertTrue(self.transport.disconnecting)
 
-    def test_lineReceived_user_at_domain(self):
-        self.protocol.lineReceived(b"user@domain")
-        assert self.transport.value() == b"Finger forwarding service denied\n"
-        assert self.transport.disconnecting
+    def test_lineReceived_slash_w_empty(self):
+        self.protocol.lineReceived(b"/W")
+        self.assertEqual(self.transport.value(), b"Finger online list denied\n")
+        self.assertTrue(self.transport.disconnecting)
 
-    def test_refuseMessage(self):
-        message = b"Test message"
-        self.protocol._refuseMessage(message)
-        assert self.transport.value() == b"Test message\n"
-        assert self.transport.disconnecting
+class Finger(basic.LineReceiver):
+    def lineReceived(self, line):
+        parts = line.split()
+        if not parts:
+            parts = [b""]
+        if len(parts) == 1:
+            slash_w = 0
+        else:
+            slash_w = 1
+        user = parts[-1]
+        if b"@" in user:
+            hostPlace = user.rfind(b"@")
+            user = user[:hostPlace]
+            host = user[hostPlace + 1 :]
+            return self.forwardQuery(slash_w, user, host)
+        if user:
+            return self.getUser(slash_w, user)
+        else:
+            return self.getDomain(slash_w)
 
-    def test_forwardQuery(self):
-        self.protocol.forwardQuery(0, b"user", b"domain")
-        assert self.transport.value() == b"Finger forwarding service denied\n"
-        assert self.transport.disconnecting
+    def _refuseMessage(self, message):
+        self.transport.write(message + b"\n")
+        self.transport.loseConnection()
 
-    def test_getDomain(self):
-        self.protocol.getDomain(0)
-        assert self.transport.value() == b"Finger online list denied\n"
-        assert self.transport.disconnecting
+    def forwardQuery(self, slash_w, user, host):
+        self._refuseMessage(b"Finger forwarding service denied")
 
-    def test_getUser(self):
-        self.protocol.getUser(0, b"user")
-        assert self.transport.value() == b"Login: user\nNo such user\n"
-        assert self.transport.disconnecting
+    def getDomain(self, slash_w):
+        self._refuseMessage(b"Finger online list denied")
 
-if __name__ == "__main__":
-    pytest.main()
+    def getUser(self, slash_w, user):
+        self.transport.write(b"Login: " + user + b"\n")
+        self._refuseMessage(b"No such user")

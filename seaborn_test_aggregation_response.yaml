@@ -1,0 +1,30 @@
+response: "```python\nfrom __future__ import annotations\nimport numpy as np\nimport\
+  \ pandas as pd\nimport pandas.util.testing as pdt\nimport pytest\n\nfrom seaborn._core.groupby\
+  \ import GroupBy\nfrom seaborn._stats.aggregation import Agg, Est\n\n\nclass TestAgg:\n\
+  \n    def test_default(self, long_df):\n\n        agg = Agg()\n        out = agg(long_df,\
+  \ GroupBy([\"a\"]), \"y\", {})\n        pdt.assert_frame_equal(out, long_df.groupby(\"\
+  a\").mean().reset_index())\n\n    def test_func_as_string(self, long_df):\n\n  \
+  \      agg = Agg(func=\"median\")\n        out = agg(long_df, GroupBy([\"a\"]),\
+  \ \"y\", {})\n        pdt.assert_frame_equal(out, long_df.groupby(\"a\").median().reset_index())\n\
+  \n    def test_func_as_callable(self, long_df):\n\n        agg = Agg(func=np.max)\n\
+  \        out = agg(long_df, GroupBy([\"a\"]), \"y\", {})\n        pdt.assert_frame_equal(out,\
+  \ long_df.groupby(\"a\").max().reset_index())\n\n    def test_na_ignored(self, long_df):\n\
+  \n        long_df.loc[0, \"y\"] = np.nan\n        agg = Agg()\n        out = agg(long_df,\
+  \ GroupBy([\"a\"]), \"y\", {})\n        assert out[\"y\"].notna().all()\n\n    def\
+  \ test_na_dropped(self):\n\n        df = pd.DataFrame({\"x\": [1, 2, 3, np.nan]})\n\
+  \        agg = Agg()\n        out = agg(df, GroupBy([\"x\"]), \"y\", {})\n     \
+  \   assert out.empty\n\n    def test_empty_input(self):\n\n        df = pd.DataFrame(columns=[\"\
+  x\", \"y\"])\n        agg = Agg()\n        out = agg(df, GroupBy([\"x\"]), \"y\"\
+  , {})\n        assert out.empty\n\n\nclass TestEst:\n\n    def test_default(self,\
+  \ long_df):\n\n        est = Est()\n        out = est(long_df, GroupBy([\"a\"]),\
+  \ \"y\", {})\n        assert list(out.columns) == [\"a\", \"y\", \"ymin\", \"ymax\"\
+  ]\n        assert (out[\"ymin\"] <= out[\"y\"]).all()\n        assert (out[\"ymax\"\
+  ] >= out[\"y\"]).all()\n\n    def test_no_errorbars(self, long_df):\n\n        est\
+  \ = Est(errorbar=None)\n        out = est(long_df, GroupBy([\"a\"]), \"y\", {})\n\
+  \        assert list(out.columns) == [\"a\", \"y\", \"ymin\", \"ymax\"]\n      \
+  \  assert out[\"ymin\"].isna().all()\n        assert out[\"ymax\"].isna().all()\n\
+  \n    def test_weighted_estimate(self):\n\n        x = np.array([0, 1, 2, 3])\n\
+  \        y = np.array([1, 1, 1, 1])\n        w = np.array([1, 1, 1, 3])\n      \
+  \  df = pd.DataFrame(dict(x=x, y=y, weight=w))\n\n        est = Est()\n        out\
+  \ = est(df, GroupBy([\"y\"]), \"x\", {})\n        assert out[\"x\"].iloc[0] == 2\n\
+  \n```"

@@ -50,21 +50,18 @@ def organize_files(project_name, file_info):
 if __name__ == "__main__":
     # Example input: Replace with your filenames and GitHub raw URLs
     project_files = {
-        "pynguin": {
+        "pyod": {
             "test_to_source": {
-                "https://raw.githubusercontent.com/se2p/pynguin/refs/heads/main/tests/assertion/mutation_analysis/operators/test_loop.py": [
-                    "https://raw.githubusercontent.com/se2p/pynguin/refs/heads/main/src/pynguin/assertion/mutation_analysis/operators/loop.py",
+                "https://raw.githubusercontent.com/yzhao062/pyod/refs/heads/master/pyod/test/test_knn.py": [
+                    "https://raw.githubusercontent.com/yzhao062/pyod/refs/heads/master/pyod/models/knn.py",
                     # "https://raw.githubusercontent.com/se2p/pynguin/refs/heads/main/tests/fixtures/programgraph/whileloop.py",
-
-
-
     
                 ],
             },
             "dependent_files": [
-                "https://raw.githubusercontent.com/se2p/pynguin/refs/heads/main/src/pynguin/assertion/mutation_analysis/operators/base.py",
-                # "https://raw.githubusercontent.com/se2p/pynguin/refs/heads/main/src/pynguin/ga/chromosomevisitor.py",
-                # "https://raw.githubusercontent.com/se2p/pynguin/refs/heads/main/src/pynguin/testcase/statement.py",
+                # "https://raw.githubusercontent.com/yzhao062/pyod/refs/heads/master/pyod/utils/utility.py",
+                "https://raw.githubusercontent.com/yzhao062/pyod/refs/heads/master/pyod/models/base.py",
+                # "https://raw.githubusercontent.com/yzhao062/pyod/refs/heads/master/pyod/utils/torch_utility.py",
                 # "https://raw.githubusercontent.com/pyinstaller/pyinstaller/refs/heads/develop/PyInstaller/exceptions.py",
                 # "https://raw.githubusercontent.com/pyinstaller/pyinstaller/refs/heads/develop/PyInstaller/config.py",
                 # "https://raw.githubusercontent.com/psf/requests/refs/heads/main/src/requests/structures.py",

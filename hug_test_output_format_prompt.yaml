@@ -1,0 +1,283 @@
+messages:
+- content: You are an AI agent expert in writing unit tests. Your task is to write
+    unit tests for the given code files of the repository. Make sure the tests can
+    be executed without lint or compile errors.
+  role: system
+- content: "### Task Information\nBased on the source code, write/rewrite tests to\
+    \ cover the source code.\nRepository: hug\nTest File Path: hug\\test_output_format\\\
+    test_output_format.py\nProject Programming Language: python\nTesting Framework:\
+    \ pytest\n### Source File Content\n### Source File Content:\n\"\"\"hug/output_format.py\n\
+    \nDefines Hug's built-in output formatting methods\n\nCopyright (C) 2016  Timothy\
+    \ Edmund Crosley\n\nPermission is hereby granted, free of charge, to any person\
+    \ obtaining a copy of this software and associated\ndocumentation files (the \"\
+    Software\"), to deal in the Software without restriction, including without limitation\n\
+    the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or\
+    \ sell copies of the Software, and\nto permit persons to whom the Software is\
+    \ furnished to do so, subject to the following conditions:\n\nThe above copyright\
+    \ notice and this permission notice shall be included in all copies or\nsubstantial\
+    \ portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY\
+    \ OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES\
+    \ OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN\
+    \ NO EVENT SHALL\nTHE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES\
+    \ OR OTHER LIABILITY, WHETHER IN AN ACTION OF\nCONTRACT, TORT OR OTHERWISE, ARISING\
+    \ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR\nOTHER DEALINGS\
+    \ IN THE SOFTWARE.\n\n\"\"\"\nfrom __future__ import absolute_import\n\nimport\
+    \ base64\nimport mimetypes\nimport os\nimport re\nimport tempfile\nfrom datetime\
+    \ import date, datetime, timedelta\nfrom decimal import Decimal\nfrom functools\
+    \ import wraps\nfrom io import BytesIO\nfrom operator import itemgetter\nfrom\
+    \ uuid import UUID\n\nimport falcon\nfrom falcon import HTTP_NOT_FOUND\n\nfrom\
+    \ hug import introspect\nfrom hug.format import camelcase, content_type\nfrom\
+    \ hug.json_module import json as json_converter\n\ntry:\n    import numpy\nexcept\
+    \ ImportError:\n    numpy = False\n\nIMAGE_TYPES = (\n    \"png\",\n    \"jpg\"\
+    ,\n    \"bmp\",\n    \"eps\",\n    \"gif\",\n    \"im\",\n    \"jpeg\",\n    \"\
+    msp\",\n    \"pcx\",\n    \"ppm\",\n    \"spider\",\n    \"tiff\",\n    \"webp\"\
+    ,\n    \"xbm\",\n    \"cur\",\n    \"dcx\",\n    \"fli\",\n    \"flc\",\n    \"\
+    gbr\",\n    \"gd\",\n    \"ico\",\n    \"icns\",\n    \"imt\",\n    \"iptc\",\n\
+    \    \"naa\",\n    \"mcidas\",\n    \"mpo\",\n    \"pcd\",\n    \"psd\",\n   \
+    \ \"sgi\",\n    \"tga\",\n    \"wal\",\n    \"xpm\",\n    \"svg\",\n    \"svg+xml\"\
+    ,\n)\n\nVIDEO_TYPES = (\n    (\"flv\", \"video/x-flv\"),\n    (\"mp4\", \"video/mp4\"\
+    ),\n    (\"m3u8\", \"application/x-mpegURL\"),\n    (\"ts\", \"video/MP2T\"),\n\
+    \    (\"3gp\", \"video/3gpp\"),\n    (\"mov\", \"video/quicktime\"),\n    (\"\
+    avi\", \"video/x-msvideo\"),\n    (\"wmv\", \"video/x-ms-wmv\"),\n)\nRE_ACCEPT_QUALITY\
+    \ = re.compile(\"q=(?P<quality>[^;]+)\")\njson_converters = {}\nstream = tempfile.NamedTemporaryFile\
+    \ if \"UWSGI_ORIGINAL_PROC_NAME\" in os.environ else BytesIO\n\n\ndef _json_converter(item):\n\
+    \    if hasattr(item, \"__native_types__\"):\n        return item.__native_types__()\n\
+    \n    for kind, transformer in json_converters.items():\n        if isinstance(item,\
+    \ kind):\n            return transformer(item)\n\n    if isinstance(item, (date,\
+    \ datetime)):\n        return item.isoformat()\n    elif isinstance(item, bytes):\n\
+    \        try:\n            return item.decode(\"utf8\")\n        except UnicodeDecodeError:\n\
+    \            return base64.b64encode(item)\n    elif hasattr(item, \"__iter__\"\
+    ):\n        return list(item)\n    elif isinstance(item, (Decimal, UUID)):\n \
+    \       return str(item)\n    elif isinstance(item, timedelta):\n        return\
+    \ item.total_seconds()\n    raise TypeError(\"Type not serializable\")\n\n\ndef\
+    \ json_convert(*kinds):\n    \"\"\"Registers the wrapped method as a JSON converter\
+    \ for the provided types.\n\n    NOTE: custom converters are always globally applied\n\
+    \    \"\"\"\n\n    def register_json_converter(function):\n        for kind in\
+    \ kinds:\n            json_converters[kind] = function\n        return function\n\
+    \n    return register_json_converter\n\n\nif numpy:\n\n    @json_convert(numpy.ndarray)\n\
+    \    def numpy_listable(item):\n        return item.tolist()\n\n    @json_convert(str,\
+    \ numpy.unicode_)\n    def numpy_stringable(item):\n        return str(item)\n\
+    \n    @json_convert(numpy.bytes_)\n    def numpy_byte_decodeable(item):\n    \
+    \    return item.decode()\n\n    @json_convert(numpy.bool_)\n    def numpy_boolable(item):\n\
+    \        return bool(item)\n\n    @json_convert(numpy.integer)\n    def numpy_integerable(item):\n\
+    \        return int(item)\n\n    @json_convert(float, numpy.floating)\n    def\
+    \ numpy_floatable(item):\n        return float(item)\n\n\n@content_type(\"application/json;\
+    \ charset=utf-8\")\ndef json(content, request=None, response=None, ensure_ascii=False,\
+    \ **kwargs):\n    \"\"\"JSON (Javascript Serialized Object Notation)\"\"\"\n \
+    \   if hasattr(content, \"read\"):\n        return content\n\n    if isinstance(content,\
+    \ tuple) and getattr(content, \"_fields\", None):\n        content = {field: getattr(content,\
+    \ field) for field in content._fields}\n    return json_converter.dumps(\n   \
+    \     content, default=_json_converter, ensure_ascii=ensure_ascii, **kwargs\n\
+    \    ).encode(\"utf8\")\n\n\ndef on_valid(valid_content_type, on_invalid=json):\n\
+    \    \"\"\"Renders as the specified content type only if no errors are found in\
+    \ the provided data object\"\"\"\n    invalid_kwargs = introspect.generate_accepted_kwargs(on_invalid,\
+    \ \"request\", \"response\")\n    invalid_takes_response = introspect.takes_all_arguments(on_invalid,\
+    \ \"response\")\n\n    def wrapper(function):\n        valid_kwargs = introspect.generate_accepted_kwargs(function,\
+    \ \"request\", \"response\")\n        valid_takes_response = introspect.takes_all_arguments(function,\
+    \ \"response\")\n\n        @content_type(valid_content_type)\n        @wraps(function)\n\
+    \        def output_content(content, response, **kwargs):\n            if type(content)\
+    \ == dict and \"errors\" in content:\n                response.content_type =\
+    \ on_invalid.content_type\n                if invalid_takes_response:\n      \
+    \              kwargs[\"response\"] = response\n                return on_invalid(content,\
+    \ **invalid_kwargs(kwargs))\n\n            if valid_takes_response:\n        \
+    \        kwargs[\"response\"] = response\n            return function(content,\
+    \ **valid_kwargs(kwargs))\n\n        return output_content\n\n    return wrapper\n\
+    \n\n@content_type(\"text/plain; charset=utf-8\")\ndef text(content, **kwargs):\n\
+    \    \"\"\"Free form UTF-8 text\"\"\"\n    if hasattr(content, \"read\"):\n  \
+    \      return content\n\n    return str(content).encode(\"utf8\")\n\n\n@content_type(\"\
+    text/html; charset=utf-8\")\ndef html(content, **kwargs):\n    \"\"\"HTML (Hypertext\
+    \ Markup Language)\"\"\"\n    if hasattr(content, \"read\"):\n        return content\n\
+    \    elif hasattr(content, \"render\"):\n        return content.render().encode(\"\
+    utf8\")\n\n    return str(content).encode(\"utf8\")\n\n\ndef _camelcase(content):\n\
+    \    if isinstance(content, dict):\n        new_dictionary = {}\n        for key,\
+    \ value in content.items():\n            if isinstance(key, str):\n          \
+    \      key = camelcase(key)\n            new_dictionary[key] = _camelcase(value)\n\
+    \        return new_dictionary\n    elif isinstance(content, list):\n        new_list\
+    \ = []\n        for element in content:\n            new_list.append(_camelcase(element))\n\
+    \        return new_list\n    else:\n        return content\n\n\n@content_type(\"\
+    application/json; charset=utf-8\")\ndef json_camelcase(content, **kwargs):\n \
+    \   \"\"\"JSON (Javascript Serialized Object Notation) with all keys camelCased\"\
+    \"\"\n    return json(_camelcase(content), **kwargs)\n\n\n@content_type(\"application/json;\
+    \ charset=utf-8\")\ndef pretty_json(content, **kwargs):\n    \"\"\"JSON (Javascript\
+    \ Serialized Object Notion) pretty printed and indented\"\"\"\n    return json(content,\
+    \ indent=4, separators=(\",\", \": \"), **kwargs)\n\n\ndef image(image_format,\
+    \ doc=None):\n    \"\"\"Dynamically creates an image type handler for the specified\
+    \ image type\"\"\"\n\n    @on_valid(\"image/{0}\".format(image_format))\n    def\
+    \ image_handler(data, **kwargs):\n        if hasattr(data, \"read\"):\n      \
+    \      return data\n        elif hasattr(data, \"save\"):\n            output\
+    \ = stream()\n            if introspect.takes_all_arguments(data.save, \"format\"\
+    ) or introspect.takes_kwargs(\n                data.save\n            ):\n   \
+    \             data.save(output, format=image_format.upper())\n            else:\n\
+    \                data.save(output)\n            output.seek(0)\n            return\
+    \ output\n        elif hasattr(data, \"render\"):\n            return data.render()\n\
+    \        elif os.path.isfile(data):\n            return open(data, \"rb\")\n\n\
+    \    image_handler.__doc__ = doc or \"{0} formatted image\".format(image_format)\n\
+    \    return image_handler\n\n\nfor image_type in IMAGE_TYPES:\n    globals()[\"\
+    {0}_image\".format(image_type.replace(\"+\", \"_\"))] = image(image_type)\n\n\n\
+    def video(video_type, video_mime, doc=None):\n    \"\"\"Dynamically creates a\
+    \ video type handler for the specified video type\"\"\"\n\n    @on_valid(video_mime)\n\
+    \    def video_handler(data, **kwargs):\n        if hasattr(data, \"read\"):\n\
+    \            return data\n        elif hasattr(data, \"save\"):\n            output\
+    \ = stream()\n            data.save(output, format=video_type.upper())\n     \
+    \       output.seek(0)\n            return output\n        elif hasattr(data,\
+    \ \"render\"):\n            return data.render()\n        elif os.path.isfile(data):\n\
+    \            return open(data, \"rb\")\n\n    video_handler.__doc__ = doc or \"\
+    {0} formatted video\".format(video_type)\n    return video_handler\n\n\nfor (video_type,\
+    \ video_mime) in VIDEO_TYPES:\n    globals()[\"{0}_video\".format(video_type)]\
+    \ = video(video_type, video_mime)\n\n\n@on_valid(\"file/dynamic\")\ndef file(data,\
+    \ response, **kwargs):\n    \"\"\"A dynamically retrieved file\"\"\"\n    if not\
+    \ data:\n        response.content_type = \"text/plain\"\n        return \"\"\n\
+    \n    if hasattr(data, \"read\"):\n        name, data = getattr(data, \"name\"\
+    , \"\"), data\n    elif os.path.isfile(data):\n        name, data = data, open(data,\
+    \ \"rb\")\n    else:\n        response.content_type = \"text/plain\"\n       \
+    \ response.status = HTTP_NOT_FOUND\n        return \"File not found!\"\n\n   \
+    \ response.content_type = mimetypes.guess_type(name, None)[0] or \"application/octet-stream\"\
+    \n    return data\n\n\ndef on_content_type(\n    handlers, default=None, error=\"\
+    The requested content type does not match any of those allowed\"\n):\n    \"\"\
+    \"Returns a content in a different format based on the clients provided content\
+    \ type,\n       should pass in a dict with the following format:\n\n         \
+    \   {'[content-type]': action,\n             ...\n            }\n    \"\"\"\n\n\
+    \    def output_type(data, request, response):\n        handler = handlers.get(request.content_type.split(\"\
+    ;\")[0], default)\n        if not handler:\n            raise falcon.HTTPNotAcceptable(error)\n\
+    \n        response.content_type = handler.content_type\n        return handler(data,\
+    \ request=request, response=response)\n\n    output_type.__doc__ = \"Supports\
+    \ any of the following formats: {0}\".format(\n        \", \".join(function.__doc__\
+    \ or function.__name__ for function in handlers.values())\n    )\n    output_type.content_type\
+    \ = \", \".join(handlers.keys())\n    return output_type\n\n\ndef accept_quality(accept,\
+    \ default=1):\n    \"\"\"Separates out the quality score from the accepted content_type\"\
+    \"\"\n    quality = default\n    if accept and \";\" in accept:\n        accept,\
+    \ rest = accept.split(\";\", 1)\n        accept_quality = RE_ACCEPT_QUALITY.search(rest)\n\
+    \        if accept_quality:\n            quality = float(accept_quality.groupdict().get(\"\
+    quality\", quality).strip())\n\n    return (quality, accept.strip())\n\n\ndef\
+    \ accept(\n    handlers, default=None, error=\"The requested content type does\
+    \ not match any of those allowed\"\n):\n    \"\"\"Returns a content in a different\
+    \ format based on the clients defined accepted content type,\n       should pass\
+    \ in a dict with the following format:\n\n            {'[content-type]': action,\n\
+    \             ...\n            }\n    \"\"\"\n\n    def output_type(data, request,\
+    \ response):\n        accept = request.accept\n        if accept in (\"\", \"\
+    *\", \"/\"):\n            handler = default or handlers and next(iter(handlers.values()))\n\
+    \        else:\n            handler = default\n            accepted = [accept_quality(accept_type)\
+    \ for accept_type in accept.split(\",\")]\n            accepted.sort(key=itemgetter(0))\n\
+    \            for _quality, accepted_content_type in reversed(accepted):\n    \
+    \            if accepted_content_type in handlers:\n                    handler\
+    \ = handlers[accepted_content_type]\n                    break\n\n        if not\
+    \ handler:\n            raise falcon.HTTPNotAcceptable(error)\n\n        response.content_type\
+    \ = handler.content_type\n        return handler(data, request=request, response=response)\n\
+    \n    output_type.__doc__ = \"Supports any of the following formats: {0}\".format(\n\
+    \        \", \".join(function.__doc__ for function in handlers.values())\n   \
+    \ )\n    output_type.content_type = \", \".join(handlers.keys())\n    return output_type\n\
+    \n\ndef suffix(\n    handlers, default=None, error=\"The requested suffix does\
+    \ not match any of those allowed\"\n):\n    \"\"\"Returns a content in a different\
+    \ format based on the suffix placed at the end of the URL route\n       should\
+    \ pass in a dict with the following format:\n\n            {'[suffix]': action,\n\
+    \             ...\n            }\n    \"\"\"\n\n    def output_type(data, request,\
+    \ response):\n        path = request.path\n        handler = default\n       \
+    \ for suffix_test, suffix_handler in handlers.items():\n            if path.endswith(suffix_test):\n\
+    \                handler = suffix_handler\n                break\n\n        if\
+    \ not handler:\n            raise falcon.HTTPNotAcceptable(error)\n\n        response.content_type\
+    \ = handler.content_type\n        return handler(data, request=request, response=response)\n\
+    \n    output_type.__doc__ = \"Supports any of the following formats: {0}\".format(\n\
+    \        \", \".join(function.__doc__ for function in handlers.values())\n   \
+    \ )\n    output_type.content_type = \", \".join(handlers.keys())\n    return output_type\n\
+    \n\ndef prefix(\n    handlers, default=None, error=\"The requested prefix does\
+    \ not match any of those allowed\"\n):\n    \"\"\"Returns a content in a different\
+    \ format based on the prefix placed at the end of the URL route\n       should\
+    \ pass in a dict with the following format:\n\n            {'[prefix]': action,\n\
+    \             ...\n            }\n    \"\"\"\n\n    def output_type(data, request,\
+    \ response):\n        path = request.path\n        handler = default\n       \
+    \ for prefix_test, prefix_handler in handlers.items():\n            if path.startswith(prefix_test):\n\
+    \                handler = prefix_handler\n                break\n\n        if\
+    \ not handler:\n            raise falcon.HTTPNotAcceptable(error)\n\n        response.content_type\
+    \ = handler.content_type\n        return handler(data, request=request, response=response)\n\
+    \n    output_type.__doc__ = \"Supports any of the following formats: {0}\".format(\n\
+    \        \", \".join(function.__doc__ for function in handlers.values())\n   \
+    \ )\n    output_type.content_type = \", \".join(handlers.keys())\n    return output_type\n\
+    \n### Source File Dependency Files Content\n### Dependency File: format.py\n\"\
+    \"\"hug/format.py\n\nDefines formatting utility methods that are common both to\
+    \ input and output formatting and aid in general formatting of\nfields and content\n\
+    \nCopyright (C) 2016  Timothy Edmund Crosley\n\nPermission is hereby granted,\
+    \ free of charge, to any person obtaining a copy of this software and associated\n\
+    documentation files (the \"Software\"), to deal in the Software without restriction,\
+    \ including without limitation\nthe rights to use, copy, modify, merge, publish,\
+    \ distribute, sublicense, and/or sell copies of the Software, and\nto permit persons\
+    \ to whom the Software is furnished to do so, subject to the following conditions:\n\
+    \nThe above copyright notice and this permission notice shall be included in all\
+    \ copies or\nsubstantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED\
+    \ \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT\
+    \ LIMITED\nTO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE\
+    \ AND NONINFRINGEMENT. IN NO EVENT SHALL\nTHE AUTHORS OR COPYRIGHT HOLDERS BE\
+    \ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF\n\
+    CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE\
+    \ OR THE USE OR\nOTHER DEALINGS IN THE SOFTWARE.\n\n\"\"\"\nfrom __future__ import\
+    \ absolute_import\n\nimport re\nfrom cgi import parse_header\n\nfrom hug import\
+    \ _empty as empty\n\nUNDERSCORE = (re.compile(\"(.)([A-Z][a-z]+)\"), re.compile(\"\
+    ([a-z0-9])([A-Z])\"))\n\n\ndef parse_content_type(content_type):\n    \"\"\"Separates\
+    \ out the parameters from the content_type and returns both in a tuple (content_type,\
+    \ parameters)\"\"\"\n    if content_type is not None and \";\" in content_type:\n\
+    \        return parse_header(content_type)\n    return (content_type, empty.dict)\n\
+    \n\ndef content_type(content_type):\n    \"\"\"Attaches the supplied content_type\
+    \ to a Hug formatting function\"\"\"\n\n    def decorator(method):\n        method.content_type\
+    \ = content_type\n        return method\n\n    return decorator\n\n\ndef underscore(text):\n\
+    \    \"\"\"Converts text that may be camelcased into an underscored format\"\"\
+    \"\n    return UNDERSCORE[1].sub(r\"\\1_\\2\", UNDERSCORE[0].sub(r\"\\1_\\2\"\
+    , text)).lower()\n\n\ndef camelcase(text):\n    \"\"\"Converts text that may be\
+    \ underscored into a camelcase format\"\"\"\n    return text[0] + \"\".join(text.title().split(\"\
+    _\"))[1:]\n\n\n### Dependency File: introspect.py\n\"\"\"hug/introspect.py\n\n\
+    Defines built in hug functions to aid in introspection\n\nCopyright (C) 2016 \
+    \ Timothy Edmund Crosley\n\nPermission is hereby granted, free of charge, to any\
+    \ person obtaining a copy of this software and associated\ndocumentation files\
+    \ (the \"Software\"), to deal in the Software without restriction, including without\
+    \ limitation\nthe rights to use, copy, modify, merge, publish, distribute, sublicense,\
+    \ and/or sell copies of the Software, and\nto permit persons to whom the Software\
+    \ is furnished to do so, subject to the following conditions:\n\nThe above copyright\
+    \ notice and this permission notice shall be included in all copies or\nsubstantial\
+    \ portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY\
+    \ OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES\
+    \ OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN\
+    \ NO EVENT SHALL\nTHE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES\
+    \ OR OTHER LIABILITY, WHETHER IN AN ACTION OF\nCONTRACT, TORT OR OTHERWISE, ARISING\
+    \ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR\nOTHER DEALINGS\
+    \ IN THE SOFTWARE.\n\n\"\"\"\nfrom __future__ import absolute_import\n\nimport\
+    \ inspect\nfrom types import MethodType\n\n\ndef is_method(function):\n    \"\"\
+    \"Returns True if the passed in function is identified as a method (NOT a function)\"\
+    \"\"\n    return isinstance(function, MethodType)\n\n\ndef is_coroutine(function):\n\
+    \    \"\"\"Returns True if the passed in function is a coroutine\"\"\"\n    return\
+    \ function.__code__.co_flags & 0x0080 or getattr(function, \"_is_coroutine\",\
+    \ False)\n\n\ndef name(function):\n    \"\"\"Returns the name of a function\"\"\
+    \"\n    return function.__name__\n\n\ndef arguments(function, extra_arguments=0):\n\
+    \    \"\"\"Returns the name of all arguments a function takes\"\"\"\n    if not\
+    \ hasattr(function, \"__code__\"):\n        return ()\n\n    return function.__code__.co_varnames[:\
+    \ function.__code__.co_argcount + extra_arguments]\n\n\ndef takes_kwargs(function):\n\
+    \    \"\"\"Returns True if the supplied function takes keyword arguments\"\"\"\
+    \n    return bool(function.__code__.co_flags & 0x08)\n\n\ndef takes_args(function):\n\
+    \    \"\"\"Returns True if the supplied functions takes extra non-keyword arguments\"\
+    \"\"\n    return bool(function.__code__.co_flags & 0x04)\n\n\ndef takes_arguments(function,\
+    \ *named_arguments):\n    \"\"\"Returns the arguments that a function takes from\
+    \ a list of requested arguments\"\"\"\n    return set(named_arguments).intersection(arguments(function))\n\
+    \n\ndef takes_all_arguments(function, *named_arguments):\n    \"\"\"Returns True\
+    \ if all supplied arguments are found in the function\"\"\"\n    return bool(takes_arguments(function,\
+    \ *named_arguments) == set(named_arguments))\n\n\ndef generate_accepted_kwargs(function,\
+    \ *named_arguments):\n    \"\"\"Dynamically creates a function that when called\
+    \ with dictionary of arguments will produce a kwarg that's\n       compatible\
+    \ with the supplied function\n    \"\"\"\n    if hasattr(function, \"__code__\"\
+    ) and takes_kwargs(function):\n        function_takes_kwargs = True\n        function_takes_arguments\
+    \ = []\n    else:\n        function_takes_kwargs = False\n        function_takes_arguments\
+    \ = takes_arguments(function, *named_arguments)\n\n    def accepted_kwargs(kwargs):\n\
+    \        if function_takes_kwargs:\n            return kwargs\n        elif function_takes_arguments:\n\
+    \            return {key: value for key, value in kwargs.items() if key in function_takes_arguments}\n\
+    \        return {}\n\n    return accepted_kwargs\n\n\n### Dependency File: json_module.py\n\
+    import os\n\nHUG_USE_UJSON = bool(os.environ.get(\"HUG_USE_UJSON\", 1))\ntry:\
+    \  # pragma: no cover\n    if HUG_USE_UJSON:\n        import ujson as json\n\n\
+    \        class dumps_proxy:  # noqa: N801\n            \"\"\"Proxies the call\
+    \ so non supported kwargs are skipped\n            and it enables escape_forward_slashes\
+    \ to simulate built-in json\n            \"\"\"\n\n            _dumps = json.dumps\n\
+    \n            def __call__(self, *args, **kwargs):\n                kwargs.pop(\"\
+    default\", None)\n                kwargs.pop(\"separators\", None)\n         \
+    \       kwargs.update(escape_forward_slashes=False)\n                try:\n  \
+    \                  return self._dumps(*args, **kwargs)\n                except\
+    \ Exception as exc:\n                    raise TypeError(\"Type[ujson] is not\
+    \ Serializable\", exc)\n\n        json.dumps = dumps_proxy()\n    else:\n    \
+    \    import json\nexcept ImportError:  # pragma: no cover\n    import json\n\n\
+    Output the complete test file, code only, no explanations.\n```python\n<complete\
+    \ test code>\n```\n### Time\nCurrent time: 2025-04-11 18:57:33\n"
+  role: user

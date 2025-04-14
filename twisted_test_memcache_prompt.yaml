@@ -5,20 +5,20 @@ messages:
   role: system
 - content: "### Task Information\nBased on the source code, write/rewrite tests to\
     \ cover the source code.\nRepository: twisted\nTest File Path: twisted\\test_memcache\\\
-    test_memcache.py\nProject Programming Language: Python\nTesting Framework: pytest\n\
-    ### Source File Content\n### Source File Content:\n# -*- test-case-name: twisted.test.test_memcache\
-    \ -*-\n# Copyright (c) Twisted Matrix Laboratories.\n# See LICENSE for details.\n\
-    \n\"\"\"\nMemcache client protocol. Memcached is a caching server, storing data\
-    \ in the\nform of pairs key/value, and memcache is the protocol to talk with it.\n\
-    \nTo connect to a server, create a factory for L{MemCacheProtocol}::\n\n    from\
-    \ twisted.internet import reactor, protocol\n    from twisted.protocols.memcache\
-    \ import MemCacheProtocol, DEFAULT_PORT\n    d = protocol.ClientCreator(reactor,\
-    \ MemCacheProtocol\n        ).connectTCP(\"localhost\", DEFAULT_PORT)\n    def\
-    \ doSomething(proto):\n        # Here you call the memcache operations\n     \
-    \   return proto.set(\"mykey\", \"a lot of data\")\n    d.addCallback(doSomething)\n\
-    \    reactor.run()\n\nAll the operations of the memcache protocol are present,\
-    \ but\nL{MemCacheProtocol.set} and L{MemCacheProtocol.get} are the more important.\n\
-    \nSee U{http://code.sixapart.com/svn/memcached/trunk/server/doc/protocol.txt}\
+    test_memcache.py\nProject Programming Language: Python\nTesting Framework: Twisted\
+    \ Trial\n### Source File Content\n### Source File Content:\n# -*- test-case-name:\
+    \ twisted.test.test_memcache -*-\n# Copyright (c) Twisted Matrix Laboratories.\n\
+    # See LICENSE for details.\n\n\"\"\"\nMemcache client protocol. Memcached is a\
+    \ caching server, storing data in the\nform of pairs key/value, and memcache is\
+    \ the protocol to talk with it.\n\nTo connect to a server, create a factory for\
+    \ L{MemCacheProtocol}::\n\n    from twisted.internet import reactor, protocol\n\
+    \    from twisted.protocols.memcache import MemCacheProtocol, DEFAULT_PORT\n \
+    \   d = protocol.ClientCreator(reactor, MemCacheProtocol\n        ).connectTCP(\"\
+    localhost\", DEFAULT_PORT)\n    def doSomething(proto):\n        # Here you call\
+    \ the memcache operations\n        return proto.set(\"mykey\", \"a lot of data\"\
+    )\n    d.addCallback(doSomething)\n    reactor.run()\n\nAll the operations of\
+    \ the memcache protocol are present, but\nL{MemCacheProtocol.set} and L{MemCacheProtocol.get}\
+    \ are the more important.\n\nSee U{http://code.sixapart.com/svn/memcached/trunk/server/doc/protocol.txt}\
     \ for\nmore information about the protocol.\n\"\"\"\n\n\nfrom collections import\
     \ deque\n\nfrom twisted.internet.defer import Deferred, TimeoutError, fail\nfrom\
     \ twisted.protocols.basic import LineReceiver\nfrom twisted.protocols.policies\
@@ -2402,5 +2402,5 @@ messages:
     \        \"\"\"\n        Called when the connection times out.\n\n        Override\
     \ to define behavior other than dropping the connection.\n        \"\"\"\n   \
     \     self.transport.loseConnection()\n\nOutput the complete test file, code only,\
-    \ no explanations.\n### Time\nCurrent time: 2025-03-17 01:43:17\n"
+    \ no explanations.\n### Time\nCurrent time: 2025-03-18 01:05:44\n"
   role: user
