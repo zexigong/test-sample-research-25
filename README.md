@@ -48,13 +48,13 @@ These scripts support batch processing of prompts, result logging, and formattin
 ---
 
 ### 🔹 Local Evaluation (Windows)
-- Each repo contains a `README.md` specific to its evaluation procedure.
+- Each validation repo folder contains a `README.md` specific to its evaluation procedure.
 - These include:
   - Environment setup for Windows
   - How to run evaluation scripts step-by-step
   - File organization expectations and test execution process
 
-I designed and tested these pipelines specifically for local execution on my Windows machine, troubleshooting model output formatting, import handling, and test running issues along the way.
+I designed and tested these pipelines specifically for local execution on my Windows machine, troubleshooting model output formatting, environment set up for each validation project, and test running issues along the way.
 
 ---
 
